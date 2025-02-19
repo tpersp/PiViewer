@@ -14,6 +14,7 @@ from flask import (
 # Application Version (edit here for a new version)
 # ------------------------------------------------------------------
 APP_VERSION = "PiViewerRev1"
+# BUILD_ON = "4.2"
 
 # ------------------------------------------------------------------
 # Read environment-based paths (fallbacks if not set)
