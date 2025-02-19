@@ -11,9 +11,14 @@ from flask import (
 )
 
 # ------------------------------------------------------------------
+# Application Version
+# ------------------------------------------------------------------
+APP_VERSION = "PiViewerRev1"
+
+# ------------------------------------------------------------------
 # Read environment-based paths (fallbacks if not set)
 # ------------------------------------------------------------------
-VIEWER_HOME = os.environ.get("VIEWER_HOME", "/home/pi/viewer")
+VIEWER_HOME = os.environ.get("VIEWER_HOME", "/home/pi/PiViewer")
 IMAGE_DIR   = os.environ.get("IMAGE_DIR", "/mnt/PiViewers")
 
 CONFIG_PATH = os.path.join(VIEWER_HOME, "viewerconfig.json")
@@ -311,7 +316,7 @@ def upload_media():
             log_message(f"Skipped file (unsupported): {original_name}")
             continue
         new_filename = get_next_filename(subfolder, target_dir, ext)
-        final_path = os.path.join(target_dir, new_filename)
+        final_path = os.path.join(IMAGE_DIR, subfolder, new_filename)
         file.save(final_path)
         log_message(f"Uploaded file saved to: {final_path}")
 
@@ -335,7 +340,7 @@ def get_next_filename(subfolder_name, folder_path, desired_ext):
     return f"{prefix}{next_num:03d}{desired_ext}"
 
 # ------------------------------------------------------------------
-# Restart Viewer
+# Restart Viewer Endpoint
 # ------------------------------------------------------------------
 
 @app.route("/restart_viewer", methods=["POST"])
@@ -684,7 +689,7 @@ def index():
 </head>
 <body class="{{ theme }}">
 <div class="container">
-  <h1 style="text-align:center;">Viewer Controller</h1>
+  <h1 style="text-align:center;">Viewer Controller <small style="font-size:14px;">v{{ version }}</small></h1>
   <p style="text-align:center;">
     <strong>Hostname:</strong> {{host}} |
     <strong>IP:</strong> {{ipaddr}} |
@@ -698,6 +703,10 @@ def index():
     <a href="{{ url_for('settings') }}">
       <button style="font-size:14px;">Settings</button>
     </a>
+    <!-- Restart Viewer Button -->
+    <form method="POST" action="/restart_viewer" style="display:inline-block; margin-left:10px;">
+      <button type="submit" style="font-size:14px;">Restart Viewer</button>
+    </form>
   </div>
   <section>
     <h2 style="text-align:center;">Display Settings</h2>
@@ -835,7 +844,8 @@ def index():
         ipaddr=ipaddr,
         model=model,
         theme=theme,
-        monitors=monitors
+        monitors=monitors,
+        version=APP_VERSION
     )
 
 if __name__ == "__main__":
