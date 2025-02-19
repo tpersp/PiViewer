@@ -2,7 +2,7 @@
 
 RasPi Viewer LightOS is a lightweight, easy-to-configure slideshow viewer and controller designed for Raspberry Pi OS. It leverages [mpv](https://mpv.io/) for fullscreen image display and uses a Flask web interface to manage settings and media—now with automatic multi-monitor support.
 
-> **Note:** This project was developed and tested on a Raspberry Pi 4 running Raspberry Pi OS with a desktop environment.
+> **Note:** This project was developed and tested on a Raspberry Pi 4 running Raspberry Pi OS Lite 64bit.
 
 ## Features
 
