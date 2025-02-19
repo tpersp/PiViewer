@@ -25,14 +25,15 @@ PiViewer is a lightweight, easy-to-configure slideshow viewer and controller des
 
 ### Prerequisites
 
-- **Raspberry Pi OS with Desktop:**  
-  Ensure that you have Raspberry Pi OS (Desktop version) installed.
+- **Raspberry Pi OS:**  
+  Ensure that you have Raspberry Pi OS Lite installed.
 - **Network (Optional):**  
   If you want to mount a network share for images, make sure CIFS is supported.
 
 ### Manual Configuration: Disable Wayland / Use X11
+> **Note:** This project does not currently work with Wayland.
 
-If the automated setup does not fully disable Wayland, or you prefer to do it manually, follow these steps:
+As the automated setup does not fully disable Wayland, please do it manually, follow these steps:
 
 1. **Edit `/boot/firmware/config.txt`:**  
    - **Do not include:**
@@ -62,9 +63,12 @@ Reboot the system to ensure that X11 starts properly.
 ### Clone the Repository
 
 ```
-git clone https://github.com/yourusername/your-repo-name.git
+git clone https://github.com/TheDoden/PiViewer.git
 ```
-cd your-repo-name
+Navigate to the project folder:
+```
+cd PiViewer
+```
 
 ## Run the Setup Script:
 
