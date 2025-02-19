@@ -1,0 +1,48 @@
+install.txt
+--------------------------------------------------------------------------------
+Manual Steps: Disable Wayland / Use X11
+--------------------------------------------------------------------------------
+
+If you prefer to disable Wayland manually (or if 'setup.sh' did not work fully for you),
+you can do the following:
+
+1) Edit /boot/firmware/config.txt:
+   - Make sure you do NOT have:
+       dtoverlay=vc4-fkms-v3d
+   - Instead, ensure or add:
+       dtoverlay=vc4-kms-v3d
+       max_framebuffers=2
+       hdmi_force_hotplug=1
+
+2) Also ensure that Wayland is disabled in /etc/gdm3/daemon.conf or
+   whichever display manager config you use. On Raspberry Pi OS with
+   raspi-config support, you can often do:
+       sudo raspi-config
+         Advanced -> X11 -> enter to enable.
+       (then navigate to the appropriate “Enable/Disable Wayland” option)
+
+3) Reboot after changing these settings to ensure X11 starts properly.
+
+--------------------------------------------------------------------------------
+Done
+--------------------------------------------------------------------------------
+
+Navigate to the where the application files are stored:
+   example:
+      cd /home/pi/viewer
+
+You can now run:
+   chmod +x setup.sh
+   sudo ./setup.sh
+
+This will:
+ - Install necessary packages
+ - Disable screen blanking
+ - Prompt you for user & mount info
+ - Create systemd services for the slideshow and web controller
+ - Reboot when finished
+
+After the reboot, open a browser and visit:
+   http://<Your-Raspberry-Pi-IP>:8080
+
+Use that web interface to configure slideshows, manage media, etc.
