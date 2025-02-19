@@ -11,7 +11,7 @@ from flask import (
 )
 
 # ------------------------------------------------------------------
-# Application Version
+# Application Version (edit here for a new version)
 # ------------------------------------------------------------------
 APP_VERSION = "PiViewerRev1"
 
@@ -689,7 +689,8 @@ def index():
 </head>
 <body class="{{ theme }}">
 <div class="container">
-  <h1 style="text-align:center;">Viewer Controller <small style="font-size:14px;">v{{ version }}</small></h1>
+  <h1 style="text-align:center;">Viewer Controller</h1>
+  <div style="text-align:center; font-size:12px; color:#888;">{{ version }}</div>
   <p style="text-align:center;">
     <strong>Hostname:</strong> {{host}} |
     <strong>IP:</strong> {{ipaddr}} |
