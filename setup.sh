@@ -27,23 +27,6 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-# ------------------------------------------------------------------
-# Spinner function
-# ------------------------------------------------------------------
-spinner() {
-  local pid=$1
-  local delay=0.1
-  local spinstr='|/-\'
-  while ps -p $pid > /dev/null; do
-      local temp=${spinstr#?}
-      printf " [%c]  " "$spinstr"
-      spinstr=$temp${spinstr%"$temp"}
-      sleep $delay
-      printf "\b\b\b\b\b\b"
-  done
-  printf "    \b\b\b\b"
-}
-
 echo "================================================================="
 echo "  Simple 'It Just Works' Setup with LightDM + viewer + controller"
 echo "================================================================="
@@ -65,12 +48,9 @@ read -p "Press [Enter] to continue or Ctrl+C to abort..."
 # -------------------------------------------------------
 echo
 echo "== Step 1: Installing packages (lightdm, Xorg, mpv, python3, etc.) =="
-echo "Updating apt..."
-apt-get update &
-spinner $!
-echo "Installing packages..."
-apt-get install -y lightdm xorg x11-xserver-utils mpv python3 python3-pip cifs-utils ffmpeg raspi-config &
-spinner $!
+apt-get update
+apt-get install -y lightdm xorg x11-xserver-utils mpv python3 python3-pip cifs-utils ffmpeg raspi-config
+
 if [ $? -ne 0 ]; then
   echo "Error installing packages via apt. Exiting."
   exit 1
@@ -87,8 +67,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 if [ -f "$SCRIPT_DIR/dependencies.txt" ]; then
   echo
   echo "== Step 2: Installing Python dependencies (with --break-system-packages) =="
-  pip3 install --break-system-packages -r "$SCRIPT_DIR/dependencies.txt" &
-  spinner $!
+  pip3 install --break-system-packages -r "$SCRIPT_DIR/dependencies.txt"
   if [ $? -ne 0 ]; then
     echo "Error installing pip packages. Exiting."
     exit 1
@@ -116,6 +95,7 @@ echo
 echo "== Step 4: Configuration =="
 read -p "Enter the Linux username to run the viewer & controller (default: pi): " VIEWER_USER
 VIEWER_USER=${VIEWER_USER:-pi}
+
 USER_ID="$(id -u "$VIEWER_USER" 2>/dev/null)"
 if [ -z "$USER_ID" ]; then
   echo "User '$VIEWER_USER' not found. Create user? (y/n)"
@@ -129,14 +109,17 @@ if [ -z "$USER_ID" ]; then
     exit 1
   fi
 fi
+
 read -p "Enter the path for VIEWER_HOME (default: /home/$VIEWER_USER/PiViewer): " input_home
 if [ -z "$input_home" ]; then
   VIEWER_HOME="/home/$VIEWER_USER/PiViewer"
 else
   VIEWER_HOME="$input_home"
 fi
+
 read -p "Enter the path for IMAGE_DIR (default: /mnt/PiViewers): " input_dir
 IMAGE_DIR=${input_dir:-/mnt/PiViewers}
+
 echo
 echo "Creating $VIEWER_HOME if it doesn't exist..."
 mkdir -p "$VIEWER_HOME"
@@ -152,6 +135,7 @@ VIEWER_HOME=$VIEWER_HOME
 IMAGE_DIR=$IMAGE_DIR
 EOF
 chown "$VIEWER_USER":"$VIEWER_USER" "$ENV_FILE"
+
 echo
 echo "Contents of $ENV_FILE:"
 cat "$ENV_FILE"
@@ -172,8 +156,10 @@ if [[ "$mount_answer" =~ ^[Yy]$ ]]; then
     if [ -z "$MOUNT_OPTS" ]; then
       MOUNT_OPTS="guest,uid=$USER_ID,gid=$USER_ID,vers=3.0"
     fi
+
     echo "Creating mount dir: $IMAGE_DIR"
     mkdir -p "$IMAGE_DIR"
+
     FSTAB_LINE="$SERVER_SHARE  $IMAGE_DIR  cifs  $MOUNT_OPTS  0  0"
     if grep -qs "$SERVER_SHARE" /etc/fstab; then
       echo "Share already in /etc/fstab; skipping append."
@@ -181,6 +167,7 @@ if [[ "$mount_answer" =~ ^[Yy]$ ]]; then
       echo "Appending to /etc/fstab: $FSTAB_LINE"
       echo "$FSTAB_LINE" >> /etc/fstab
     fi
+
     echo "Mounting all..."
     mount -a
     if [ $? -ne 0 ]; then
@@ -196,6 +183,7 @@ fi
 # -------------------------------------------------------
 echo
 echo "== Step 7: Creating systemd service files =="
+
 # (A) viewer.service
 VIEWER_SERVICE="/etc/systemd/system/viewer.service"
 echo "Creating $VIEWER_SERVICE ..."
