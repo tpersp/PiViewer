@@ -13,8 +13,7 @@ from flask import (
 # ------------------------------------------------------------------
 # Application Version (edit here for a new version)
 # ------------------------------------------------------------------
-APP_VERSION = "PiViewerRev1"
-# BUILD_ON = "4.2"
+APP_VERSION = "1.0.1"
 
 # ------------------------------------------------------------------
 # Read environment-based paths (fallbacks if not set)
@@ -47,7 +46,8 @@ def init_config():
                 "image_category": "",
                 "specific_image": "",
                 "shuffle_mode": False,
-                "mixed_folders": []
+                "mixed_folders": [],
+                "rotate": 0
             }
         save_config(default_cfg)
 
@@ -76,7 +76,6 @@ def detect_monitors():
         lines = out.split("\n")
         if len(lines) <= 1:
             return {"Display0": {"resolution": "unknown", "name": "Display0"}}
-
         monitors = {}
         for line in lines[1:]:
             parts = line.strip().split()
@@ -91,7 +90,6 @@ def detect_monitors():
                 name_clean = parts[2].strip("+*")
                 monitors[name_clean] = {"resolution": "unknown", "name": name_clean}
                 continue
-
             geometry_part = parts[geometry_idx]
             actual_name = parts[-1]
             try:
@@ -102,10 +100,8 @@ def detect_monitors():
                 resolution = f"{width}x{height}"
             except:
                 resolution = "unknown"
-
             name_clean = actual_name.strip("+*")
             monitors[name_clean] = {"resolution": resolution, "name": name_clean}
-
         if not monitors:
             return {"Display0": {"resolution": "unknown", "name": "Display0"}}
         return monitors
@@ -137,10 +133,7 @@ def get_pi_model():
 def get_subfolders():
     """Return subfolders in IMAGE_DIR (one level)."""
     try:
-        return [
-            d for d in os.listdir(IMAGE_DIR)
-            if os.path.isdir(os.path.join(IMAGE_DIR, d))
-        ]
+        return [d for d in os.listdir(IMAGE_DIR) if os.path.isdir(os.path.join(IMAGE_DIR, d))]
     except:
         return []
 
@@ -254,7 +247,6 @@ def upload_media():
     """
     cfg = load_config()
     subfolders = get_subfolders()
-
     if request.method == "GET":
         HTML = """
         <!DOCTYPE html>
@@ -290,14 +282,11 @@ def upload_media():
         </html>
         """
         return render_template_string(HTML, theme=cfg.get("theme", "dark"), subfolders=subfolders)
-
     files = request.files.getlist("mediafiles")
     if not files or len(files) == 0:
         return "No file(s) selected", 400
-
     subfolder = request.form.get("subfolder") or ""
     new_subfolder = request.form.get("new_subfolder", "").strip()
-
     if new_subfolder:
         subfolder = new_subfolder
         target_dir = os.path.join(IMAGE_DIR, subfolder)
@@ -307,7 +296,6 @@ def upload_media():
         target_dir = os.path.join(IMAGE_DIR, subfolder)
         if not os.path.exists(target_dir):
             return "Subfolder does not exist and no new folder was specified", 400
-
     for file in files:
         if not file.filename:
             continue
@@ -320,7 +308,6 @@ def upload_media():
         final_path = os.path.join(IMAGE_DIR, subfolder, new_filename)
         file.save(final_path)
         log_message(f"Uploaded file saved to: {final_path}")
-
     return redirect(url_for("index"))
 
 def get_next_filename(subfolder_name, folder_path, desired_ext):
@@ -362,12 +349,12 @@ def settings():
     if request.method == "POST":
         new_theme = request.form.get("theme", "dark")
         cfg["theme"] = new_theme
+        # Update rotation if provided in settings page? (Not needed here)
         save_config(cfg)
         f = request.files.get("bg_image")
         if f:
             f.save(WEB_BG)
         return redirect(url_for("settings"))
-
     HTML = """
     <!DOCTYPE html>
     <html>
@@ -410,8 +397,7 @@ def settings():
 def index():
     cfg = load_config()
     monitors = detect_monitors()
-
-    # Sync config with actual monitors
+    # Sync config with actual monitors and add default rotate if missing.
     for m in monitors:
         if m not in cfg["displays"]:
             cfg["displays"][m] = {
@@ -420,17 +406,19 @@ def index():
                 "image_category": "",
                 "specific_image": "",
                 "shuffle_mode": False,
-                "mixed_folders": []
+                "mixed_folders": [],
+                "rotate": 0
             }
+        else:
+            if "rotate" not in cfg["displays"][m]:
+                cfg["displays"][m]["rotate"] = 0
     remove_list = []
     for existing_disp in list(cfg["displays"].keys()):
         if existing_disp not in monitors:
             remove_list.append(existing_disp)
     for r in remove_list:
         del cfg["displays"][r]
-
     save_config(cfg)
-
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_displays":
@@ -441,12 +429,17 @@ def index():
                 cat = request.form.get(pre + "image_category", cfg["displays"][disp_name]["image_category"])
                 shuffle_str = request.form.get(pre + "shuffle_mode", "off")
                 spec_img = request.form.get(pre + "specific_image", cfg["displays"][disp_name]["specific_image"])
+                rotate_str = request.form.get(pre + "rotate", "0")
                 mixed_order_str = request.form.get(pre + "mixed_order", "")
                 mixed_order_list = [x for x in mixed_order_str.split(",") if x]
                 try:
                     interval = int(interval_str)
                 except:
                     interval = cfg["displays"][disp_name]["image_interval"]
+                try:
+                    rotate_val = int(rotate_str)
+                except:
+                    rotate_val = 0
                 shuffle_b = (shuffle_str == "on")
                 disp_cfg = cfg["displays"][disp_name]
                 disp_cfg["mode"] = mode
@@ -454,18 +447,17 @@ def index():
                 disp_cfg["image_category"] = cat
                 disp_cfg["shuffle_mode"] = shuffle_b
                 disp_cfg["specific_image"] = spec_img
+                disp_cfg["rotate"] = rotate_val
                 if mode == "mixed":
                     disp_cfg["mixed_folders"] = mixed_order_list
                 else:
                     disp_cfg["mixed_folders"] = []
             save_config(cfg)
             return redirect(url_for("index"))
-
     folder_counts = {}
     for sf in get_subfolders():
         folder_path = os.path.join(IMAGE_DIR, sf)
         folder_counts[sf] = count_files_in_folder(folder_path)
-
     display_images = {}
     for dname, dcfg in cfg["displays"].items():
         if dcfg["mode"] == "specific_image":
@@ -479,13 +471,11 @@ def index():
                 display_images[dname] = []
         else:
             display_images[dname] = []
-
     cpu, mem_mb, load1, temp = get_system_stats()
     host = get_hostname()
     ipaddr = get_ip_address()
     model = get_pi_model()
     theme = cfg.get("theme", "dark")
-
     HTML = """
 <!DOCTYPE html>
 <html>
@@ -564,12 +554,10 @@ def index():
     }
     setInterval(fetchStats, 10000);
     window.addEventListener("load", fetchStats);
-
     function toggleHelpBox(boxID){
       let box = document.getElementById(boxID);
       box.style.display = (box.style.display === "block") ? "none" : "block";
     }
-
     function initMixedUI(dispName){
       let searchBox = document.getElementById(dispName + "_search");
       let availList = document.getElementById(dispName + "_availList");
@@ -658,7 +646,6 @@ def index():
       selItems.forEach(li => addDnDHandlers(li));
       sortAvailable();
     }
-
     function loadSpecificThumbnails(dispName){
       let container = document.getElementById(dispName + "_lazyContainer");
       let allThumbs = JSON.parse(container.getAttribute("data-files"));
@@ -739,6 +726,10 @@ def index():
           <div class="field-block">
             <label>Interval (seconds):</label><br>
             <input type="number" name="{{ dname }}_image_interval" value="{{ dcfg.image_interval }}">
+          </div>
+          <div class="field-block">
+            <label>Rotate (degrees):</label><br>
+            <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
           </div>
           {% if dcfg.mode != "mixed" %}
             <div class="field-block">

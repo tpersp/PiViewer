@@ -153,16 +153,13 @@ class DisplayThread(threading.Thread):
         ]
         screen_index = get_screen_index(self.disp_name)
         mpv_cmd.append(f"--screen={screen_index}")
-
         log_message(f"[{self.disp_name}] Starting MPV: {' '.join(mpv_cmd)}")
         self.mpv_proc = subprocess.Popen(mpv_cmd)
-
         while not self.stop_flag:
             cfg = load_config()
             disp_cfg = cfg.get("displays", {}).get(self.disp_name, {})
             mode = disp_cfg.get("mode", "random_image")
             interval = disp_cfg.get("image_interval", 60)
-
             if mode == "random_image":
                 self.random_slideshow(disp_cfg)
             elif mode == "specific_image":
@@ -172,25 +169,26 @@ class DisplayThread(threading.Thread):
             else:
                 log_message(f"[{self.disp_name}] Unknown mode '{mode}', sleeping 5s.")
                 time.sleep(5)
-
         log_message(f"[{self.disp_name}] Stopping MPV.")
         self.mpv_proc.terminate()
         self.mpv_proc.wait()
+
+    def apply_rotation(self, disp_cfg):
+        # Apply rotation after loading an image.
+        rotate = disp_cfg.get("rotate", 0)
+        mpv_command(self.sock_path, {"command": ["set_property", "video-rotate", rotate]})
 
     def random_slideshow(self, disp_cfg):
         cat = disp_cfg.get("image_category", "")
         shuffle = disp_cfg.get("shuffle_mode", False)
         interval = disp_cfg.get("image_interval", 60)
-
         images = get_images_in_category(cat)
         if not images:
             log_message(f"[{self.disp_name}] No images found in category='{cat}', waiting 10s.")
             time.sleep(10)
             return
-
         if shuffle:
             random.shuffle(images)
-
         idx = 0
         while True:
             c2 = load_config().get("displays", {}).get(self.disp_name, {})
@@ -202,6 +200,7 @@ class DisplayThread(threading.Thread):
             fullpath = build_full_path(fn)
             log_message(f"[{self.disp_name}] loadfile: {fullpath}")
             mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+            self.apply_rotation(disp_cfg)
             idx += 1
             if idx >= len(images):
                 idx = 0
@@ -222,15 +221,14 @@ class DisplayThread(threading.Thread):
             log_message(f"[{self.disp_name}] No specific_image set, sleeping 10s.")
             time.sleep(10)
             return
-
         fullpath = os.path.join(IMAGE_DIR, cat, spec)
         if not os.path.exists(fullpath):
             log_message(f"[{self.disp_name}] specific_image '{fullpath}' not found, sleeping 10s.")
             time.sleep(10)
             return
-
         log_message(f"[{self.disp_name}] loadfile (specific): {fullpath}")
         mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+        self.apply_rotation(disp_cfg)
         while not self.stop_flag:
             c2 = load_config().get("displays", {}).get(self.disp_name, {})
             if c2.get("mode") != "specific_image":
@@ -245,18 +243,15 @@ class DisplayThread(threading.Thread):
             log_message(f"[{self.disp_name}] No folders in 'mixed_folders', sleeping 10s.")
             time.sleep(10)
             return
-
         images = get_mixed_images(folder_list)
         if not images:
             log_message(f"[{self.disp_name}] 'mixed' mode but no images found in {folder_list}, sleeping 10s.")
             time.sleep(10)
             return
-
         shuffle = disp_cfg.get("shuffle_mode", False)
         interval = disp_cfg.get("image_interval", 60)
         if shuffle:
             random.shuffle(images)
-
         idx = 0
         while True:
             c2 = load_config().get("displays", {}).get(self.disp_name, {})
@@ -268,6 +263,7 @@ class DisplayThread(threading.Thread):
             fullpath = build_full_path(fn)
             log_message(f"[{self.disp_name}] loadfile (mixed): {fullpath}")
             mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+            self.apply_rotation(disp_cfg)
             idx += 1
             if idx >= len(images):
                 idx = 0
@@ -292,13 +288,11 @@ if __name__ == "__main__":
     if not monitors:
         log_message("No monitors detected. Exiting.")
         exit(0)
-
     threads = []
     for m in monitors:
         t = DisplayThread(m)
         t.start()
         threads.append(t)
-
     try:
         while True:
             time.sleep(5)
