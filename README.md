@@ -61,7 +61,10 @@ Reboot the system to ensure that X11 starts properly.
 ## Automated Setup
 
 ### Clone the Repository
-
+Install git
+```
+sudo apt install git -y
+```
 ```
 git clone https://github.com/TheDoden/PiViewer.git
 ```
