@@ -110,9 +110,9 @@ if [ -z "$USER_ID" ]; then
   fi
 fi
 
-read -p "Enter the path for VIEWER_HOME (default: /home/$VIEWER_USER/viewer): " input_home
+read -p "Enter the path for VIEWER_HOME (default: /home/$VIEWER_USER/PiViewer): " input_home
 if [ -z "$input_home" ]; then
-  VIEWER_HOME="/home/$VIEWER_USER/viewer"
+  VIEWER_HOME="/home/$VIEWER_USER/PiViewer"
 else
   VIEWER_HOME="$input_home"
 fi
@@ -196,6 +196,7 @@ Wants=lightdm.service
 [Service]
 User=$VIEWER_USER
 Group=$VIEWER_USER
+ExecStartPre=/bin/sleep 10
 WorkingDirectory=$VIEWER_HOME
 EnvironmentFile=$ENV_FILE
 
