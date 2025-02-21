@@ -66,7 +66,7 @@ Install git
 sudo apt install git -y
 ```
 ```
-git clone https://github.com/TheDoden/PiViewer.git
+git clone https://github.com/tpersp/PiViewer.git
 ```
 Navigate to the project folder:
 ```
