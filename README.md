@@ -2,7 +2,7 @@
 
 PiViewer is a lightweight, easy-to-configure slideshow viewer and controller designed for Raspberry Pi OS. It leverages [mpv](https://mpv.io/) for fullscreen image display and uses a Flask web interface to manage settings and media—now with automatic multi-monitor support.
 
-> **Note:** This project was developed and tested on a Raspberry Pi 4 running Raspberry Pi OS Lite 64bit.
+> **Note:** This project was developed and tested on Pi 4 and Pi Zero2w running Raspberry Pi OS Lite 32bit and 64bit.
 
 ## Features
 
