@@ -16,6 +16,7 @@ VIEWER_HOME = os.environ.get("VIEWER_HOME", "/home/pi/viewer")
 IMAGE_DIR   = os.environ.get("IMAGE_DIR", "/mnt/PiViewers")
 CONFIG_PATH = os.path.join(VIEWER_HOME, "viewerconfig.json")
 LOG_PATH    = os.path.join(VIEWER_HOME, "viewer.log")
+SYNC_FILE   = os.path.join(VIEWER_HOME, "sync.json")
 
 # ------------------------------------------------------------------
 # Logging / Config
@@ -78,9 +79,11 @@ def build_full_path(relpath):
 
 def get_images_in_category(category):
     """
-    Return list of image paths (relative to IMAGE_DIR) for the given category.
-    If category is empty, returns images in all subfolders.
+    Return list of media paths (relative to IMAGE_DIR) for the given category.
+    If category is empty, returns media in all subfolders.
+    Supports images and videos.
     """
+    valid_ext = (".jpg",".jpeg",".png",".gif",".mp4",".webm")
     if category:
         base = os.path.join(IMAGE_DIR, category)
         if not os.path.isdir(base):
@@ -89,7 +92,7 @@ def get_images_in_category(category):
         valid = []
         for f in files:
             lf = f.lower()
-            if lf.endswith((".jpg", ".jpeg", ".png", ".gif")):
+            if lf.endswith(valid_ext):
                 valid.append(os.path.join(category, f))
         valid.sort()
         return valid
@@ -98,14 +101,14 @@ def get_images_in_category(category):
         for root, dirs, files in os.walk(IMAGE_DIR):
             for f in files:
                 lf = f.lower()
-                if lf.endswith((".jpg", ".jpeg", ".png", ".gif")):
+                if lf.endswith(valid_ext):
                     rel = os.path.relpath(os.path.join(root, f), IMAGE_DIR)
                     results.append(rel)
         results.sort()
         return results
 
 def get_mixed_images(folder_list):
-    """Return combined image paths from multiple subfolders."""
+    """Return combined media paths from multiple subfolders."""
     all_files = []
     for cat in folder_list:
         catlist = get_images_in_category(cat)
@@ -123,13 +126,39 @@ def get_screen_index(monitor_name):
         return 0
 
 # ------------------------------------------------------------------
+# Video Effects Helpers (Removed)
+# ------------------------------------------------------------------
+def maybe_apply_effects(fullpath, disp_cfg):
+    # Effects removed; simply return the original path.
+    return fullpath
+
+# ------------------------------------------------------------------
+# Multi-Device Sync Helpers
+# ------------------------------------------------------------------
+def write_sync(sync_data):
+    try:
+        with open(SYNC_FILE, "w") as f:
+            json.dump(sync_data, f)
+    except Exception as e:
+        log_message(f"Error writing sync file: {e}")
+
+def read_sync():
+    try:
+        if os.path.exists(SYNC_FILE):
+            with open(SYNC_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        log_message(f"Error reading sync file: {e}")
+    return None
+
+# ------------------------------------------------------------------
 # Display Thread
 # ------------------------------------------------------------------
 class DisplayThread(threading.Thread):
     def __init__(self, disp_name):
         """
         disp_name is something like "HDMI-1" or "Display0".
-        We'll spawn one MPV instance for each monitor and update images.
+        We'll spawn one MPV instance for each monitor and update media.
         """
         super().__init__()
         self.disp_name = disp_name
@@ -149,6 +178,7 @@ class DisplayThread(threading.Thread):
             "--keep-open=yes",
             "--vo=gpu",
             "--loop-file=inf",
+            "--cursor-autohide=always",  # added option to hide the mouse cursor
             f"--input-ipc-server={self.sock_path}"
         ]
         screen_index = get_screen_index(self.disp_name)
@@ -166,6 +196,8 @@ class DisplayThread(threading.Thread):
                 self.load_specific(disp_cfg)
             elif mode == "mixed":
                 self.load_mixed(disp_cfg)
+            elif mode == "scheduled_mode":
+                self.scheduled_slideshow(disp_cfg)
             else:
                 log_message(f"[{self.disp_name}] Unknown mode '{mode}', sleeping 5s.")
                 time.sleep(5)
@@ -174,7 +206,6 @@ class DisplayThread(threading.Thread):
         self.mpv_proc.wait()
 
     def apply_rotation(self, disp_cfg):
-        # Apply rotation after loading an image.
         rotate = disp_cfg.get("rotate", 0)
         mpv_command(self.sock_path, {"command": ["set_property", "video-rotate", rotate]})
 
@@ -184,7 +215,7 @@ class DisplayThread(threading.Thread):
         interval = disp_cfg.get("image_interval", 60)
         images = get_images_in_category(cat)
         if not images:
-            log_message(f"[{self.disp_name}] No images found in category='{cat}', waiting 10s.")
+            log_message(f"[{self.disp_name}] No media found in category='{cat}', waiting 10s.")
             time.sleep(10)
             return
         if shuffle:
@@ -198,9 +229,18 @@ class DisplayThread(threading.Thread):
                 break
             fn = images[idx]
             fullpath = build_full_path(fn)
+            fullpath = maybe_apply_effects(fullpath, disp_cfg)
             log_message(f"[{self.disp_name}] loadfile: {fullpath}")
             mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
             self.apply_rotation(disp_cfg)
+            # Multi-device sync check
+            sync_override = self.sync_if_needed(fn, disp_cfg)
+            if sync_override:
+                fullpath = build_full_path(sync_override)
+                fullpath = maybe_apply_effects(fullpath, disp_cfg)
+                log_message(f"[{self.disp_name}] sync loadfile: {fullpath}")
+                mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+                self.apply_rotation(disp_cfg)
             idx += 1
             if idx >= len(images):
                 idx = 0
@@ -226,6 +266,7 @@ class DisplayThread(threading.Thread):
             log_message(f"[{self.disp_name}] specific_image '{fullpath}' not found, sleeping 10s.")
             time.sleep(10)
             return
+        fullpath = maybe_apply_effects(fullpath, disp_cfg)
         log_message(f"[{self.disp_name}] loadfile (specific): {fullpath}")
         mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
         self.apply_rotation(disp_cfg)
@@ -245,7 +286,7 @@ class DisplayThread(threading.Thread):
             return
         images = get_mixed_images(folder_list)
         if not images:
-            log_message(f"[{self.disp_name}] 'mixed' mode but no images found in {folder_list}, sleeping 10s.")
+            log_message(f"[{self.disp_name}] 'mixed' mode but no media found in {folder_list}, sleeping 10s.")
             time.sleep(10)
             return
         shuffle = disp_cfg.get("shuffle_mode", False)
@@ -261,9 +302,18 @@ class DisplayThread(threading.Thread):
                 break
             fn = images[idx]
             fullpath = build_full_path(fn)
+            fullpath = maybe_apply_effects(fullpath, disp_cfg)
             log_message(f"[{self.disp_name}] loadfile (mixed): {fullpath}")
             mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
             self.apply_rotation(disp_cfg)
+            # Multi-device sync check
+            sync_override = self.sync_if_needed(fn, disp_cfg)
+            if sync_override:
+                fullpath = build_full_path(sync_override)
+                fullpath = maybe_apply_effects(fullpath, disp_cfg)
+                log_message(f"[{self.disp_name}] sync loadfile (mixed): {fullpath}")
+                mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+                self.apply_rotation(disp_cfg)
             idx += 1
             if idx >= len(images):
                 idx = 0
@@ -276,6 +326,70 @@ class DisplayThread(threading.Thread):
                 if m != "mixed":
                     return
                 time.sleep(1)
+
+    def scheduled_slideshow(self, disp_cfg):
+        # Scheduled mode: use morning or evening category based on current hour,
+        # otherwise (night) pause playback.
+        current_hour = datetime.now().hour
+        if 6 <= current_hour < 12:
+            category = disp_cfg.get("morning_category", "")
+        elif 18 <= current_hour < 24:
+            category = disp_cfg.get("evening_category", "")
+        else:
+            # Night mode: pause video (simulate turning off screen)
+            mpv_command(self.sock_path, {"command": ["set_property", "pause", True]})
+            log_message(f"[{self.disp_name}] Scheduled night mode active, pausing playback.")
+            time.sleep(10)
+            return
+        # Ensure unpaused
+        mpv_command(self.sock_path, {"command": ["set_property", "pause", False]})
+        shuffle = disp_cfg.get("shuffle_mode", False)
+        interval = disp_cfg.get("image_interval", 60)
+        images = get_images_in_category(category)
+        if not images:
+            log_message(f"[{self.disp_name}] No media found for scheduled category '{category}', sleeping 10s.")
+            time.sleep(10)
+            return
+        if shuffle:
+            random.shuffle(images)
+        idx = 0
+        while True:
+            c2 = load_config().get("displays", {}).get(self.disp_name, {})
+            if c2.get("mode") != "scheduled_mode":
+                break
+            fn = images[idx]
+            fullpath = build_full_path(fn)
+            fullpath = maybe_apply_effects(fullpath, disp_cfg)
+            log_message(f"[{self.disp_name}] loadfile (scheduled): {fullpath}")
+            mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+            self.apply_rotation(disp_cfg)
+            idx += 1
+            if idx >= len(images):
+                idx = 0
+                if shuffle:
+                    random.shuffle(images)
+            for _ in range(interval):
+                if self.stop_flag:
+                    return
+                m = load_config().get("displays", {}).get(self.disp_name, {}).get("mode")
+                if m != "scheduled_mode":
+                    return
+                time.sleep(1)
+
+    def sync_if_needed(self, current_file, disp_cfg):
+        cfg = load_config()
+        sync_enabled = cfg.get("sync_enabled", False)
+        if not sync_enabled:
+            return None
+        is_master = cfg.get("sync_master", False)
+        if is_master:
+            write_sync({"file": current_file, "timestamp": time.time()})
+            return None
+        else:
+            sync_info = read_sync()
+            if sync_info and sync_info.get("file") != current_file:
+                return sync_info.get("file")
+        return None
 
     def stop(self):
         self.stop_flag = True
