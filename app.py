@@ -4,7 +4,6 @@ import os
 import json
 import psutil
 import subprocess
-import time
 from datetime import datetime
 from flask import (
     Flask, request, redirect, url_for, render_template_string,
@@ -14,7 +13,7 @@ from flask import (
 # ------------------------------------------------------------------
 # Application Version (edit here for a new version)
 # ------------------------------------------------------------------
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.0.1"
 
 # ------------------------------------------------------------------
 # Read environment-based paths (fallbacks if not set)
@@ -37,8 +36,6 @@ def init_config():
     if not os.path.exists(CONFIG_PATH):
         default_cfg = {
             "theme": "dark",
-            "sync_enabled": False,
-            "sync_master": False,
             "displays": {}
         }
         monitors = detect_monitors()
@@ -154,6 +151,18 @@ def get_system_stats():
         temp = "N/A"
     return (cpu, mem_used_mb, loadavg, temp)
 
+def get_recent_logs():
+    """
+    Return the last 50 lines in reverse order (newest first).
+    """
+    if not os.path.exists(LOG_PATH):
+        return []
+    with open(LOG_PATH, "r") as f:
+        lines = f.readlines()
+    lines = lines[-50:]
+    lines.reverse()
+    return lines
+
 def log_message(msg):
     with open(LOG_PATH, "a") as f:
         f.write(f"{datetime.now()}: {msg}\n")
@@ -166,32 +175,15 @@ def get_folder_prefix(folder_name):
     return "".join(letters)
 
 def count_files_in_folder(folder_path):
-    """Return how many valid media files are in a folder."""
+    """Return how many valid image files are in a folder."""
     if not os.path.isdir(folder_path):
         return 0
     cnt = 0
     for f in os.listdir(folder_path):
         lf = f.lower()
-        if lf.endswith((".png", ".jpg", ".jpeg", ".gif", ".mp4", ".webm")):
+        if lf.endswith((".png", ".jpg", ".jpeg", ".gif")):
             cnt += 1
     return cnt
-
-def get_next_filename(subfolder_name, folder_path, desired_ext):
-    prefix = get_folder_prefix(subfolder_name)
-    existing = os.listdir(folder_path)
-    max_num = 0
-    for fname in existing:
-        if fname.lower().startswith(prefix) and fname.lower().endswith(desired_ext):
-            plen = len(prefix)
-            num_str = fname[plen:-len(desired_ext)]
-            try:
-                num = int(num_str)
-                if num > max_num:
-                    max_num = num
-            except:
-                pass
-    next_num = max_num + 1
-    return f"{prefix}{next_num:03d}{desired_ext}"
 
 # ------------------------------------------------------------------
 # Additional Endpoints
@@ -250,7 +242,7 @@ def upload_bg():
 @app.route("/upload_media", methods=["GET", "POST"])
 def upload_media():
     """
-    Upload new GIFs/images/videos (multiple files).
+    Upload new GIFs/images (multiple files).
     Rename using prefix + zero-padded numbering.
     """
     cfg = load_config()
@@ -265,7 +257,7 @@ def upload_media():
         </head>
         <body class="{{ theme }}">
         <div class="container">
-          <h1>Upload New Media (GIF/PNG/JPG/MP4/WebM)</h1>
+          <h1>Upload New Media (GIF/PNG/JPG)</h1>
           <form method="POST" enctype="multipart/form-data">
             <label>Select Subfolder:</label><br>
             <select name="subfolder">
@@ -277,7 +269,7 @@ def upload_media():
             (Optional) Create new subfolder:
             <input type="text" name="new_subfolder" placeholder="New Folder Name">
             <br><br>
-            <input type="file" name="mediafiles" accept=".gif,.png,.jpg,.jpeg,.mp4,.webm" multiple>
+            <input type="file" name="mediafiles" accept=".gif,.png,.jpg,.jpeg" multiple>
             <br><br>
             <button type="submit">Upload</button>
           </form>
@@ -309,7 +301,7 @@ def upload_media():
             continue
         original_name = file.filename
         ext = os.path.splitext(original_name.lower())[1]
-        if ext not in [".gif", ".jpg", ".jpeg", ".png", ".mp4", ".webm"]:
+        if ext not in [".gif", ".jpg", ".jpeg", ".png"]:
             log_message(f"Skipped file (unsupported): {original_name}")
             continue
         new_filename = get_next_filename(subfolder, target_dir, ext)
@@ -317,6 +309,23 @@ def upload_media():
         file.save(final_path)
         log_message(f"Uploaded file saved to: {final_path}")
     return redirect(url_for("index"))
+
+def get_next_filename(subfolder_name, folder_path, desired_ext):
+    prefix = get_folder_prefix(subfolder_name)
+    existing = os.listdir(folder_path)
+    max_num = 0
+    for fname in existing:
+        if fname.lower().startswith(prefix) and fname.lower().endswith(desired_ext):
+            plen = len(prefix)
+            num_str = fname[plen:-len(desired_ext)]
+            try:
+                num = int(num_str)
+                if num > max_num:
+                    max_num = num
+            except:
+                pass
+    next_num = max_num + 1
+    return f"{prefix}{next_num:03d}{desired_ext}"
 
 # ------------------------------------------------------------------
 # Restart Viewer Endpoint
@@ -340,9 +349,7 @@ def settings():
     if request.method == "POST":
         new_theme = request.form.get("theme", "dark")
         cfg["theme"] = new_theme
-        # Global sync settings
-        cfg["sync_enabled"] = (request.form.get("sync_enabled") == "on")
-        cfg["sync_master"] = (request.form.get("sync_master") == "on")
+        # Update rotation if provided in settings page? (Not needed here)
         save_config(cfg)
         f = request.files.get("bg_image")
         if f:
@@ -370,12 +377,6 @@ def settings():
         <label>Upload Custom BG:</label><br>
         <input type="file" name="bg_image" accept="image/*"><br><br>
         {% endif %}
-        <label>Enable Multi-Device Sync:</label><br>
-        <input type="checkbox" name="sync_enabled" {% if cfg.get('sync_enabled') %}checked{% endif %}>
-        <br><br>
-        <label>Is Master Device:</label><br>
-        <input type="checkbox" name="sync_master" {% if cfg.get('sync_master') %}checked{% endif %}>
-        <br><br>
         <button type="submit">Save Settings</button>
       </form>
       <br>
@@ -451,10 +452,6 @@ def index():
                     disp_cfg["mixed_folders"] = mixed_order_list
                 else:
                     disp_cfg["mixed_folders"] = []
-                # For scheduled mode, save additional category settings
-                if mode == "scheduled_mode":
-                    disp_cfg["morning_category"] = request.form.get(pre + "morning_category", "")
-                    disp_cfg["evening_category"] = request.form.get(pre + "evening_category", "")
             save_config(cfg)
             return redirect(url_for("index"))
     folder_counts = {}
@@ -467,7 +464,7 @@ def index():
             cat = dcfg.get("image_category", "")
             path = os.path.join(IMAGE_DIR, cat)
             if cat and os.path.exists(path):
-                fs = [f for f in os.listdir(path) if f.lower().endswith((".jpg",".jpeg",".png",".gif",".mp4",".webm"))]
+                fs = [f for f in os.listdir(path) if f.lower().endswith((".jpg",".jpeg",".png",".gif"))]
                 fs.sort()
                 display_images[dname] = [os.path.join(cat, f) for f in fs]
             else:
@@ -711,12 +708,11 @@ def index():
           <div class="help-icon" onclick="toggleHelpBox('help_{{dname}}')">?</div>
           <div class="help-box" id="help_{{dname}}">
             <p><strong>Display Info</strong></p>
-            <p>- Mode: random, specific, mixed, or scheduled</p>
-            <p>- Interval: how often new media load</p>
+            <p>- Mode: random, specific, or mixed</p>
+            <p>- Interval: how often new images load</p>
             <p>- Shuffle: randomizes order</p>
             <p>- Mixed: pick multiple folders, drag to reorder</p>
             <p>- Specific: pick exactly 1 file</p>
-            <p>- Scheduled: auto-switch based on time</p>
           </div>
           <h3>{{ dname }} ({{ resolution }})</h3>
           <div class="field-block">
@@ -725,7 +721,6 @@ def index():
               <option value="random_image"   {% if dcfg.mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
               <option value="specific_image" {% if dcfg.mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
               <option value="mixed"          {% if dcfg.mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
-              <option value="scheduled_mode" {% if dcfg.mode=="scheduled_mode" %}selected{% endif %}>Scheduled Mode</option>
             </select>
           </div>
           <div class="field-block">
@@ -736,7 +731,7 @@ def index():
             <label>Rotate (degrees):</label><br>
             <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
           </div>
-          {% if dcfg.mode not in ["mixed", "scheduled_mode"] %}
+          {% if dcfg.mode != "mixed" %}
             <div class="field-block">
               <label>Category (subfolder):</label><br>
               <select name="{{ dname }}_image_category">
@@ -746,55 +741,6 @@ def index():
                   <option value="{{ sf }}" {% if dcfg.image_category==sf %}selected{% endif %}>{{ sf }} ({{count}} files)</option>
                 {% endfor %}
               </select>
-            </div>
-          {% endif %}
-          {% if dcfg.mode == "scheduled_mode" %}
-            <div class="field-block">
-              <label>Morning Category (6AM-12PM):</label><br>
-              <select name="{{ dname }}_morning_category">
-                <option value="" {% if not dcfg.get('morning_category') %}selected{% endif %}>All</option>
-                {% for sf in subfolders %}
-                  {% set count = folder_counts[sf] %}
-                  <option value="{{ sf }}" {% if dcfg.get('morning_category')==sf %}selected{% endif %}>{{ sf }} ({{count}} files)</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="field-block">
-              <label>Evening Category (6PM-12AM):</label><br>
-              <select name="{{ dname }}_evening_category">
-                <option value="" {% if not dcfg.get('evening_category') %}selected{% endif %}>All</option>
-                {% for sf in subfolders %}
-                  {% set count = folder_counts[sf] %}
-                  <option value="{{ sf }}" {% if dcfg.get('evening_category')==sf %}selected{% endif %}>{{ sf }} ({{count}} files)</option>
-                {% endfor %}
-              </select>
-            </div>
-          {% endif %}
-          {% if dcfg.mode == "specific_image" %}
-            <div class="field-block">
-              <h4>Select Image/GIF</h4>
-              {% set fileList = display_images[dname] %}
-              {% if fileList and fileList|length > 100 %}
-                <div id="{{ dname }}_lazyContainer" data-files='{{ fileList|tojson }}' class="lazy-thumbs-container">
-                  <button type="button" onclick="loadSpecificThumbnails('{{ dname }}')" style="margin:10px;">
-                    Show Thumbnails
-                  </button>
-                </div>
-              {% else %}
-                <div class="image-gallery">
-                  {% for imgpath in fileList %}
-                    {% set bn = imgpath.split('/')[-1] %}
-                    <label class="thumb-label">
-                      <img src="/images/{{ imgpath }}" class="thumb-img"><br>
-                      <input type="radio" name="{{ dname }}_specific_image" value="{{ bn }}"
-                        {% if bn == dcfg.specific_image %}checked{% endif %}>
-                      {{ bn }}
-                    </label>
-                  {% else %}
-                    <p>No images found or category is empty.</p>
-                  {% endfor %}
-                </div>
-              {% endif %}
             </div>
           {% endif %}
           {% if dcfg.mode == "mixed" %}
@@ -831,6 +777,33 @@ def index():
             <label>Shuffle?</label><br>
             <input type="checkbox" name="{{ dname }}_shuffle_mode" {% if dcfg.shuffle_mode %}checked{% endif %}>
           </div>
+          {% if dcfg.mode == "specific_image" %}
+            <div class="field-block">
+              <h4>Select Image/GIF</h4>
+              {% set fileList = display_images[dname] %}
+              {% if fileList and fileList|length > 100 %}
+                <div id="{{ dname }}_lazyContainer" data-files='{{ fileList|tojson }}' class="lazy-thumbs-container">
+                  <button type="button" onclick="loadSpecificThumbnails('{{ dname }}')" style="margin:10px;">
+                    Show Thumbnails
+                  </button>
+                </div>
+              {% else %}
+                <div class="image-gallery">
+                  {% for imgpath in fileList %}
+                    {% set bn = imgpath.split('/')[-1] %}
+                    <label class="thumb-label">
+                      <img src="/images/{{ imgpath }}" class="thumb-img"><br>
+                      <input type="radio" name="{{ dname }}_specific_image" value="{{ bn }}"
+                        {% if bn == dcfg.specific_image %}checked{% endif %}>
+                      {{ bn }}
+                    </label>
+                  {% else %}
+                    <p>No images found or category is empty.</p>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
@@ -841,7 +814,7 @@ def index():
   </section>
   <section style="text-align:center;">
     <h2>Media Management</h2>
-    <p>Upload multiple GIFs/images/videos to subfolders, or create new subfolders. (GIF/JPG/PNG/MP4/WebM)</p>
+    <p>Upload multiple GIFs/images to subfolders, or create new subfolders. (GIF/JPG/PNG)</p>
     <a href="{{ url_for('upload_media') }}">
       <button>Go to Upload Page</button>
     </a>
