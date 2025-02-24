@@ -4,7 +4,7 @@ import os
 import json
 import psutil
 import subprocess
-import requests  # <--- NEW: for talking to sub devices / main device
+import requests  # for talking to sub devices / main device
 from datetime import datetime
 from flask import (
     Flask, request, redirect, url_for, render_template_string,
@@ -14,8 +14,11 @@ from flask import (
 # ------------------------------------------------------------------
 # Application Version & "New in version"
 # ------------------------------------------------------------------
-APP_VERSION = "1.0.2"
-#Features added: Main+Sub Device sync added.
+APP_VERSION = "1.0.4"
+# Features added:
+# - Role selection in settings (main/sub) + main_ip
+# - Shuffle changed to Yes/No
+# - Remote config editing for sub-devices from the main device
 
 # ------------------------------------------------------------------
 # Read environment-based paths (fallbacks if not set)
@@ -38,8 +41,8 @@ def init_config():
     if not os.path.exists(CONFIG_PATH):
         default_cfg = {
             "role": "main",  # 'main' or 'sub'
-            "main_ip": "",   # Only relevant if this device is a 'sub'
-            "devices": [],   # If 'main', store sub devices here as a list of dicts: [{"name": "KitchenPi", "ip": "192.168.1.45"}, ...]
+            "main_ip": "",   # Only relevant if this device is 'sub'
+            "devices": [],   # If 'main', store sub-devices here
             "theme": "dark",
             "displays": {}
         }
@@ -74,10 +77,10 @@ def log_message(msg):
 def detect_monitors():
     """
     Use xrandr --listmonitors to detect connected monitors.
-    Returns a dictionary like:
+    Returns a dict:
       {
         "HDMI-1": {"resolution": "1920x1080", "name": "HDMI-1"},
-        "HDMI-2": {"resolution": "800x600", "name": "HDMI-2"}
+        ...
       }
     Fallback if none found.
     """
@@ -166,9 +169,7 @@ def get_system_stats():
     return (cpu, mem_used_mb, loadavg, temp)
 
 def get_recent_logs():
-    """
-    Return the last 50 lines in reverse order (newest first).
-    """
+    """Return the last 50 lines from the log in reverse (newest first)."""
     if not os.path.exists(LOG_PATH):
         return []
     with open(LOG_PATH, "r") as f:
@@ -201,9 +202,7 @@ def count_files_in_folder(folder_path):
 
 @app.route("/stats")
 def stats_json():
-    """
-    Return real-time system stats as JSON (polled every 10s).
-    """
+    """Return real-time system stats as JSON (polled every 10s)."""
     cpu, mem_mb, load1, temp = get_system_stats()
     return jsonify({
         "cpu_percent": cpu,
@@ -211,6 +210,16 @@ def stats_json():
         "load_1min": round(load1, 2),
         "temp": temp
     })
+
+@app.route("/list_monitors", methods=["GET"])
+def list_monitors():
+    """Return the list of detected monitors for this device as JSON."""
+    return jsonify(detect_monitors())
+
+@app.route("/list_folders", methods=["GET"])
+def list_folders():
+    """Return the subfolders on this device as a simple JSON list."""
+    return jsonify(get_subfolders())
 
 # ------------------------------------------------------------------
 # Serve Images, Logs, Etc.
@@ -228,9 +237,7 @@ def bg_image():
 
 @app.route("/download_log")
 def download_log():
-    """
-    Download the raw log file (in normal chronological order).
-    """
+    """Download the raw log file (in normal chronological order)."""
     if os.path.exists(LOG_PATH):
         return send_file(LOG_PATH, as_attachment=True)
     return "No log file found", 404
@@ -241,9 +248,7 @@ def download_log():
 
 @app.route("/upload_bg", methods=["POST"])
 def upload_bg():
-    """
-    Upload a background image (custom theme).
-    """
+    """Upload a background image (custom theme)."""
     f = request.files.get("bg_image")
     if f:
         f.save(WEB_BG)
@@ -292,11 +297,14 @@ def upload_media():
         </html>
         """
         return render_template_string(HTML, theme=cfg.get("theme", "dark"), subfolders=subfolders)
+
     files = request.files.getlist("mediafiles")
     if not files or len(files) == 0:
         return "No file(s) selected", 400
+
     subfolder = request.form.get("subfolder") or ""
     new_subfolder = request.form.get("new_subfolder", "").strip()
+
     if new_subfolder:
         subfolder = new_subfolder
         target_dir = os.path.join(IMAGE_DIR, subfolder)
@@ -306,6 +314,7 @@ def upload_media():
         target_dir = os.path.join(IMAGE_DIR, subfolder)
         if not os.path.exists(target_dir):
             return "Subfolder does not exist and no new folder was specified", 400
+
     for file in files:
         if not file.filename:
             continue
@@ -318,6 +327,7 @@ def upload_media():
         final_path = os.path.join(IMAGE_DIR, subfolder, new_filename)
         file.save(final_path)
         log_message(f"Uploaded file saved to: {final_path}")
+
     return redirect(url_for("index"))
 
 def get_next_filename(subfolder_name, folder_path, desired_ext):
@@ -358,26 +368,65 @@ def settings():
     cfg = load_config()
     if request.method == "POST":
         new_theme = request.form.get("theme", "dark")
+        new_role = request.form.get("role", "main")
         cfg["theme"] = new_theme
+        cfg["role"] = new_role
+
+        if new_role == "sub":
+            cfg["main_ip"] = request.form.get("main_ip", "").strip()
+        else:
+            # clear main_ip if we are main
+            cfg["main_ip"] = ""
+
         save_config(cfg)
-        # If this device is 'main', push changes to sub devices:
         maybe_push_to_subdevices(cfg)
 
+        # If user uploaded a custom BG:
         f = request.files.get("bg_image")
         if f:
             f.save(WEB_BG)
+
         return redirect(url_for("settings"))
+
+    # Render
     HTML = """
     <!DOCTYPE html>
     <html>
     <head>
       <title>Settings</title>
       <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+      <style>
+        .hidden { display: none; }
+      </style>
+      <script>
+        function toggleMainIP(){
+          let roleSelect = document.getElementById("roleSelect");
+          let mainIPField = document.getElementById("mainIPField");
+          if(roleSelect.value === "sub"){
+            mainIPField.style.display = "";
+          } else {
+            mainIPField.style.display = "none";
+          }
+        }
+      </script>
     </head>
     <body class="{{ theme }}">
     <div class="container">
       <h1>Settings</h1>
       <form method="POST" enctype="multipart/form-data">
+        <label>Role:</label><br>
+        <select name="role" id="roleSelect" onchange="toggleMainIP()">
+          <option value="main" {% if cfg.role=="main" %}selected{% endif %}>main</option>
+          <option value="sub" {% if cfg.role=="sub" %}selected{% endif %}>sub</option>
+        </select>
+        <br><br>
+
+        <div id="mainIPField" {% if cfg.role!="sub" %}style="display:none;"{% endif %}>
+          <label>Main Device IP:</label><br>
+          <input type="text" name="main_ip" value="{{ cfg.main_ip }}">
+          <br><br>
+        </div>
+
         <label>Theme:</label><br>
         <select name="theme">
           <option value="dark" {% if cfg.theme=="dark" %}selected{% endif %}>Dark</option>
@@ -385,10 +434,12 @@ def settings():
           <option value="custom" {% if cfg.theme=="custom" %}selected{% endif %}>Custom</option>
         </select>
         <br><br>
+
         {% if cfg.theme=="custom" %}
         <label>Upload Custom BG:</label><br>
         <input type="file" name="bg_image" accept="image/*"><br><br>
         {% endif %}
+
         <button type="submit">Save Settings</button>
       </form>
       <br>
@@ -396,6 +447,7 @@ def settings():
       <br><br>
       <a href="{{ url_for('index') }}"><button>Back to Main</button></a>
     </div>
+    <script>toggleMainIP();</script>
     </body>
     </html>
     """
@@ -410,7 +462,7 @@ def index():
     cfg = load_config()
     monitors = detect_monitors()
 
-    # Sync config's "displays" with actual monitors (add or remove)
+    # Sync local config's "displays" with actual connected monitors
     for m in monitors:
         if m not in cfg["displays"]:
             cfg["displays"][m] = {
@@ -423,15 +475,18 @@ def index():
                 "rotate": 0
             }
         else:
+            # Ensure 'rotate' is present
             if "rotate" not in cfg["displays"][m]:
                 cfg["displays"][m]["rotate"] = 0
 
+    # Remove any displays no longer physically connected
     remove_list = []
     for existing_disp in list(cfg["displays"].keys()):
         if existing_disp not in monitors:
             remove_list.append(existing_disp)
     for r in remove_list:
         del cfg["displays"][r]
+
     save_config(cfg)
 
     if request.method == "POST":
@@ -442,7 +497,7 @@ def index():
                 mode = request.form.get(pre + "mode", cfg["displays"][disp_name]["mode"])
                 interval_str = request.form.get(pre + "image_interval", str(cfg["displays"][disp_name]["image_interval"]))
                 cat = request.form.get(pre + "image_category", cfg["displays"][disp_name]["image_category"])
-                shuffle_str = request.form.get(pre + "shuffle_mode", "off")
+                shuffle_val = request.form.get(pre + "shuffle_mode", "no")
                 spec_img = request.form.get(pre + "specific_image", cfg["displays"][disp_name]["specific_image"])
                 rotate_str = request.form.get(pre + "rotate", "0")
                 mixed_order_str = request.form.get(pre + "mixed_order", "")
@@ -456,7 +511,8 @@ def index():
                     rotate_val = int(rotate_str)
                 except:
                     rotate_val = 0
-                shuffle_b = (shuffle_str == "on")
+
+                shuffle_b = (shuffle_val == "yes")
 
                 disp_cfg = cfg["displays"][disp_name]
                 disp_cfg["mode"] = mode
@@ -472,7 +528,6 @@ def index():
                     disp_cfg["mixed_folders"] = []
 
             save_config(cfg)
-            # If main, push updates to sub devices
             maybe_push_to_subdevices(cfg)
             return redirect(url_for("index"))
 
@@ -481,13 +536,17 @@ def index():
         folder_path = os.path.join(IMAGE_DIR, sf)
         folder_counts[sf] = count_files_in_folder(folder_path)
 
+    # For "specific_image" mode, we list possible images
     display_images = {}
     for dname, dcfg in cfg["displays"].items():
         if dcfg["mode"] == "specific_image":
             cat = dcfg.get("image_category", "")
             path = os.path.join(IMAGE_DIR, cat)
             if cat and os.path.exists(path):
-                fs = [f for f in os.listdir(path) if f.lower().endswith((".jpg",".jpeg",".png",".gif"))]
+                fs = [
+                    f for f in os.listdir(path)
+                    if f.lower().endswith((".jpg", ".jpeg", ".png", ".gif"))
+                ]
                 fs.sort()
                 display_images[dname] = [os.path.join(cat, f) for f in fs]
             else:
@@ -501,6 +560,40 @@ def index():
     model = get_pi_model()
     theme = cfg.get("theme", "dark")
 
+    # If this device is 'main', gather remote info for display
+    remote_displays = []
+    if cfg.get("role") == "main":
+        for dev in cfg.get("devices", []):
+            dev_ip = dev.get("ip")
+            dev_name = dev.get("name")
+            if not dev_ip:
+                continue
+            # Get remote config
+            remote_cfg = get_remote_config(dev_ip)
+            if not remote_cfg:
+                # skip if we couldn't fetch
+                continue
+            # Get remote monitors
+            remote_mons = get_remote_monitors(dev_ip)
+
+            rdisplays = []
+            for rdname, rdcfg in remote_cfg.get("displays", {}).items():
+                resolution = "unknown"
+                if remote_mons and rdname in remote_mons:
+                    resolution = remote_mons[rdname].get("resolution", "unknown")
+                rdisplays.append({
+                    "dname": rdname,
+                    "resolution": resolution,
+                    "mode": rdcfg.get("mode", "?")
+                })
+            remote_displays.append({
+                "name": dev_name,
+                "ip": dev_ip,
+                "displays": rdisplays,
+                "index": cfg["devices"].index(dev)  # for linking to remote_configure
+            })
+
+    # Main template
     HTML = """
 <!DOCTYPE html>
 <html>
@@ -565,7 +658,6 @@ def index():
       height: 60px;
       object-fit: cover;
     }
-    /* Just a simple layout for the display-cards: */
     .display-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -583,6 +675,17 @@ def index():
       text-align: center;
       margin: 20px 0;
     }
+    table.remote-table {
+      margin-top: 10px;
+      border-collapse: collapse;
+      width: 90%;
+      max-width: 600px;
+    }
+    table.remote-table th, td {
+      border: 1px solid #555;
+      padding: 6px 10px;
+      text-align: left;
+    }
   </style>
   <script>
     function fetchStats() {
@@ -597,6 +700,7 @@ def index():
     }
     setInterval(fetchStats, 10000);
     window.addEventListener("load", fetchStats);
+
     function toggleHelpBox(boxID){
       let box = document.getElementById(boxID);
       box.style.display = (box.style.display === "block") ? "none" : "block";
@@ -606,6 +710,7 @@ def index():
       let availList = document.getElementById(dispName + "_availList");
       let selList = document.getElementById(dispName + "_selList");
       let hiddenOrder = document.getElementById(dispName + "_mixed_order");
+
       function sortAvailable(){
         let items = Array.from(availList.querySelectorAll("li"));
         items.sort((a,b)=>{
@@ -745,8 +850,9 @@ def index():
       </a>
     {% endif %}
   </div>
+
   <section>
-    <h2 style="text-align:center;">Display Settings</h2>
+    <h2 style="text-align:center;">Local Display Settings</h2>
     <form method="POST">
       <input type="hidden" name="action" value="update_displays">
       <div class="display-grid">
@@ -758,7 +864,7 @@ def index():
             <p><strong>Display Info</strong></p>
             <p>- Mode: random, specific, or mixed</p>
             <p>- Interval: how often new images load</p>
-            <p>- Shuffle: randomizes order</p>
+            <p>- Shuffle: randomizes order (Yes/No)</p>
             <p>- Mixed: pick multiple folders, drag to reorder</p>
             <p>- Specific: pick exactly 1 file</p>
           </div>
@@ -823,7 +929,10 @@ def index():
           {% endif %}
           <div class="field-block">
             <label>Shuffle?</label><br>
-            <input type="checkbox" name="{{ dname }}_shuffle_mode" {% if dcfg.shuffle_mode %}checked{% endif %}>
+            <select name="{{ dname }}_shuffle_mode">
+              <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
+              <option value="no"  {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
+            </select>
           </div>
           {% if dcfg.mode == "specific_image" %}
             <div class="field-block">
@@ -860,6 +969,30 @@ def index():
       </div>
     </form>
   </section>
+
+  {% if cfg.role == 'main' and remote_displays %}
+  <section style="text-align:center;">
+    <h2>Remote Devices</h2>
+    {% for dev in remote_displays %}
+      <h3>{{ dev.name }} ({{ dev.ip }})</h3>
+      <table class="remote-table" style="margin:0 auto;">
+        <tr><th>Display</th><th>Resolution</th><th>Mode</th></tr>
+        {% for rd in dev.displays %}
+        <tr>
+          <td>{{ rd.dname }}</td>
+          <td>{{ rd.resolution }}</td>
+          <td>{{ rd.mode }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      <br>
+      <form action="{{ url_for('remote_configure', dev_index=dev.index) }}" method="GET" style="margin-bottom:20px;">
+        <button type="submit">Configure</button>
+      </form>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   <section style="text-align:center;">
     <h2>Media Management</h2>
     <p>Upload multiple GIFs/images to subfolders, or create new subfolders. (GIF/JPG/PNG)</p>
@@ -886,8 +1019,356 @@ def index():
         model=model,
         theme=theme,
         monitors=monitors,
-        version=APP_VERSION
+        version=APP_VERSION,
+        remote_displays=remote_displays
     )
+
+# ------------------------------------------------------------------
+# Remote Device Configuration (Main -> Sub)
+# ------------------------------------------------------------------
+
+@app.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
+def remote_configure(dev_index):
+    """
+    Allows the main device to configure the sub-device's display settings,
+    just like the local settings form. We fetch remote config, remote monitors,
+    remote subfolders, then display a form. On POST, push updates to the sub.
+    """
+    cfg = load_config()
+    if cfg.get("role") != "main":
+        return "This device is not 'main', cannot configure remote devices.", 403
+    if dev_index < 0 or dev_index >= len(cfg.get("devices", [])):
+        return "Invalid device index", 404
+
+    dev_info = cfg["devices"][dev_index]
+    dev_ip = dev_info.get("ip")
+    dev_name = dev_info.get("name")
+
+    # Attempt to fetch remote config
+    remote_cfg = get_remote_config(dev_ip)
+    if not remote_cfg:
+        return f"Could not fetch remote config from {dev_ip}", 500
+
+    remote_mons = get_remote_monitors(dev_ip) or {}
+    # Also fetch the remote subfolders:
+    remote_folders = get_remote_subfolders(dev_ip)
+    # Count files in each remote folder? We do not have a direct endpoint for that,
+    # so we can’t do an accurate count unless we add a new endpoint. We'll skip the file count
+    # or just show the folder name. If needed, we can add another endpoint that counts files.
+    # For now, we’ll just display the folder names.
+
+    # On POST, parse the form and push updated config
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "update_remote":
+            # Update the remote_cfg with the new display settings
+            for disp_name, disp_cfg in remote_cfg.get("displays", {}).items():
+                pre = disp_name + "_"
+                mode = request.form.get(pre + "mode", disp_cfg["mode"])
+                interval_str = request.form.get(pre + "image_interval", str(disp_cfg["image_interval"]))
+                cat = request.form.get(pre + "image_category", disp_cfg["image_category"])
+                shuffle_val = request.form.get(pre + "shuffle_mode", "no")
+                spec_img = request.form.get(pre + "specific_image", disp_cfg["specific_image"])
+                rotate_str = request.form.get(pre + "rotate", str(disp_cfg.get("rotate", 0)))
+                mixed_order_str = request.form.get(pre + "mixed_order", "")
+                mixed_order_list = [x for x in mixed_order_str.split(",") if x]
+
+                try:
+                    interval = int(interval_str)
+                except:
+                    interval = disp_cfg["image_interval"]
+                try:
+                    rotate_val = int(rotate_str)
+                except:
+                    rotate_val = 0
+                shuffle_b = (shuffle_val == "yes")
+
+                disp_cfg["mode"] = mode
+                disp_cfg["image_interval"] = interval
+                disp_cfg["image_category"] = cat
+                disp_cfg["shuffle_mode"] = shuffle_b
+                disp_cfg["specific_image"] = spec_img
+                disp_cfg["rotate"] = rotate_val
+
+                if mode == "mixed":
+                    disp_cfg["mixed_folders"] = mixed_order_list
+                else:
+                    disp_cfg["mixed_folders"] = []
+
+            # Now push the updated config
+            push_config_to_subdevice(dev_ip, remote_cfg)
+            return redirect(url_for("device_manager"))
+
+    # Build a data structure for "specific_image" modes
+    # We can't actually list the device’s images unless we also implement
+    # an endpoint to list them. We only have subfolders. So we either skip
+    # the thumbnails or attempt to do something partial. We'll skip actual images,
+    # but keep the same structure. The user can type the exact filename if needed.
+    # Alternatively, we can just show no images. That’s simplest.
+    remote_display_images = {}
+    for dname, dcfg in remote_cfg.get("displays", {}).items():
+        if dcfg["mode"] == "specific_image":
+            # We cannot actually fetch them, we have no /list_images endpoint
+            # So just show an empty list or some placeholder
+            remote_display_images[dname] = []
+        else:
+            remote_display_images[dname] = []
+
+    # HTML form (like local, but references remote_cfg)
+    HTML = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Configure Remote Device</title>
+      <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+      <style>
+        .display-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 20px;
+          margin-top: 20px;
+        }
+        .display-card {
+          border: 1px solid #666;
+          border-radius: 6px;
+          padding: 10px;
+          position: relative;
+          background: rgba(0,0,0,0.1);
+        }
+        .dnd-column {
+          width: 250px;
+          min-height: 150px;
+          background: rgba(255,255,255,0.1);
+          border: 2px solid #666;
+          border-radius: 6px;
+          margin: 5px;
+          padding: 10px;
+        }
+      </style>
+      <script>
+        // Re-use the same JS for drag-drop mixed UI
+        function initMixedUI(dispName){
+          let searchBox = document.getElementById(dispName + "_search");
+          let availList = document.getElementById(dispName + "_availList");
+          let selList = document.getElementById(dispName + "_selList");
+          let hiddenOrder = document.getElementById(dispName + "_mixed_order");
+
+          function sortAvailable(){
+            let items = Array.from(availList.querySelectorAll("li"));
+            items.sort((a,b)=>{
+              let fa = a.getAttribute("data-folder").toLowerCase();
+              let fb = b.getAttribute("data-folder").toLowerCase();
+              return fa.localeCompare(fb);
+            });
+            items.forEach(li => availList.appendChild(li));
+          }
+          if(searchBox){
+            searchBox.addEventListener("input", ()=>{
+              let txt = searchBox.value.toLowerCase();
+              let items = availList.querySelectorAll("li");
+              items.forEach(li => {
+                if(li.getAttribute("data-folder").toLowerCase().includes(txt)){
+                  li.style.display="";
+                } else {
+                  li.style.display="none";
+                }
+              });
+            });
+          }
+          let dragSrcEl=null;
+          function handleDragStart(e){
+            dragSrcEl = this;
+            e.dataTransfer.effectAllowed="move";
+            e.dataTransfer.setData("text/html", this.innerHTML);
+          }
+          function handleDragOver(e){
+            if(e.preventDefault) e.preventDefault();
+            return false;
+          }
+          function handleDragEnter(e){ this.classList.add("selected"); }
+          function handleDragLeave(e){ this.classList.remove("selected"); }
+          function handleDrop(e){
+            if(e.stopPropagation) e.stopPropagation();
+            if(dragSrcEl!=this){
+              let oldHTML = dragSrcEl.innerHTML;
+              dragSrcEl.innerHTML = this.innerHTML;
+              this.innerHTML = e.dataTransfer.getData("text/html");
+            }
+            return false;
+          }
+          function handleDragEnd(e){
+            let items = selList.querySelectorAll("li");
+            items.forEach(li => li.classList.remove("selected"));
+            updateHiddenOrder();
+          }
+          function addDnDHandlers(item){
+            item.addEventListener("dragstart", handleDragStart);
+            item.addEventListener("dragenter", handleDragEnter);
+            item.addEventListener("dragover", handleDragOver);
+            item.addEventListener("dragleave", handleDragLeave);
+            item.addEventListener("drop", handleDrop);
+            item.addEventListener("dragend", handleDragEnd);
+          }
+          function moveItem(li, sourceUL, targetUL){
+            targetUL.appendChild(li);
+            if(targetUL === selList){
+              addDnDHandlers(li);
+            } else {
+              sortAvailable();
+            }
+            updateHiddenOrder();
+          }
+          if(availList){
+            availList.addEventListener("click", e=>{
+              if(e.target.tagName==="LI"){
+                moveItem(e.target, availList, selList);
+              }
+            });
+          }
+          if(selList){
+            selList.addEventListener("click", e=>{
+              if(e.target.tagName==="LI"){
+                moveItem(e.target, selList, availList);
+              }
+            });
+          }
+          function updateHiddenOrder(){
+            let items = selList.querySelectorAll("li");
+            let arr=[];
+            items.forEach(li=> arr.push(li.getAttribute("data-folder")));
+            hiddenOrder.value = arr.join(",");
+          }
+          if(selList){
+            let selItems = selList.querySelectorAll("li");
+            selItems.forEach(li => addDnDHandlers(li));
+          }
+          if(availList){
+            sortAvailable();
+          }
+        }
+      </script>
+    </head>
+    <body class="dark">
+    <div class="container">
+      <h1>Configure Remote Device</h1>
+      <p>Device: <strong>{{ dev_name }}</strong> ({{ dev_ip }})</p>
+      <form method="POST">
+        <input type="hidden" name="action" value="update_remote">
+        <div class="display-grid">
+        {% for dname, dcfg in remote_cfg.displays.items() %}
+          {% set moninfo = remote_mons[dname] if dname in remote_mons else None %}
+          {% set resolution = moninfo.resolution if moninfo else "unknown" %}
+          <div class="display-card">
+            <h3>{{ dname }} ({{ resolution }})</h3>
+            <div class="field-block">
+              <label>Mode:</label><br>
+              <select name="{{ dname }}_mode">
+                <option value="random_image"   {% if dcfg.mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
+                <option value="specific_image" {% if dcfg.mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
+                <option value="mixed"          {% if dcfg.mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
+              </select>
+            </div>
+            <div class="field-block">
+              <label>Interval (seconds):</label><br>
+              <input type="number" name="{{ dname }}_image_interval" value="{{ dcfg.image_interval }}">
+            </div>
+            <div class="field-block">
+              <label>Rotate (degrees):</label><br>
+              <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
+            </div>
+
+            {% if dcfg.mode != "mixed" %}
+              <div class="field-block">
+                <label>Category (subfolder):</label><br>
+                <select name="{{ dname }}_image_category">
+                  <option value="" {% if not dcfg.image_category %}selected{% endif %}>All</option>
+                  {% for sf in remote_folders %}
+                    <option value="{{ sf }}" {% if dcfg.image_category==sf %}selected{% endif %}>{{ sf }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            {% endif %}
+
+            {% if dcfg.mode == "mixed" %}
+              <div class="field-block">
+                <label>Multiple Folders (drag to reorder):</label><br>
+                <div style="display:flex; flex-direction:row; gap:20px; justify-content:center; margin-top:10px;">
+                  <div class="dnd-column">
+                    <h4>Available</h4>
+                    <input type="text" placeholder="Search..." id="{{ dname }}_search" class="search-box" style="width:90%;">
+                    <ul class="mixed-list" id="{{ dname }}_availList" style="list-style:none; margin:0; padding:0;">
+                      {% for sf in remote_folders if sf not in dcfg.mixed_folders %}
+                      <li draggable="true" data-folder="{{ sf }}">{{ sf }}</li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                  <div class="dnd-column">
+                    <h4>Selected</h4>
+                    <ul class="mixed-list" id="{{ dname }}_selList" style="list-style:none; margin:0; padding:0;">
+                      {% for sf in dcfg.mixed_folders %}
+                      <li draggable="true" data-folder="{{ sf }}">{{ sf }}</li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                </div>
+                <input type="hidden" name="{{ dname }}_mixed_order" id="{{ dname }}_mixed_order" value="{{ ','.join(dcfg.mixed_folders) }}">
+                <script>
+                  document.addEventListener("DOMContentLoaded", function(){
+                    initMixedUI("{{ dname }}");
+                  });
+                </script>
+              </div>
+            {% endif %}
+
+            <div class="field-block">
+              <label>Shuffle?</label><br>
+              <select name="{{ dname }}_shuffle_mode">
+                <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
+                <option value="no"  {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
+              </select>
+            </div>
+
+            {% if dcfg.mode == "specific_image" %}
+              <div class="field-block">
+                <h4>Select Image/GIF</h4>
+                <p style="font-size:90%; color:#888;">(Remote images not listed. Type exact filename if needed.)</p>
+                <input type="text" name="{{ dname }}_specific_image" value="{{ dcfg.specific_image }}" placeholder="Exact filename...">
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+        </div>
+        <div style="margin-top:20px; text-align:center;">
+          <button type="submit">Save Remote Settings</button>
+        </div>
+      </form>
+      <br>
+      <a href="{{ url_for('device_manager') }}">
+        <button>Back to Device Manager</button>
+      </a>
+    </div>
+    </body>
+    </html>
+    """
+    return render_template_string(HTML,
+        dev_name=dev_name,
+        dev_ip=dev_ip,
+        remote_cfg=remote_cfg,
+        remote_mons=remote_mons,
+        remote_folders=remote_folders,
+        remote_display_images=remote_display_images
+    )
+
+def get_remote_subfolders(ip):
+    """Fetch subfolders from a remote device, or return empty list on failure."""
+    url = f"http://{ip}:8080/list_folders"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        log_message(f"Error fetching remote folders from {ip}: {e}")
+    return []
 
 # ------------------------------------------------------------------
 # Multi-Device Sync Endpoints
@@ -896,8 +1377,8 @@ def index():
 @app.route("/sync_config", methods=["GET"])
 def sync_config():
     """
-    Sub-devices or any remote can GET this endpoint to retrieve the
-    entire local config as JSON. 
+    Return this device's local config as JSON
+    so remote can fetch it.
     """
     cfg = load_config()
     return jsonify(cfg)
@@ -905,15 +1386,13 @@ def sync_config():
 @app.route("/update_config", methods=["POST"])
 def update_config():
     """
-    Another device (main or sub) can POST here with a JSON body to
-    overwrite this local config. Then we'll save and possibly push
-    changes along as needed.
+    Another device can POST here with JSON to overwrite local config.
+    Then we save and push changes if needed.
     """
     new_cfg = request.get_json()
     if not new_cfg:
         return "No JSON received", 400
 
-    # For simplicity, we overwrite the entire config.
     save_config(new_cfg)
     log_message("Local config updated via /update_config")
 
@@ -926,8 +1405,7 @@ def update_config():
 @app.route("/device_manager", methods=["GET", "POST"])
 def device_manager():
     """
-    Only makes sense if this device is 'main'.
-    Manage list of sub devices: add, remove, test sync, etc.
+    If role == 'main', manage sub devices: add, remove, push/pull, configure.
     """
     cfg = load_config()
     if cfg.get("role", "main") != "main":
@@ -968,17 +1446,15 @@ def device_manager():
                 pass
 
         elif action.startswith("pull_"):
-            # Pull config from that sub device, merge, save, push
+            # Pull config from that sub device, overwrite local, then push to all
             idx_str = action.replace("pull_", "")
             try:
                 idx = int(idx_str)
                 dev_info = cfg["devices"][idx]
                 remote_cfg = get_remote_config(dev_info["ip"])
                 if remote_cfg:
-                    # For a simple approach, let's just overwrite local with remote:
                     save_config(remote_cfg)
                     log_message(f"Pulled config from {dev_info['ip']} -> local overwrite.")
-                    # Now re-load and push to all sub devices:
                     new_local = load_config()
                     maybe_push_to_subdevices(new_local)
             except:
@@ -1031,6 +1507,9 @@ def device_manager():
                 <button type="submit" form="deviceActionForm" name="action" value="push_{{ loop.index0 }}">Push</button>
                 <button type="submit" form="deviceActionForm" name="action" value="pull_{{ loop.index0 }}">Pull</button>
                 <button type="submit" form="deviceActionForm" name="action" value="remove_{{ loop.index0 }}">Remove</button>
+                <form action="{{ url_for('remote_configure', dev_index=loop.index0) }}" method="GET" style="display:inline;">
+                  <button type="submit">Configure</button>
+                </form>
               </td>
             </tr>
             {% endfor %}
@@ -1052,7 +1531,7 @@ def device_manager():
 # ------------------------------------------------------------------
 
 def get_remote_config(ip):
-    """Pull config from sub device (or another main). Returns dict or None."""
+    """Pull config from a remote device. Returns dict or None."""
     url = f"http://{ip}:8080/sync_config"
     try:
         r = requests.get(url, timeout=5)
@@ -1061,6 +1540,17 @@ def get_remote_config(ip):
     except Exception as e:
         log_message(f"Error fetching remote config from {ip}: {e}")
     return None
+
+def get_remote_monitors(ip):
+    """Fetch monitor info from a remote device (returns dict or empty)."""
+    url = f"http://{ip}:8080/list_monitors"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        log_message(f"Error fetching remote monitors from {ip}: {e}")
+    return {}
 
 def push_config_to_subdevice(ip, local_cfg):
     """Push our local config to a sub device via /update_config."""
@@ -1076,8 +1566,8 @@ def push_config_to_subdevice(ip, local_cfg):
 
 def maybe_push_to_subdevices(cfg):
     """
-    If this device is 'main', push config to all known sub devices.
-    Called whenever we do save_config() locally.
+    If this device is 'main', push config to all known sub-devices.
+    If sub-device, push config up to main if main_ip is set.
     """
     if cfg.get("role") != "main":
         # If sub device, optionally push config up to main if we have main_ip
