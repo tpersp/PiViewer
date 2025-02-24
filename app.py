@@ -4,6 +4,7 @@ import os
 import json
 import psutil
 import subprocess
+import requests  # <--- NEW: for talking to sub devices / main device
 from datetime import datetime
 from flask import (
     Flask, request, redirect, url_for, render_template_string,
@@ -11,9 +12,10 @@ from flask import (
 )
 
 # ------------------------------------------------------------------
-# Application Version (edit here for a new version)
+# Application Version & "New in version"
 # ------------------------------------------------------------------
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
+#Features added: Main+Sub Device sync added.
 
 # ------------------------------------------------------------------
 # Read environment-based paths (fallbacks if not set)
@@ -32,9 +34,12 @@ app = Flask(__name__, static_folder='static')
 # ------------------------------------------------------------------
 
 def init_config():
-    """Initialize config file if missing."""
+    """Initialize config file if missing, including default displays and multi-device placeholders."""
     if not os.path.exists(CONFIG_PATH):
         default_cfg = {
+            "role": "main",  # 'main' or 'sub'
+            "main_ip": "",   # Only relevant if this device is a 'sub'
+            "devices": [],   # If 'main', store sub devices here as a list of dicts: [{"name": "KitchenPi", "ip": "192.168.1.45"}, ...]
             "theme": "dark",
             "displays": {}
         }
@@ -60,6 +65,11 @@ def load_config():
 def save_config(cfg):
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=2)
+
+def log_message(msg):
+    with open(LOG_PATH, "a") as f:
+        f.write(f"{datetime.now()}: {msg}\n")
+    print(msg)
 
 def detect_monitors():
     """
@@ -109,7 +119,10 @@ def detect_monitors():
         return {"Display0": {"resolution": "unknown", "name": "Display0"}}
 
 def get_hostname():
-    return subprocess.check_output(["hostname"]).decode().strip()
+    try:
+        return subprocess.check_output(["hostname"]).decode().strip()
+    except:
+        return "UnknownHost"
 
 def get_ip_address():
     """Get first non-127.0.0.1 IP from `hostname -I`."""
@@ -141,6 +154,7 @@ def get_system_stats():
     """
     Return (cpu_percent, mem_used_mb, load_1min, temp).
     """
+    import psutil
     cpu = psutil.cpu_percent(interval=0.4)
     mem = psutil.virtual_memory()
     mem_used_mb = (mem.total - mem.available) / (1024 * 1024)
@@ -162,10 +176,6 @@ def get_recent_logs():
     lines = lines[-50:]
     lines.reverse()
     return lines
-
-def log_message(msg):
-    with open(LOG_PATH, "a") as f:
-        f.write(f"{datetime.now()}: {msg}\n")
 
 def get_folder_prefix(folder_name):
     if not folder_name.strip():
@@ -349,8 +359,10 @@ def settings():
     if request.method == "POST":
         new_theme = request.form.get("theme", "dark")
         cfg["theme"] = new_theme
-        # Update rotation if provided in settings page? (Not needed here)
         save_config(cfg)
+        # If this device is 'main', push changes to sub devices:
+        maybe_push_to_subdevices(cfg)
+
         f = request.files.get("bg_image")
         if f:
             f.save(WEB_BG)
@@ -397,7 +409,8 @@ def settings():
 def index():
     cfg = load_config()
     monitors = detect_monitors()
-    # Sync config with actual monitors and add default rotate if missing.
+
+    # Sync config's "displays" with actual monitors (add or remove)
     for m in monitors:
         if m not in cfg["displays"]:
             cfg["displays"][m] = {
@@ -412,6 +425,7 @@ def index():
         else:
             if "rotate" not in cfg["displays"][m]:
                 cfg["displays"][m]["rotate"] = 0
+
     remove_list = []
     for existing_disp in list(cfg["displays"].keys()):
         if existing_disp not in monitors:
@@ -419,6 +433,7 @@ def index():
     for r in remove_list:
         del cfg["displays"][r]
     save_config(cfg)
+
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_displays":
@@ -432,6 +447,7 @@ def index():
                 rotate_str = request.form.get(pre + "rotate", "0")
                 mixed_order_str = request.form.get(pre + "mixed_order", "")
                 mixed_order_list = [x for x in mixed_order_str.split(",") if x]
+
                 try:
                     interval = int(interval_str)
                 except:
@@ -441,6 +457,7 @@ def index():
                 except:
                     rotate_val = 0
                 shuffle_b = (shuffle_str == "on")
+
                 disp_cfg = cfg["displays"][disp_name]
                 disp_cfg["mode"] = mode
                 disp_cfg["image_interval"] = interval
@@ -448,16 +465,22 @@ def index():
                 disp_cfg["shuffle_mode"] = shuffle_b
                 disp_cfg["specific_image"] = spec_img
                 disp_cfg["rotate"] = rotate_val
+
                 if mode == "mixed":
                     disp_cfg["mixed_folders"] = mixed_order_list
                 else:
                     disp_cfg["mixed_folders"] = []
+
             save_config(cfg)
+            # If main, push updates to sub devices
+            maybe_push_to_subdevices(cfg)
             return redirect(url_for("index"))
+
     folder_counts = {}
     for sf in get_subfolders():
         folder_path = os.path.join(IMAGE_DIR, sf)
         folder_counts[sf] = count_files_in_folder(folder_path)
+
     display_images = {}
     for dname, dcfg in cfg["displays"].items():
         if dcfg["mode"] == "specific_image":
@@ -471,11 +494,13 @@ def index():
                 display_images[dname] = []
         else:
             display_images[dname] = []
+
     cpu, mem_mb, load1, temp = get_system_stats()
     host = get_hostname()
     ipaddr = get_ip_address()
     model = get_pi_model()
     theme = cfg.get("theme", "dark")
+
     HTML = """
 <!DOCTYPE html>
 <html>
@@ -539,6 +564,24 @@ def index():
       width: 60px;
       height: 60px;
       object-fit: cover;
+    }
+    /* Just a simple layout for the display-cards: */
+    .display-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .display-card {
+      border: 1px solid #666;
+      border-radius: 6px;
+      padding: 10px;
+      position: relative;
+      background: rgba(0,0,0,0.1);
+    }
+    .centered-btn {
+      text-align: center;
+      margin: 20px 0;
     }
   </style>
   <script>
@@ -678,7 +721,7 @@ def index():
 <body class="{{ theme }}">
 <div class="container">
   <h1 style="text-align:center;">Viewer Controller</h1>
-  <div style="text-align:center; font-size:12px; color:#888;">{{ version }}</div>
+  <div style="text-align:center; font-size:12px; color:#888;">Version {{ version }}</div>
   <p style="text-align:center;">
     <strong>Hostname:</strong> {{host}} |
     <strong>IP:</strong> {{ipaddr}} |
@@ -696,6 +739,11 @@ def index():
     <form method="POST" action="/restart_viewer" style="display:inline-block; margin-left:10px;">
       <button type="submit" style="font-size:14px;">Restart Viewer</button>
     </form>
+    {% if cfg.role == "main" %}
+      <a href="{{ url_for('device_manager') }}">
+        <button style="font-size:14px;">Manage Devices</button>
+      </a>
+    {% endif %}
   </div>
   <section>
     <h2 style="text-align:center;">Display Settings</h2>
@@ -840,6 +888,215 @@ def index():
         monitors=monitors,
         version=APP_VERSION
     )
+
+# ------------------------------------------------------------------
+# Multi-Device Sync Endpoints
+# ------------------------------------------------------------------
+
+@app.route("/sync_config", methods=["GET"])
+def sync_config():
+    """
+    Sub-devices or any remote can GET this endpoint to retrieve the
+    entire local config as JSON. 
+    """
+    cfg = load_config()
+    return jsonify(cfg)
+
+@app.route("/update_config", methods=["POST"])
+def update_config():
+    """
+    Another device (main or sub) can POST here with a JSON body to
+    overwrite this local config. Then we'll save and possibly push
+    changes along as needed.
+    """
+    new_cfg = request.get_json()
+    if not new_cfg:
+        return "No JSON received", 400
+
+    # For simplicity, we overwrite the entire config.
+    save_config(new_cfg)
+    log_message("Local config updated via /update_config")
+
+    # If we're the main, push changes to other sub devices:
+    cfg = load_config()
+    maybe_push_to_subdevices(cfg)
+
+    return "Config updated", 200
+
+@app.route("/device_manager", methods=["GET", "POST"])
+def device_manager():
+    """
+    Only makes sense if this device is 'main'.
+    Manage list of sub devices: add, remove, test sync, etc.
+    """
+    cfg = load_config()
+    if cfg.get("role", "main") != "main":
+        return "This device is not 'main'.", 403
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        dev_name = request.form.get("dev_name", "").strip()
+        dev_ip = request.form.get("dev_ip", "").strip()
+
+        if action == "add_device" and dev_name and dev_ip:
+            if "devices" not in cfg:
+                cfg["devices"] = []
+            # Add new device
+            cfg["devices"].append({"name": dev_name, "ip": dev_ip})
+            save_config(cfg)
+            log_message(f"Added sub device: {dev_name} ({dev_ip})")
+
+        elif action.startswith("remove_"):
+            idx_str = action.replace("remove_", "")
+            try:
+                idx = int(idx_str)
+                if 0 <= idx < len(cfg.get("devices", [])):
+                    removed_dev = cfg["devices"].pop(idx)
+                    save_config(cfg)
+                    log_message(f"Removed sub device: {removed_dev}")
+            except:
+                pass
+
+        elif action.startswith("push_"):
+            # Push local config to that sub device
+            idx_str = action.replace("push_", "")
+            try:
+                idx = int(idx_str)
+                dev_info = cfg["devices"][idx]
+                push_config_to_subdevice(dev_info["ip"], cfg)
+            except:
+                pass
+
+        elif action.startswith("pull_"):
+            # Pull config from that sub device, merge, save, push
+            idx_str = action.replace("pull_", "")
+            try:
+                idx = int(idx_str)
+                dev_info = cfg["devices"][idx]
+                remote_cfg = get_remote_config(dev_info["ip"])
+                if remote_cfg:
+                    # For a simple approach, let's just overwrite local with remote:
+                    save_config(remote_cfg)
+                    log_message(f"Pulled config from {dev_info['ip']} -> local overwrite.")
+                    # Now re-load and push to all sub devices:
+                    new_local = load_config()
+                    maybe_push_to_subdevices(new_local)
+            except:
+                pass
+
+        return redirect(url_for("device_manager"))
+
+    # GET
+    HTML = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Manage Devices</title>
+      <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+      <style>
+        table { border-collapse: collapse; width: 100%; max-width: 700px; margin: auto; }
+        th, td { border: 1px solid #666; padding: 8px; text-align: left; }
+      </style>
+    </head>
+    <body class="{{ theme }}">
+      <div class="container">
+        <h1>Sub-Device Manager</h1>
+        <p>You are on the Main device. Manage sub-devices below.</p>
+        <form method="POST" style="border:1px solid #444; padding:10px; margin-bottom:20px;">
+          <h3>Add Device</h3>
+          <label>Device Name:</label><br>
+          <input type="text" name="dev_name" required>
+          <br><br>
+          <label>Device IP (or hostname):</label><br>
+          <input type="text" name="dev_ip" required>
+          <br><br>
+          <button type="submit" name="action" value="add_device">Add Device</button>
+        </form>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Device Name</th>
+              <th>IP</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dev in cfg.devices|default([]) %}
+            <tr>
+              <td>{{ loop.index0 }}</td>
+              <td>{{ dev.name }}</td>
+              <td>{{ dev.ip }}</td>
+              <td>
+                <button type="submit" form="deviceActionForm" name="action" value="push_{{ loop.index0 }}">Push</button>
+                <button type="submit" form="deviceActionForm" name="action" value="pull_{{ loop.index0 }}">Pull</button>
+                <button type="submit" form="deviceActionForm" name="action" value="remove_{{ loop.index0 }}">Remove</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <form method="POST" id="deviceActionForm"></form>
+        <br>
+        <a href="{{ url_for('index') }}">
+          <button>Back to Main</button>
+        </a>
+      </div>
+    </body>
+    </html>
+    """
+    return render_template_string(HTML, cfg=cfg, theme=cfg.get("theme", "dark"))
+
+# ------------------------------------------------------------------
+# Multi-Device Sync Logic
+# ------------------------------------------------------------------
+
+def get_remote_config(ip):
+    """Pull config from sub device (or another main). Returns dict or None."""
+    url = f"http://{ip}:8080/sync_config"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        log_message(f"Error fetching remote config from {ip}: {e}")
+    return None
+
+def push_config_to_subdevice(ip, local_cfg):
+    """Push our local config to a sub device via /update_config."""
+    url = f"http://{ip}:8080/update_config"
+    try:
+        r = requests.post(url, json=local_cfg, timeout=5)
+        if r.status_code == 200:
+            log_message(f"Pushed config to {ip} successfully.")
+        else:
+            log_message(f"Pushing config to {ip} failed with code {r.status_code}.")
+    except Exception as e:
+        log_message(f"Error pushing config to {ip}: {e}")
+
+def maybe_push_to_subdevices(cfg):
+    """
+    If this device is 'main', push config to all known sub devices.
+    Called whenever we do save_config() locally.
+    """
+    if cfg.get("role") != "main":
+        # If sub device, optionally push config up to main if we have main_ip
+        main_ip = cfg.get("main_ip", "")
+        if main_ip:
+            log_message("Sub device pushing config to main device.")
+            push_config_to_subdevice(main_ip, cfg)
+        return
+
+    # If main, push to all sub devices:
+    for dev in cfg.get("devices", []):
+        ip = dev.get("ip")
+        if not ip:
+            continue
+        push_config_to_subdevice(ip, cfg)
+
+# ------------------------------------------------------------------
+# Run
+# ------------------------------------------------------------------
 
 if __name__ == "__main__":
     init_config()
