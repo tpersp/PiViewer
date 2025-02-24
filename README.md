@@ -35,7 +35,10 @@ PiViewer is a lightweight, easy-to-configure slideshow viewer and controller des
 
 As the automated setup does not fully disable Wayland, please do it manually, follow these steps:
 
-1. **Edit `/boot/firmware/config.txt`:**  
+1. **Edit `/boot/firmware/config.txt`:**
+     ```
+     sudo nano /boot/firmware/config.txt
+     ```
    - **Do not include:**
      ```
      dtoverlay=vc4-fkms-v3d
@@ -47,7 +50,7 @@ As the automated setup does not fully disable Wayland, please do it manually, fo
      hdmi_force_hotplug=1
      ```
 
-2. **Disable Wayland in your display manager:**  
+3. **Disable Wayland in your display manager:**  
    For Raspberry Pi OS, run:
    ```
    sudo raspi-config
@@ -66,7 +69,7 @@ Install git
 sudo apt install git -y
 ```
 ```
-git clone https://github.com/tpersp/PiViewer.git
+git clone --branch dev https://github.com/tpersp/PiViewer.git
 ```
 Navigate to the project folder:
 ```
