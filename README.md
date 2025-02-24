@@ -69,7 +69,7 @@ Install git
 sudo apt install git -y
 ```
 ```
-git clone --branch dev https://github.com/tpersp/PiViewer.git
+git clone https://github.com/tpersp/PiViewer.git
 ```
 Navigate to the project folder:
 ```
