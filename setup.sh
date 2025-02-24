@@ -77,7 +77,7 @@ else
 fi
 
 # -------------------------------------------------------
-# 3) Disable screen blanking
+# 3) Disable screen blanking and mouse cursor
 # -------------------------------------------------------
 echo
 echo "== Step 3: Disabling screen blanking via raspi-config =="
@@ -87,6 +87,8 @@ if [ $? -eq 0 ]; then
 else
   echo "Warning: raspi-config do_blanking failed. You may need to disable blanking manually."
 fi
+sudo sed -i -- "s/#xserver-command=X/xserver-command=X -nocursor/" /etc/lightdm/lightdm.conf
+
 
 # -------------------------------------------------------
 # 4) Prompt user for config
