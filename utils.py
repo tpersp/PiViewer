@@ -189,7 +189,7 @@ def get_remote_monitors(ip):
     return {}
 
 def push_config_to_subdevice(ip, local_cfg):
-    """Push local config to a sub device."""
+    """Push a partial config (no role/devices/main_ip) to remote."""
     url = f"http://{ip}:8080/update_config"
     try:
         r = requests.post(url, json=local_cfg, timeout=5)
@@ -202,34 +202,33 @@ def push_config_to_subdevice(ip, local_cfg):
 
 def maybe_push_to_subdevices(cfg):
     """
-    If role == 'main', push entire config to sub-devices,
-    skipping our own IP to avoid adding ourselves.
-    
-    If role == 'sub', push a 'trimmed' config to the main
-    so we don't accidentally overwrite the main device's role
-    and devices list.
+    ALWAYS send a partial config (with 'role', 'devices', 'main_ip' removed) to each remote device
+    and skip local IP.
+
+    This ensures that no device overrides another device's role, device list, or main_ip.
+    They only share 'displays', 'theme', etc.
     """
     local_ip = get_ip_address()
-    local_role = cfg.get("role", "main")
 
-    # If we are sub, push only partial config (with no "role" and no "devices") to main.
-    if local_role == "sub":
-        main_ip = cfg.get("main_ip", "")
-        if main_ip and main_ip != local_ip:
-            # Create a copy and remove "role" & "devices" so we don't overwrite the main's role or devices
-            trimmed = dict(cfg)
-            trimmed.pop("role", None)     # remove role entirely
-            trimmed.pop("devices", None)  # remove devices entirely
-            log_message(f"Sub device pushing config (without 'role'/'devices') to main at {main_ip}.")
-            push_config_to_subdevice(main_ip, trimmed)
-        return
+    # Prepare partial config, removing role/devices/main_ip
+    partial_cfg = dict(cfg)
+    partial_cfg.pop("role", None)
+    partial_cfg.pop("devices", None)
+    partial_cfg.pop("main_ip", None)
 
-    # Otherwise we are main; push entire config to each sub device
+    # If we have a 'devices' list, push partial config to each device
     for dev in cfg.get("devices", []):
         ip = dev.get("ip")
-        # skip ourselves
-        if ip == local_ip:
-            log_message(f"Skipping pushing config to self (IP={ip}).")
+        if not ip or ip == local_ip:
+            log_message(f"Skipping push to {ip} (self or invalid).")
             continue
-        if ip:
-            push_config_to_subdevice(ip, cfg)
+
+        log_message(f"Pushing partial config (no role/devices/main_ip) to {ip}.")
+        push_config_to_subdevice(ip, partial_cfg)
+
+    # If we are sub, also push to main if main_ip is set
+    if cfg.get("role") == "sub":
+        main_ip = cfg.get("main_ip", "")
+        if main_ip and main_ip != local_ip:
+            log_message(f"Sub device also pushing partial config to main at {main_ip}.")
+            push_config_to_subdevice(main_ip, partial_cfg)
