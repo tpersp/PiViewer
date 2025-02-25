@@ -201,17 +201,34 @@ def push_config_to_subdevice(ip, local_cfg):
 
 def maybe_push_to_subdevices(cfg):
     """
-    If role == 'main', push to sub-devices.
-    If role == 'sub', push to main if main_ip is set.
+    If role == 'main', push entire config to sub-devices,
+    skipping our own IP to avoid adding ourselves.
+    
+    If role == 'sub', push a 'trimmed' config to the main
+    so we don't accidentally overwrite the main device's role
+    and device list.
     """
-    if cfg.get("role") != "main":
+    local_ip = get_ip_address()
+    local_role = cfg.get("role", "main")
+
+    # If we are sub, push only partial config to main.
+    if local_role == "sub":
         main_ip = cfg.get("main_ip", "")
-        if main_ip:
-            log_message("Sub device pushing config to main device.")
-            push_config_to_subdevice(main_ip, cfg)
+        if main_ip and main_ip != local_ip:
+            # Make a shallow copy and strip out role & devices (so we don't overwrite the main).
+            trimmed = dict(cfg)
+            trimmed["role"] = "sub"      # force it to stay sub
+            trimmed["devices"] = []      # don't overwrite main's devices
+            log_message(f"Sub device pushing partial config to main device at {main_ip}.")
+            push_config_to_subdevice(main_ip, trimmed)
         return
-    # if main
+
+    # Otherwise we are main; push entire config to each sub device
     for dev in cfg.get("devices", []):
         ip = dev.get("ip")
+        # skip ourselves
+        if ip == local_ip:
+            log_message(f"Skipping pushing config to self (device IP={ip}).")
+            continue
         if ip:
             push_config_to_subdevice(ip, cfg)
