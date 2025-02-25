@@ -82,6 +82,7 @@ def detect_monitors():
                     geometry_idx = i
                     break
             if geometry_idx is None:
+                # Possibly an odd line format, fallback
                 name_clean = parts[2].strip("+*")
                 monitors[name_clean] = {"resolution": "unknown", "name": name_clean}
                 continue
@@ -206,20 +207,20 @@ def maybe_push_to_subdevices(cfg):
     
     If role == 'sub', push a 'trimmed' config to the main
     so we don't accidentally overwrite the main device's role
-    and device list.
+    and devices list.
     """
     local_ip = get_ip_address()
     local_role = cfg.get("role", "main")
 
-    # If we are sub, push only partial config to main.
+    # If we are sub, push only partial config (with no "role" and no "devices") to main.
     if local_role == "sub":
         main_ip = cfg.get("main_ip", "")
         if main_ip and main_ip != local_ip:
-            # Make a shallow copy and strip out role & devices (so we don't overwrite the main).
+            # Create a copy and remove "role" & "devices" so we don't overwrite the main's role or devices
             trimmed = dict(cfg)
-            trimmed["role"] = "sub"      # force it to stay sub
-            trimmed["devices"] = []      # don't overwrite main's devices
-            log_message(f"Sub device pushing partial config to main device at {main_ip}.")
+            trimmed.pop("role", None)     # remove role entirely
+            trimmed.pop("devices", None)  # remove devices entirely
+            log_message(f"Sub device pushing config (without 'role'/'devices') to main at {main_ip}.")
             push_config_to_subdevice(main_ip, trimmed)
         return
 
@@ -228,7 +229,7 @@ def maybe_push_to_subdevices(cfg):
         ip = dev.get("ip")
         # skip ourselves
         if ip == local_ip:
-            log_message(f"Skipping pushing config to self (device IP={ip}).")
+            log_message(f"Skipping pushing config to self (IP={ip}).")
             continue
         if ip:
             push_config_to_subdevice(ip, cfg)
