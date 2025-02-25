@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import os
+import subprocess  # needed for restart_viewer
+import requests    # used in get_remote_subfolders (below)
 from flask import (
     Blueprint, request, redirect, url_for, render_template,
     send_from_directory, send_file, jsonify
 )
-import os
 
 # Import our config constants and utils
 from config import APP_VERSION, WEB_BG, IMAGE_DIR, LOG_PATH
@@ -13,11 +15,12 @@ from utils import (
     load_config, save_config, init_config, log_message,
     get_system_stats, get_subfolders, count_files_in_folder,
     detect_monitors, maybe_push_to_subdevices, get_remote_config,
-    get_remote_monitors, get_remote_subfolders, push_config_to_subdevice,
+    get_remote_monitors, push_config_to_subdevice,
     get_hostname, get_ip_address, get_pi_model, get_folder_prefix
 )
 
 main_bp = Blueprint("main", __name__, static_folder="static")
+
 
 @main_bp.route("/stats")
 def stats_json():
@@ -30,20 +33,24 @@ def stats_json():
         "temp": temp
     })
 
+
 @main_bp.route("/list_monitors", methods=["GET"])
 def list_monitors():
     """Return the list of detected monitors for this device as JSON."""
     return jsonify(detect_monitors())
+
 
 @main_bp.route("/list_folders", methods=["GET"])
 def list_folders():
     """Return subfolders on this device as JSON."""
     return jsonify(get_subfolders())
 
+
 @main_bp.route("/images/<path:filename>")
 def serve_image(filename):
     """Serve an image from the IMAGE_DIR."""
     return send_from_directory(IMAGE_DIR, filename)
+
 
 @main_bp.route("/bg_image")
 def bg_image():
@@ -52,12 +59,14 @@ def bg_image():
         return send_file(WEB_BG)
     return "", 404
 
+
 @main_bp.route("/download_log")
 def download_log():
     """Download the raw log file."""
     if os.path.exists(LOG_PATH):
         return send_file(LOG_PATH, as_attachment=True)
     return "No log file found", 404
+
 
 @main_bp.route("/upload_bg", methods=["POST"])
 def upload_bg():
@@ -66,6 +75,7 @@ def upload_bg():
     if f:
         f.save(WEB_BG)
     return redirect(url_for("main.settings"))
+
 
 @main_bp.route("/upload_media", methods=["GET", "POST"])
 def upload_media():
@@ -115,6 +125,7 @@ def upload_media():
 
     return redirect(url_for("main.index"))
 
+
 def get_next_filename(subfolder_name, folder_path, desired_ext):
     prefix = get_folder_prefix(subfolder_name)
     existing = os.listdir(folder_path)
@@ -132,6 +143,7 @@ def get_next_filename(subfolder_name, folder_path, desired_ext):
     next_num = max_num + 1
     return f"{prefix}{next_num:03d}{desired_ext}"
 
+
 @main_bp.route("/restart_viewer", methods=["POST"])
 def restart_viewer():
     """Restart the viewer.service via systemctl."""
@@ -140,6 +152,7 @@ def restart_viewer():
         return redirect(url_for("main.index"))
     except subprocess.CalledProcessError as e:
         return f"Failed to restart viewer.service: {e}", 500
+
 
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
@@ -172,6 +185,7 @@ def settings():
         cfg=cfg
     )
 
+
 @main_bp.route("/", methods=["GET", "POST"])
 def index():
     cfg = load_config()
@@ -193,6 +207,7 @@ def index():
             if "rotate" not in cfg["displays"][m]:
                 cfg["displays"][m]["rotate"] = 0
 
+    # Remove displays no longer detected
     remove_list = []
     for existing_disp in list(cfg["displays"].keys()):
         if existing_disp not in monitors:
@@ -266,6 +281,7 @@ def index():
         else:
             display_images[dname] = []
 
+    # Gather system stats
     cpu, mem_mb, load1, temp = get_system_stats()
     host = get_hostname()
     ipaddr = get_ip_address()
@@ -279,7 +295,7 @@ def index():
         if cfg.get("main_ip"):
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
-    # If main, gather remote info
+    # If main, gather remote info from sub devices
     remote_displays = []
     if cfg.get("role") == "main":
         for dev in cfg.get("devices", []):
@@ -342,6 +358,7 @@ def index():
         sub_info_line=sub_info_line,
         remote_displays=remote_displays
     )
+
 
 @main_bp.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
 def remote_configure(dev_index):
@@ -413,6 +430,7 @@ def remote_configure(dev_index):
         remote_folders=remote_folders
     )
 
+
 def get_remote_subfolders(ip):
     """Fetch subfolders from a remote device, or [] on fail."""
     url = f"http://{ip}:8080/list_folders"
@@ -424,11 +442,13 @@ def get_remote_subfolders(ip):
         log_message(f"Error fetching remote folders from {ip}: {e}")
     return []
 
+
 @main_bp.route("/sync_config", methods=["GET"])
 def sync_config():
     """Return this device's local config as JSON."""
     cfg = load_config()
     return jsonify(cfg)
+
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
@@ -445,6 +465,7 @@ def update_config():
     cfg = load_config()
     maybe_push_to_subdevices(cfg)
     return "Config updated", 200
+
 
 @main_bp.route("/device_manager", methods=["GET", "POST"])
 def device_manager():
