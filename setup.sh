@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 #
 # setup.sh - Simple "It Just Works" viewer + controller installation
+#
+# NOTE: This setup.sh is designed for PiViewer version 1.0.7
+#
 #   1) Installs LightDM (with Xorg), mpv, python3, etc.
 #   2) Installs pip dependencies (with --break-system-packages)
 #   3) Disables screen blanking (via raspi-config)
@@ -13,11 +16,12 @@
 #   8) Reboots
 #
 # After reboot, LightDM will auto-login to an X session on :0.
-# viewer.service will run viewer.py (which now dynamically assigns mpv
-# instances to monitors based on xrandr output).
+# viewer.service will run viewer.py (which dynamically assigns mpv
+# to monitors based on xrandr).
 # controller.service will run app.py on port 8080:  http://<Pi-IP>:8080
 #
-# Example usage:  sudo ./setup.sh
+# Usage:  sudo ./setup.sh
+
 
 # -------------------------------------------------------
 # Must be run as root (sudo):
@@ -87,8 +91,9 @@ if [ $? -eq 0 ]; then
 else
   echo "Warning: raspi-config do_blanking failed. You may need to disable blanking manually."
 fi
-sudo sed -i -- "s/#xserver-command=X/xserver-command=X -nocursor/" /etc/lightdm/lightdm.conf
 
+# Remove mouse cursor from X sessions:
+sudo sed -i -- "s/#xserver-command=X/xserver-command=X -nocursor/" /etc/lightdm/lightdm.conf
 
 # -------------------------------------------------------
 # 4) Prompt user for config
@@ -266,7 +271,7 @@ echo "========================================================"
 echo "Setup is complete. The Pi will now reboot."
 echo "Upon reboot:"
 echo " - LightDM auto-logs into X (DISPLAY=:0)."
-echo " - viewer.service starts viewer.py, which now supports multiple monitors."
+echo " - viewer.service starts viewer.py, supporting multi-monitors."
 echo " - controller.service starts app.py on port 8080."
 echo
 echo "You can configure slides at http://<Pi-IP>:8080"

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Viewer Controller</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>
+    function fetchStats() {
+      fetch("/stats")
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById("stat_cpu").textContent = data.cpu_percent + "%";
+        document.getElementById("stat_mem").textContent = data.mem_used_mb + "MB";
+        document.getElementById("stat_load").textContent = data.load_1min;
+        document.getElementById("stat_temp").textContent = data.temp;
+      }).catch(e => console.log(e));
+    }
+    setInterval(fetchStats, 10000);
+    window.addEventListener("load", fetchStats);
+
+    function toggleHelpBox(boxID){
+      let box = document.getElementById(boxID);
+      box.style.display = (box.style.display === "block") ? "none" : "block";
+    }
+
+    function initMixedUI(dispName){
+      let searchBox = document.getElementById(dispName + "_search");
+      let availList = document.getElementById(dispName + "_availList");
+      let selList = document.getElementById(dispName + "_selList");
+      let hiddenOrder = document.getElementById(dispName + "_mixed_order");
+
+      function sortAvailable(){
+        let items = Array.from(availList.querySelectorAll("li"));
+        items.sort((a,b)=>{
+          let fa = a.getAttribute("data-folder").toLowerCase();
+          let fb = b.getAttribute("data-folder").toLowerCase();
+          return fa.localeCompare(fb);
+        });
+        items.forEach(li => availList.appendChild(li));
+      }
+      if(searchBox){
+        searchBox.addEventListener("input", ()=>{
+          let txt = searchBox.value.toLowerCase();
+          let items = availList.querySelectorAll("li");
+          items.forEach(li => {
+            if(li.getAttribute("data-folder").toLowerCase().includes(txt)){
+              li.style.display="";
+            } else {
+              li.style.display="none";
+            }
+          });
+        });
+      }
+      let dragSrcEl=null;
+      function handleDragStart(e){
+        dragSrcEl = this;
+        e.dataTransfer.effectAllowed="move";
+        e.dataTransfer.setData("text/html", this.innerHTML);
+      }
+      function handleDragOver(e){
+        if(e.preventDefault) e.preventDefault();
+        return false;
+      }
+      function handleDragEnter(e){ this.classList.add("selected"); }
+      function handleDragLeave(e){ this.classList.remove("selected"); }
+      function handleDrop(e){
+        if(e.stopPropagation) e.stopPropagation();
+        if(dragSrcEl!=this){
+          let oldHTML = dragSrcEl.innerHTML;
+          dragSrcEl.innerHTML = this.innerHTML;
+          this.innerHTML = e.dataTransfer.getData("text/html");
+        }
+        return false;
+      }
+      function handleDragEnd(e){
+        let items = selList.querySelectorAll("li");
+        items.forEach(li => li.classList.remove("selected"));
+        updateHiddenOrder();
+      }
+      function addDnDHandlers(item){
+        item.addEventListener("dragstart", handleDragStart);
+        item.addEventListener("dragenter", handleDragEnter);
+        item.addEventListener("dragover", handleDragOver);
+        item.addEventListener("dragleave", handleDragLeave);
+        item.addEventListener("drop", handleDrop);
+        item.addEventListener("dragend", handleDragEnd);
+      }
+      function moveItem(li, sourceUL, targetUL){
+        targetUL.appendChild(li);
+        if(targetUL === selList){
+          addDnDHandlers(li);
+        } else {
+          sortAvailable();
+        }
+        updateHiddenOrder();
+      }
+      if(availList){
+        availList.addEventListener("click", e=>{
+          if(e.target.tagName==="LI"){
+            moveItem(e.target, availList, selList);
+          }
+        });
+      }
+      if(selList){
+        selList.addEventListener("click", e=>{
+          if(e.target.tagName==="LI"){
+            moveItem(e.target, selList, availList);
+          }
+        });
+      }
+      function updateHiddenOrder(){
+        let items = selList.querySelectorAll("li");
+        let arr=[];
+        items.forEach(li=> arr.push(li.getAttribute("data-folder")));
+        hiddenOrder.value = arr.join(",");
+      }
+      if(selList){
+        let selItems = selList.querySelectorAll("li");
+        selItems.forEach(li => addDnDHandlers(li));
+      }
+      if(availList){
+        sortAvailable();
+      }
+    }
+
+    function loadSpecificThumbnails(dispName){
+      let container = document.getElementById(dispName + "_lazyContainer");
+      let allThumbs = JSON.parse(container.getAttribute("data-files"));
+      let shownCount = container.querySelectorAll("label.thumb-label").length;
+      let nextLimit = shownCount + 100;
+      let slice = allThumbs.slice(shownCount, nextLimit);
+      slice.forEach(filePath => {
+        let bn = filePath.split("/").pop();
+        let lbl = document.createElement("label");
+        lbl.className = "thumb-label";
+        let img = document.createElement("img");
+        img.src = "/images/" + filePath;
+        img.className = "lazy-thumb";
+        let radio = document.createElement("input");
+        radio.type = "radio";
+        radio.name = dispName + "_specific_image";
+        radio.value = bn;
+        lbl.appendChild(img);
+        lbl.appendChild(document.createElement("br"));
+        lbl.appendChild(radio);
+        lbl.appendChild(document.createTextNode(" " + bn));
+        container.insertBefore(lbl, container.lastElementChild);
+      });
+      if(nextLimit >= allThumbs.length){
+        container.lastElementChild.style.display = "none";
+      }
+    }
+  </script>
+</head>
+<body class="{{ theme }}">
+<div class="container">
+  <h1 style="text-align:center;">Viewer Controller</h1>
+  <div style="text-align:center; font-size:12px; color:#888;">
+    Version {{ version }}
+  </div>
+  <p style="text-align:center;">
+    <strong>Hostname:</strong> {{ host }} |
+    <strong>IP:</strong> {{ ipaddr }} |
+    <strong>Model:</strong> {{ model }}<br>
+    {% if sub_info_line %}
+      {{ sub_info_line }}<br>
+    {% endif %}
+    <strong>CPU:</strong> <span id="stat_cpu">{{ cpu }}%</span> |
+    <strong>Mem:</strong> <span id="stat_mem">{{ mem_mb }}MB</span> |
+    <strong>Load(1m):</strong> <span id="stat_load">{{ load1 }}</span> |
+    <strong>Temp:</strong> <span id="stat_temp">{{ temp }}</span>
+  </p>
+  <div style="text-align:center; margin-bottom:20px;">
+    <a href="{{ url_for('main.settings') }}">
+      <button style="font-size:14px;">Settings</button>
+    </a>
+    <!-- Restart Viewer Button -->
+    <form method="POST" action="{{ url_for('main.restart_viewer') }}" style="display:inline-block; margin-left:10px;">
+      <button type="submit" style="font-size:14px;">Restart Viewer</button>
+    </form>
+    {% if cfg.role == "main" %}
+      <a href="{{ url_for('main.device_manager') }}">
+        <button style="font-size:14px;">Manage Devices</button>
+      </a>
+    {% endif %}
+  </div>
+
+  <section>
+    <h2 style="text-align:center;">Local Display Settings</h2>
+    <form method="POST">
+      <input type="hidden" name="action" value="update_displays">
+      <div class="display-grid">
+        {% for dname, dcfg in cfg.displays.items() %}
+        {% set resolution = monitors[dname].resolution if dname in monitors else "?" %}
+        <div class="display-card">
+          <div class="help-icon" onclick="toggleHelpBox('help_{{dname}}')">?</div>
+          <div class="help-box" id="help_{{dname}}">
+            <p><strong>Display Info</strong></p>
+            <p>- Mode: random, specific, or mixed</p>
+            <p>- Interval: how often new images load</p>
+            <p>- Shuffle: randomizes order (Yes/No)</p>
+            <p>- Mixed: pick multiple folders, drag to reorder</p>
+            <p>- Specific: pick exactly 1 file</p>
+          </div>
+          <h3>{{ dname }} ({{ resolution }})</h3>
+          <div class="field-block">
+            <label>Mode:</label><br>
+            <select name="{{ dname }}_mode">
+              <option value="random_image"   {% if dcfg.mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
+              <option value="specific_image" {% if dcfg.mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
+              <option value="mixed"          {% if dcfg.mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
+            </select>
+          </div>
+          <div class="field-block">
+            <label>Interval (seconds):</label><br>
+            <input type="number" name="{{ dname }}_image_interval" value="{{ dcfg.image_interval }}">
+          </div>
+          <div class="field-block">
+            <label>Rotate (degrees):</label><br>
+            <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
+          </div>
+          {% if dcfg.mode != "mixed" %}
+            <div class="field-block">
+              <label>Category (subfolder):</label><br>
+              <select name="{{ dname }}_image_category">
+                <option value="" {% if not dcfg.image_category %}selected{% endif %}>All</option>
+                {% for sf in subfolders %}
+                  {% set count = folder_counts[sf] %}
+                  <option value="{{ sf }}" {% if dcfg.image_category==sf %}selected{% endif %}>
+                    {{ sf }} ({{count}} files)
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          {% endif %}
+          {% if dcfg.mode == "mixed" %}
+            <div class="field-block">
+              <label>Multiple Folders (drag to reorder):</label><br>
+              <div style="display:flex; flex-direction:row; gap:20px; justify-content:center; margin-top:10px;">
+                <div class="dnd-column">
+                  <h4>Available</h4>
+                  <input type="text" placeholder="Search..." id="{{ dname }}_search" class="search-box" style="width:90%;">
+                  <ul class="mixed-list" id="{{ dname }}_availList" style="list-style:none; margin:0; padding:0;">
+                    {% for sf in subfolders if sf not in dcfg.mixed_folders %}
+                    <li draggable="true" data-folder="{{ sf }}">{{ sf }} ({{ folder_counts[sf] }} files)</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+                <div class="dnd-column">
+                  <h4>Selected</h4>
+                  <ul class="mixed-list" id="{{ dname }}_selList" style="list-style:none; margin:0; padding:0;">
+                    {% for sf in dcfg.mixed_folders %}
+                    <li draggable="true" data-folder="{{ sf }}">{{ sf }} ({{ folder_counts[sf]|default(0) }} files)</li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              </div>
+              <input type="hidden" name="{{ dname }}_mixed_order" id="{{ dname }}_mixed_order" value="{{ ','.join(dcfg.mixed_folders) }}">
+              <script>
+                document.addEventListener("DOMContentLoaded", function(){
+                  initMixedUI("{{ dname }}");
+                });
+              </script>
+            </div>
+          {% endif %}
+          <div class="field-block">
+            <label>Shuffle?</label><br>
+            <select name="{{ dname }}_shuffle_mode">
+              <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
+              <option value="no"  {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
+            </select>
+          </div>
+          {% if dcfg.mode == "specific_image" %}
+            <div class="field-block">
+              <h4>Select Image/GIF</h4>
+              {% set fileList = display_images[dname] %}
+              {% if fileList and fileList|length > 100 %}
+                <div id="{{ dname }}_lazyContainer" data-files='{{ fileList|tojson }}' class="lazy-thumbs-container">
+                  <button type="button" onclick="loadSpecificThumbnails('{{ dname }}')" style="margin:10px;">
+                    Show Thumbnails
+                  </button>
+                </div>
+              {% else %}
+                <div class="image-gallery">
+                  {% for imgpath in fileList %}
+                    {% set bn = imgpath.split('/')[-1] %}
+                    <label class="thumb-label">
+                      <img src="/images/{{ imgpath }}" class="thumb-img"><br>
+                      <input type="radio" name="{{ dname }}_specific_image" value="{{ bn }}"
+                        {% if bn == dcfg.specific_image %}checked{% endif %}>
+                      {{ bn }}
+                    </label>
+                  {% else %}
+                    <p>No images found or category is empty.</p>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="centered-btn">
+        <button type="submit">Save Display Settings</button>
+      </div>
+    </form>
+  </section>
+
+  {% if cfg.role == 'main' and remote_displays %}
+  <section style="text-align:center;">
+    <h2>Remote Devices</h2>
+    {% for dev in remote_displays %}
+      <h3>{{ dev.name }} ({{ dev.ip }})</h3>
+      <table class="remote-table">
+        <tr>
+          <th>Display</th>
+          <th>Resolution</th>
+          <th>Mode</th>
+          <th>Folder(s)</th>
+          <th>Shuffle</th>
+        </tr>
+        {% for rd in dev.displays %}
+        <tr>
+          <td>{{ rd.dname }}</td>
+          <td>{{ rd.resolution }}</td>
+          <td>{{ rd.mode }}</td>
+          <td>{{ rd.folders }}</td>
+          <td>{{ rd.shuffle }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      <br>
+      <form action="{{ url_for('main.remote_configure', dev_index=dev.index) }}" method="GET" style="margin-bottom:20px;">
+        <button type="submit">Configure</button>
+      </form>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section style="text-align:center;">
+    <h2>Media Management</h2>
+    <p>Upload multiple GIFs/images to subfolders, or create new subfolders. (GIF/JPG/PNG)</p>
+    <a href="{{ url_for('main.upload_media') }}">
+      <button>Go to Upload Page</button>
+    </a>
+  </section>
+</div>
+</body>
+</html>

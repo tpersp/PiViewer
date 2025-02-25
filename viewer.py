@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 import os
 import json
 import random
@@ -9,17 +10,8 @@ import socket
 import threading
 from datetime import datetime
 
-# ------------------------------------------------------------------
-# Paths
-# ------------------------------------------------------------------
-VIEWER_HOME = os.environ.get("VIEWER_HOME", "/home/pi/viewer")
-IMAGE_DIR   = os.environ.get("IMAGE_DIR", "/mnt/PiViewers")
-CONFIG_PATH = os.path.join(VIEWER_HOME, "viewerconfig.json")
-LOG_PATH    = os.path.join(VIEWER_HOME, "viewer.log")
-
-# ------------------------------------------------------------------
-# Logging / Config
-# ------------------------------------------------------------------
+from config import APP_VERSION, VIEWER_HOME, IMAGE_DIR, CONFIG_PATH, LOG_PATH
+# We'll reuse the log_message, but to avoid circular import, we can define a mini logger here:
 def log_message(msg):
     print(msg)
     with open(LOG_PATH, "a") as f:
@@ -35,9 +27,7 @@ def load_config():
 # MPV Helpers
 # ------------------------------------------------------------------
 def mpv_command(sock_path, cmd_dict):
-    """
-    Send a JSON IPC command to MPV's UNIX socket.
-    """
+    """Send a JSON IPC command to MPV's UNIX socket."""
     if not os.path.exists(sock_path):
         return
     try:
@@ -48,10 +38,7 @@ def mpv_command(sock_path, cmd_dict):
         log_message(f"[mpv_command] error: {e}")
 
 def detect_monitors():
-    """
-    Return a list of monitor names (like "HDMI-1", etc.) using xrandr --listmonitors.
-    Fallback to ["Display0"] if none found or xrandr not available.
-    """
+    """Return a list of monitor names using xrandr --listmonitors. Fallback if none found."""
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
         lines = out.split("\n")
@@ -71,9 +58,7 @@ def detect_monitors():
         return ["Display0"]
 
 def build_full_path(relpath):
-    """
-    e.g. relpath="Nature/flower.jpg" => /mnt/PiViewers/Nature/flower.jpg
-    """
+    """e.g. relpath="Nature/flower.jpg" => /mnt/PiViewers/Nature/flower.jpg"""
     return os.path.join(IMAGE_DIR, relpath)
 
 def get_images_in_category(category):
@@ -112,25 +97,16 @@ def get_mixed_images(folder_list):
         all_files.extend(catlist)
     return sorted(all_files)
 
-# ------------------------------------------------------------------
-# Utility: Map monitor name to screen index
-# ------------------------------------------------------------------
 def get_screen_index(monitor_name):
+    """Map monitor name to xrandr-based screen index."""
     monitors = detect_monitors()
     try:
         return monitors.index(monitor_name)
     except ValueError:
         return 0
 
-# ------------------------------------------------------------------
-# Display Thread
-# ------------------------------------------------------------------
 class DisplayThread(threading.Thread):
     def __init__(self, disp_name):
-        """
-        disp_name is something like "HDMI-1" or "Display0".
-        We'll spawn one MPV instance for each monitor and update images.
-        """
         super().__init__()
         self.disp_name = disp_name
         self.sock_path = f"/tmp/mpv_{disp_name}.sock"
@@ -138,7 +114,7 @@ class DisplayThread(threading.Thread):
         self.mpv_proc = None
 
     def run(self):
-        # Build mpv command and add --screen parameter.
+        # Build mpv command with --screen parameter
         mpv_cmd = [
             "mpv",
             "--idle",
@@ -153,7 +129,7 @@ class DisplayThread(threading.Thread):
         ]
         screen_index = get_screen_index(self.disp_name)
         mpv_cmd.append(f"--screen={screen_index}")
-        log_message(f"[{self.disp_name}] Starting MPV: {' '.join(mpv_cmd)}")
+        log_message(f"[{self.disp_name}] Starting MPV (version {APP_VERSION}): {' '.join(mpv_cmd)}")
         self.mpv_proc = subprocess.Popen(mpv_cmd)
         while not self.stop_flag:
             cfg = load_config()
@@ -174,7 +150,6 @@ class DisplayThread(threading.Thread):
         self.mpv_proc.wait()
 
     def apply_rotation(self, disp_cfg):
-        # Apply rotation after loading an image.
         rotate = disp_cfg.get("rotate", 0)
         mpv_command(self.sock_path, {"command": ["set_property", "video-rotate", rotate]})
 
@@ -184,7 +159,7 @@ class DisplayThread(threading.Thread):
         interval = disp_cfg.get("image_interval", 60)
         images = get_images_in_category(cat)
         if not images:
-            log_message(f"[{self.disp_name}] No images found in category='{cat}', waiting 10s.")
+            log_message(f"[{self.disp_name}] No images in category='{cat}', wait 10s.")
             time.sleep(10)
             return
         if shuffle:
@@ -280,10 +255,8 @@ class DisplayThread(threading.Thread):
     def stop(self):
         self.stop_flag = True
 
-# ------------------------------------------------------------------
-# Main
-# ------------------------------------------------------------------
 if __name__ == "__main__":
+    log_message(f"Starting viewer (version {APP_VERSION}).")
     monitors = detect_monitors()
     if not monitors:
         log_message("No monitors detected. Exiting.")
