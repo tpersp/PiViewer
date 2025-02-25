@@ -19,17 +19,18 @@ from config import (
 )
 
 def init_config():
-    """Initialize config file if missing, including default displays and multi-device placeholders."""
+    """Initialize config file if missing, including default displays & multi-device placeholders."""
     if not os.path.exists(CONFIG_PATH):
         default_cfg = {
-            "role": "main",  # 'main' or 'sub'
-            "main_ip": "",   # Only relevant if sub
-            "devices": [],   # If main, store sub-devices
             "theme": "dark",
-            "displays": {}
+            "displays": {},   # local device's displays
+            "role": "main",   # 'main' or 'sub'
+            "main_ip": "",
+            "devices": []     # each device is {name, ip, displays: {...}}
         }
+        # Auto-create local displays
         monitors = detect_monitors()
-        for m, mdata in monitors.items():
+        for m in monitors:
             default_cfg["displays"][m] = {
                 "mode": "random_image",
                 "image_interval": 60,
@@ -59,50 +60,25 @@ def log_message(msg):
 def detect_monitors():
     """
     Use xrandr --listmonitors to detect connected monitors.
-    Returns dict like:
-      {
-        "HDMI-1": {"resolution": "1920x1080", "name": "HDMI-1"},
-        ...
-      }
-    Fallback to {"Display0": {...}} if not available.
+    Return list like ["HDMI-1", "HDMI-2"] or ["Display0"] if unknown.
     """
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
         lines = out.split("\n")
         if len(lines) <= 1:
-            return {"Display0": {"resolution": "unknown", "name": "Display0"}}
-        monitors = {}
+            return ["Display0"]
+        results = []
         for line in lines[1:]:
             parts = line.strip().split()
-            if len(parts) < 3:
-                continue
-            geometry_idx = None
-            for i, p in enumerate(parts):
-                if 'x' in p and '/' in p:
-                    geometry_idx = i
-                    break
-            if geometry_idx is None:
-                # Possibly an odd line format, fallback
-                name_clean = parts[2].strip("+*")
-                monitors[name_clean] = {"resolution": "unknown", "name": name_clean}
-                continue
-            geometry_part = parts[geometry_idx]
-            actual_name = parts[-1]
-            try:
-                left, right = geometry_part.split("x")
-                width = left.split("/")[0]
-                right_split_plus = right.split("+")[0]
-                height = right_split_plus.split("/")[0]
-                resolution = f"{width}x{height}"
-            except:
-                resolution = "unknown"
-            name_clean = actual_name.strip("+*")
-            monitors[name_clean] = {"resolution": resolution, "name": name_clean}
-        if not monitors:
-            return {"Display0": {"resolution": "unknown", "name": "Display0"}}
-        return monitors
+            if len(parts) >= 2:
+                raw_name = parts[-1]
+                mname = raw_name.strip("+*")
+                results.append(mname)
+        if not results:
+            return ["Display0"]
+        return results
     except:
-        return {"Display0": {"resolution": "unknown", "name": "Display0"}}
+        return ["Display0"]
 
 def get_hostname():
     try:
@@ -111,7 +87,7 @@ def get_hostname():
         return "UnknownHost"
 
 def get_ip_address():
-    """Return first non-127.0.0.1 IP from `hostname -I`."""
+    """Return the first non-127.* IP from `hostname -I`."""
     try:
         out = subprocess.check_output(["hostname", "-I"]).decode().strip()
         ips = out.split()
@@ -167,7 +143,9 @@ def count_files_in_folder(folder_path):
     return cnt
 
 def get_remote_config(ip):
-    """Pull config from remote device. Returns dict or None."""
+    """
+    Pull FULL config from remote device (includes displays, role, etc.).
+    """
     url = f"http://{ip}:8080/sync_config"
     try:
         r = requests.get(url, timeout=5)
@@ -178,7 +156,7 @@ def get_remote_config(ip):
     return None
 
 def get_remote_monitors(ip):
-    """Fetch monitor info from remote device as dict or empty on fail."""
+    """Fetch monitor info from remote device as a dict or empty on fail."""
     url = f"http://{ip}:8080/list_monitors"
     try:
         r = requests.get(url, timeout=5)
@@ -188,47 +166,36 @@ def get_remote_monitors(ip):
         log_message(f"Error fetching remote monitors from {ip}: {e}")
     return {}
 
-def push_config_to_subdevice(ip, local_cfg):
-    """Push a partial config (no role/devices/main_ip) to remote."""
+def push_displays_to_remote(ip, displays_obj):
+    """
+    Push ONLY the "displays" portion to a remote device, ignoring role/devices/main_ip.
+    We'll do a partial update:
+      { "displays": { ... } }
+    Then the remote overwrites only its local 'displays'.
+    """
     url = f"http://{ip}:8080/update_config"
+    partial = {"displays": displays_obj}
     try:
-        r = requests.post(url, json=local_cfg, timeout=5)
+        r = requests.post(url, json=partial, timeout=5)
         if r.status_code == 200:
-            log_message(f"Pushed config to {ip} successfully.")
+            log_message(f"Pushed partial displays to {ip} successfully.")
         else:
-            log_message(f"Pushing config to {ip} failed with code {r.status_code}.")
+            log_message(f"Push to {ip} failed with code {r.status_code}.")
     except Exception as e:
-        log_message(f"Error pushing config to {ip}: {e}")
+        log_message(f"Error pushing partial displays to {ip}: {e}")
 
-def maybe_push_to_subdevices(cfg):
+def pull_displays_from_remote(ip):
     """
-    ALWAYS send a partial config (with 'role', 'devices', 'main_ip' removed) to each remote device
-    and skip local IP.
-
-    This ensures that no device overrides another device's role, device list, or main_ip.
-    They only share 'displays', 'theme', etc.
+    Pull FULL config from remote, but only return the "displays" portion.
+    Return None if fail.
     """
-    local_ip = get_ip_address()
+    remote_cfg = get_remote_config(ip)
+    if not remote_cfg:
+        return None
+    # We only care about "displays".
+    return remote_cfg.get("displays", {})
 
-    # Prepare partial config, removing role/devices/main_ip
-    partial_cfg = dict(cfg)
-    partial_cfg.pop("role", None)
-    partial_cfg.pop("devices", None)
-    partial_cfg.pop("main_ip", None)
-
-    # If we have a 'devices' list, push partial config to each device
-    for dev in cfg.get("devices", []):
-        ip = dev.get("ip")
-        if not ip or ip == local_ip:
-            log_message(f"Skipping push to {ip} (self or invalid).")
-            continue
-
-        log_message(f"Pushing partial config (no role/devices/main_ip) to {ip}.")
-        push_config_to_subdevice(ip, partial_cfg)
-
-    # If we are sub, also push to main if main_ip is set
-    if cfg.get("role") == "sub":
-        main_ip = cfg.get("main_ip", "")
-        if main_ip and main_ip != local_ip:
-            log_message(f"Sub device also pushing partial config to main at {main_ip}.")
-            push_config_to_subdevice(main_ip, partial_cfg)
+# ---------------------------------------------------------------------
+# No "maybe_push_to_subdevices" auto logic anymore. We rely on manual
+# push/pull from device_manager, so we do not keep forcing roles.
+# ---------------------------------------------------------------------
