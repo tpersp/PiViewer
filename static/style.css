@@ -43,6 +43,13 @@ button {
 button:hover {
     opacity: 0.9;
 }
+.button-row {
+    display: flex;
+    justify-content: center; /* centers horizontally */
+    align-items: center;     /* vertically aligns the items */
+    gap: 10px;               /* uniform space between buttons */
+    margin-bottom: 20px;     /* the same bottom spacing as before */
+}
 .log-container {
     padding: 10px;
     border-radius: 4px;
