@@ -169,12 +169,11 @@
     <strong>Load(1m):</strong> <span id="stat_load">{{ load1 }}</span> |
     <strong>Temp:</strong> <span id="stat_temp">{{ temp }}</span>
   </p>
-  <div style="text-align:center; margin-bottom:20px;">
+  <div class="button-row">
     <a href="{{ url_for('main.settings') }}">
       <button style="font-size:14px;">Settings</button>
     </a>
-    <!-- Restart Viewer Button -->
-    <form method="POST" action="{{ url_for('main.restart_viewer') }}" style="display:inline-block; margin-left:10px;">
+    <form method="POST" action="{{ url_for('main.restart_viewer') }}">
       <button type="submit" style="font-size:14px;">Restart Viewer</button>
     </form>
     {% if cfg.role == "main" %}
@@ -182,7 +181,7 @@
         <button style="font-size:14px;">Manage Devices</button>
       </a>
     {% endif %}
-  </div>
+  </div>  
 
   <section>
     <h2 style="text-align:center;">Local Display Settings</h2>
