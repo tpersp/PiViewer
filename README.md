@@ -2,73 +2,66 @@
 
 PiViewer is a lightweight, easy-to-configure slideshow viewer and controller designed for Raspberry Pi OS. It leverages [mpv](https://mpv.io/) for fullscreen image display and uses a Flask web interface to manage settings and media—now with automatic multi-monitor support.
 
-> **Note:** This project was developed and tested on Pi 4 and Pi Zero2w running Raspberry Pi OS Lite 32bit and 64bit.
+> **Note:** This project was developed and tested on Pi 4 and Pi Zero2W running Raspberry Pi OS Lite (both 32-bit and 64-bit).
+
+---
 
 ## Features
 
-- **Multi-Monitor Support:**  
-  Automatically detects connected monitors using `xrandr` and launches an mpv instance for each screen. The viewer dynamically assigns mpv’s `--screen` parameter based on the order reported by xrandr. This means that if you have three, four, five, or more monitors, each one will be handled automatically.
+- **Multi-Monitor Support**  
+  Automatically detects connected monitors using `xrandr` and launches an mpv instance per screen. The viewer dynamically assigns mpv’s `--screen` parameter based on the order reported by xrandr. Whether you have two, three, or more monitors, each will be handled automatically.
 
-- **Web Interface:**  
-  Manage your slideshow settings (display mode, image intervals, folder selection, and theme) via a simple web interface running on port 8080.
+- **Web Interface**  
+  Manage your slideshow settings (display mode, image intervals, folder selection, theming) via a simple web interface on **port 8080**.
 
-- **Systemd Integration:**  
-  The installation script creates systemd services for both the viewer (slideshow) and the controller (web interface), so your application starts automatically at boot.
+- **Systemd Integration**  
+  The included setup script creates systemd services for both the viewer (slideshow) and the controller (web interface), so PiViewer starts automatically at boot.
 
-- **Custom Themes:**  
-  Choose between dark, light, or custom themes via the settings page. For custom themes, you can upload your own background image.
+- **Custom Themes**  
+  Choose between dark, light, or custom themes via the settings page. For a custom theme, you can upload your own background image.
 
-- **Easy Installation:**  
-  A single `setup.sh` script installs all necessary packages, Python dependencies, performs basic system configuration (such as disabling screen blanking), and sets up systemd services.
+- **Easy Installation**  
+  A single `setup.sh` script installs all necessary packages and Python dependencies, performs basic system configuration (e.g., disabling screen blanking), and sets up systemd services.
+
+---
 
 ## Installation
 
 ### Prerequisites
 
-- **Raspberry Pi OS:**  
-  Ensure that you have Raspberry Pi OS Lite installed.
-- **Network (Optional):**  
-  If you want to mount a network share for images, make sure CIFS is supported.
+- **Raspberry Pi OS**  
+  Ensure you have Raspberry Pi OS (Lite or Desktop) installed.
+- **X11 instead of Wayland**  
+  PiViewer currently uses `xrandr` and X11; it does *not* support Wayland.  
+  (You may need to disable Wayland manually in your Pi’s configuration.)
 
-### Manual Configuration: Disable Wayland / Use X11
-> **Note:** This project does not currently work with Wayland.
+### Manual X11 Configuration (If Needed)
 
-As the automated setup does not fully disable Wayland, please do it manually, follow these steps:
-
-1. **Edit `/boot/firmware/config.txt`:**
-     ```
-     sudo nano /boot/firmware/config.txt
-     ```
-   - **Do not include:**
-     ```
-     dtoverlay=vc4-fkms-v3d
-     ```
-   - **Ensure you have the following:**
-     ```
+1. **`/boot/config.txt`** or `/boot/firmware/config.txt` (depending on your Pi OS version):  
+   - You *should not* have `dtoverlay=vc4-fkms-v3d`.  
+   - Instead, ensure something like:
+     ```ini
      dtoverlay=vc4-kms-v3d
      max_framebuffers=2
      hdmi_force_hotplug=1
      ```
+2. **Disable Wayland**  
+   In Raspberry Pi OS, run:
+sudo raspi-config
 
-3. **Disable Wayland in your display manager:**  
-   For Raspberry Pi OS, run:
-   ```
-   sudo raspi-config
-   ```
-Navigate to Advanced → X11 and follow the prompts to disable Wayland.
+Then navigate to advanced/X11 options, and ensure Wayland is disabled.
 
-## Reboot
+3. **Reboot** to apply changes.
 
-Reboot the system to ensure that X11 starts properly.
+---
 
 ## Automated Setup
 
 ### Clone the Repository
-Install git
-```
+
+```bash
+sudo apt update
 sudo apt install git -y
-```
-```
 git clone https://github.com/tpersp/PiViewer.git
 ```
 Navigate to the project folder:
@@ -76,11 +69,8 @@ Navigate to the project folder:
 cd PiViewer
 ```
 
-## Run the Setup Script:
-
-Make the setup script executable and run it:
-
-```
+Run the Setup Script
+```bash
 chmod +x setup.sh
 sudo ./setup.sh
 ```
@@ -106,58 +96,68 @@ Once the Pi reboots:
 
 Open a browser and navigate to:
 
-```
+```lua
 http://<Your-Raspberry-Pi-IP>:8080
 ```
 Use this interface to configure display settings, choose themes, and manage media.
 
+### Project Structure
+A simplified layout:
 
-## Project Structure
-
-```plaintext
-├── app.py              # Flask web interface for managing slides and settings
-├── viewer.py           # Main slideshow viewer using mpv, with multi-monitor support
-├── static/             # Static assets (CSS, images, etc.)
-├── setup.sh            # Installation script for system configuration and service setup
-├── dependencies.txt    # Python dependencies (if applicable)
-├── README.md           # This file
-└── (other project files...)
+```php
+PiViewer/
+├── app.py                # Main Flask entry point
+├── config.py             # Holds app version & path constants
+├── utils.py              # Shared utility functions (config load/save, logging, etc.)
+├── routes.py             # Flask routes (blueprint)
+├── viewer.py             # Slideshow: spawns mpv per detected monitor
+├── static/
+│    └── style.css        # Consolidated CSS
+├── templates/
+│    ├── index.html
+│    ├── settings.html
+│    ├── device_manager.html
+│    ├── remote_configure.html
+│    └── upload_media.html
+├── setup.sh              # Installation script
+├── dependencies.txt      # Python dependencies
+└── README.md             # This file
 ```
 
+## Usage & Customization
 
-## Customization
+### Local Displays
+Using the web interface (on port 8080), you can select:
 
-### Display Settings
-Through the web interface you can choose:
-- The mode for each display (random, specific, or mixed)
-- The time interval between image changes
-- The image category (subfolder) or specific image selection
-- Whether to shuffle images
+- Mode: Random, Specific, or Mixed
+- Interval: How many seconds between image changes
+- Rotate: How many degrees to rotate each image
+- Shuffle: Whether images should display in random order
+- For specific_image mode, you can pick the exact file.
+- For mixed mode, you can select multiple folders, drag to reorder them, etc.
 
-### Theme Settings
-In the Settings page, you can select a theme (dark, light, or custom). If you choose custom, you can upload a background image.
+### Remote (Sub) Devices
+If you configure one Pi as the main, you can add sub devices in the Device Manager page. The main device can push/pull configurations to/from each sub device and even remotely configure their displays.
 
-### Multi-Monitor Mapping
-The viewer automatically detects monitors using `xrandr` and maps each mpv instance to a screen index based on its order. This automatic mapping supports systems with more than two monitors.
+### Themes
+In Settings, choose between dark, light, or custom.
+For a custom theme, upload a background image; the rest of the UI overlays on top.
 
-
-### Troubleshooting
-## Display Issues:
-If an mpv instance isn’t appearing on the correct monitor, verify that the systemd service’s environment variables (DISPLAY, XAUTHORITY, and XDG_RUNTIME_DIR) are set correctly. 
-You can test this by running:
+## Troubleshooting
+#### No Image or Wrong Monitor
+Check that the environment variables (DISPLAY, XAUTHORITY, XDG_RUNTIME_DIR) are being set correctly in viewer.service.
+Confirm with 
+```bash
+xrandr --listmonitors that X11 sees all monitors.
 ```
-sudo -u <username> DISPLAY=:0 XAUTHORITY=/home/<username>/.Xauthority xrandr --listmonitors
-```
+#### Logs
 
-## Monitor Detection
-
-If the web interface does not list all connected monitors, ensure that your X session is correctly configured and that the manual steps for disabling Wayland have been followed.
-
-### Service Logs
-
-To inspect logs and troubleshoot service issues, run:
-
-```
+View systemd logs:
+```bash
 sudo systemctl status viewer.service
 sudo journalctl -u viewer.service
 ```
+Check the PiViewer log (written to viewer.log by default).
+#### Wayland Conflicts
+
+If you see warnings about xrandr or DISPLAY, ensure you’re not on Wayland.
