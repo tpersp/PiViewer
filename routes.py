@@ -31,17 +31,22 @@ def stats_json():
         "temp": temp
     })
 
+
 @main_bp.route("/list_monitors")
 def list_monitors():
+    # Return the actual monitor info (including resolution) as detected.
     return jsonify(detect_monitors())
+
 
 @main_bp.route("/list_folders")
 def list_folders():
     return jsonify(get_subfolders())
 
+
 @main_bp.route("/images/<path:filename>")
 def serve_image(filename):
     return send_from_directory(IMAGE_DIR, filename)
+
 
 @main_bp.route("/bg_image")
 def bg_image():
@@ -49,11 +54,13 @@ def bg_image():
         return send_file(WEB_BG)
     return "", 404
 
+
 @main_bp.route("/download_log")
 def download_log():
     if os.path.exists(LOG_PATH):
         return send_file(LOG_PATH, as_attachment=True)
     return "No log file found", 404
+
 
 @main_bp.route("/upload_bg", methods=["POST"])
 def upload_bg():
@@ -61,6 +68,7 @@ def upload_bg():
     if f:
         f.save(WEB_BG)
     return redirect(url_for("main.settings"))
+
 
 @main_bp.route("/upload_media", methods=["GET", "POST"])
 def upload_media():
@@ -106,6 +114,7 @@ def upload_media():
 
     return redirect(url_for("main.index"))
 
+
 def get_next_filename(subfolder_name, folder_path, desired_ext):
     prefix = get_folder_prefix(subfolder_name)
     existing = os.listdir(folder_path)
@@ -122,6 +131,7 @@ def get_next_filename(subfolder_name, folder_path, desired_ext):
                 pass
     return f"{prefix}{(max_num + 1):03d}{desired_ext}"
 
+
 @main_bp.route("/restart_viewer", methods=["POST"])
 def restart_viewer():
     try:
@@ -129,6 +139,7 @@ def restart_viewer():
         return redirect(url_for("main.index"))
     except subprocess.CalledProcessError as e:
         return f"Failed to restart viewer.service: {e}", 500
+
 
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
@@ -152,6 +163,7 @@ def settings():
         theme=cfg.get("theme", "dark"),
         cfg=cfg
     )
+
 
 @main_bp.route("/", methods=["GET", "POST"])
 def index():
@@ -272,6 +284,7 @@ def index():
             table_of_displays = []
             for rdname, rdcfg in rem_cfg.get("displays", {}).items():
                 resolution = "unknown"
+                # Now remote_mons is a dict like {"HDMI-1": {"resolution": "?"}, ...}
                 if remote_mons and rdname in remote_mons:
                     resolution = remote_mons[rdname].get("resolution", "unknown")
 
@@ -308,18 +321,19 @@ def index():
         folder_counts=folder_counts,
         display_images=display_images,
         cpu=cpu,
-        mem_mb=round(mem_mb,1),
-        load1=round(load1,2),
+        mem_mb=round(mem_mb, 1),
+        load1=round(load1, 2),
         temp=temp,
         host=host,
         ipaddr=ipaddr,
         model=model,
         theme=theme,
-        monitors={m: {"resolution": "?"} for m in monitors},  # simple mapping
+        monitors=monitors,
         version=APP_VERSION,
         sub_info_line=sub_info_line,
         remote_displays=remote_displays
     )
+
 
 @main_bp.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
 def remote_configure(dev_index):
