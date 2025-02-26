@@ -57,28 +57,53 @@ def log_message(msg):
         f.write(f"{datetime.now()}: {msg}\n")
     print(msg)
 
+
 def detect_monitors():
     """
     Use xrandr --listmonitors to detect connected monitors.
-    Return list like ["HDMI-1", "HDMI-2"] or ["Display0"] if unknown.
+    Returns something like:
+      {
+        "HDMI-1": {"resolution": "1920x1080", "name": "HDMI-1"},
+        ...
+      }
+    Fallback if none.
     """
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
         lines = out.split("\n")
         if len(lines) <= 1:
-            return ["Display0"]
-        results = []
+            return {"Display0": {"resolution": "unknown", "name": "Display0"}}
+        monitors = {}
         for line in lines[1:]:
             parts = line.strip().split()
-            if len(parts) >= 2:
-                raw_name = parts[-1]
-                mname = raw_name.strip("+*")
-                results.append(mname)
-        if not results:
-            return ["Display0"]
-        return results
+            if len(parts) < 3:
+                continue
+            geometry_idx = None
+            for i, p in enumerate(parts):
+                if 'x' in p and '/' in p:
+                    geometry_idx = i
+                    break
+            if geometry_idx is None:
+                name_clean = parts[2].strip("+*")
+                monitors[name_clean] = {"resolution": "unknown", "name": name_clean}
+                continue
+            geometry_part = parts[geometry_idx]
+            actual_name = parts[-1]
+            try:
+                left, right = geometry_part.split("x")
+                width = left.split("/")[0]
+                right_split_plus = right.split("+")[0]
+                height = right_split_plus.split("/")[0]
+                resolution = f"{width}x{height}"
+            except:
+                resolution = "unknown"
+            name_clean = actual_name.strip("+*")
+            monitors[name_clean] = {"resolution": resolution, "name": name_clean}
+        if not monitors:
+            return {"Display0": {"resolution": "unknown", "name": "Display0"}}
+        return monitors
     except:
-        return ["Display0"]
+        return {"Display0": {"resolution": "unknown", "name": "Display0"}}
 
 def get_hostname():
     try:
