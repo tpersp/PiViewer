@@ -35,16 +35,6 @@ PiViewer is a lightweight, easy-to-configure slideshow viewer and controller des
   PiViewer currently uses `xrandr` and X11; it does *not* support Wayland.  
   (You may need to disable Wayland manually in your Pi’s configuration.)
 
-### Manual X11 Configuration (If Needed)
-
-1. **`/boot/config.txt`** or `/boot/firmware/config.txt` (depending on your Pi OS version):  
-   - You *should not* have `dtoverlay=vc4-fkms-v3d`.  
-   - Instead, ensure something like:
-     ```ini
-     dtoverlay=vc4-kms-v3d
-     max_framebuffers=2
-     hdmi_force_hotplug=1
-     ```
 2. **Disable Wayland**  
    In Raspberry Pi OS, run:
 sudo raspi-config
@@ -161,3 +151,14 @@ Check the PiViewer log (written to viewer.log by default).
 #### Wayland Conflicts
 
 If you see warnings about xrandr or DISPLAY, ensure you’re not on Wayland.
+
+### Manual X11 Configuration (If Needed)
+
+**`/boot/config.txt`** or `/boot/firmware/config.txt` (depending on your Pi OS version):  
+   - You *should not* have `dtoverlay=vc4-fkms-v3d`.  
+   - Instead, ensure something like:
+     ```ini
+     dtoverlay=vc4-kms-v3d
+     max_framebuffers=2
+     hdmi_force_hotplug=1
+     ```
