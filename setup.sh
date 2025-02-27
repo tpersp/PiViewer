@@ -2,7 +2,7 @@
 #
 # setup.sh - Simple "It Just Works" viewer + controller installation
 #
-# NOTE: This setup.sh is designed for PiViewer version 1.0.7
+# NOTE: This setup.sh is designed for PiViewer version 1.0.8
 #
 #   1) Installs LightDM (with Xorg), mpv, python3, etc.
 #   2) Installs pip dependencies (with --break-system-packages)
@@ -21,7 +21,6 @@
 # controller.service will run app.py on port 8080:  http://<Pi-IP>:8080
 #
 # Usage:  sudo ./setup.sh
-
 
 # -------------------------------------------------------
 # Must be run as root (sudo):
@@ -81,7 +80,7 @@ else
 fi
 
 # -------------------------------------------------------
-# 3) Disable screen blanking and mouse cursor
+# 3) Disable screen blanking and hide mouse cursor
 # -------------------------------------------------------
 echo
 echo "== Step 3: Disabling screen blanking via raspi-config =="
@@ -94,6 +93,25 @@ fi
 
 # Remove mouse cursor from X sessions:
 sudo sed -i -- "s/#xserver-command=X/xserver-command=X -nocursor/" /etc/lightdm/lightdm.conf
+
+# -------------------------------------------------------
+# 3a) Update boot firmware configuration
+# -------------------------------------------------------
+echo
+echo "== Step 3a: Updating boot firmware configuration in /boot/firmware/config.txt =="
+sudo cp /boot/firmware/config.txt /boot/firmware/config.txt.backup
+
+# Insert dtoverlay if missing, right after the comment line.
+sudo grep -q '^dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt" || \
+  sudo sed -i '/^# Enable DRM VC4 V3D driver/ a dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt"
+
+# Insert max_framebuffers if missing, immediately after the dtoverlay line.
+sudo grep -q '^max_framebuffers=2' "/boot/firmware/config.txt" || \
+  sudo sed -i '/^dtoverlay=vc4-kms-v3d/ a max_framebuffers=2' "/boot/firmware/config.txt"
+
+# Insert hdmi_force_hotplug if missing, immediately after the max_framebuffers line.
+sudo grep -q '^hdmi_force_hotplug=1' "/boot/firmware/config.txt" || \
+  sudo sed -i '/^max_framebuffers=2/ a hdmi_force_hotplug=1' "/boot/firmware/config.txt"
 
 # -------------------------------------------------------
 # 4) Prompt user for config
