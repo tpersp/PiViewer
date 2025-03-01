@@ -6,7 +6,7 @@
 </head>
 <body class="{{ theme }}">
 <div class="container">
-  <h1>Upload New Media (GIF/PNG/JPG)</h1>
+  <h1>Upload New Media (GIF/PNG/JPG/MP4/WebP)</h1>
   <form method="POST" enctype="multipart/form-data">
     <label>Select Subfolder:</label><br>
     <select name="subfolder">
@@ -18,7 +18,7 @@
     (Optional) Create new subfolder:
     <input type="text" name="new_subfolder" placeholder="New Folder Name">
     <br><br>
-    <input type="file" name="mediafiles" accept=".gif,.png,.jpg,.jpeg" multiple>
+    <input type="file" name="mediafiles" accept=".gif,.png,.jpg,.jpeg,.mp4,.webp" multiple>
     <br><br>
     <button type="submit">Upload</button>
   </form>

@@ -103,7 +103,8 @@ def upload_media():
             continue
         original_name = file.filename
         ext = os.path.splitext(original_name.lower())[1]
-        if ext not in [".gif", ".jpg", ".jpeg", ".png"]:
+        # Now also support .mp4 and .webp files
+        if ext not in [".gif", ".jpg", ".jpeg", ".png", ".mp4", ".webp"]:
             log_message(f"Skipped file (unsupported): {original_name}")
             continue
 
@@ -113,6 +114,7 @@ def upload_media():
         log_message(f"Uploaded file saved to: {final_path}")
 
     return redirect(url_for("main.index"))
+
 
 
 def get_next_filename(subfolder_name, folder_path, desired_ext):

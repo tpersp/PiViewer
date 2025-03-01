@@ -77,8 +77,8 @@ def build_full_path(relpath):
 
 def get_images_in_category(category):
     """
-    Return list of image paths (relative to IMAGE_DIR) for the given category.
-    If category is empty, returns images in all subfolders.
+    Return list of image/video paths (relative to IMAGE_DIR) for the given category.
+    If category is empty, returns media files in all subfolders.
     """
     if category:
         base = os.path.join(IMAGE_DIR, category)
@@ -88,7 +88,7 @@ def get_images_in_category(category):
         valid = []
         for f in files:
             lf = f.lower()
-            if lf.endswith((".jpg", ".jpeg", ".png", ".gif")):
+            if lf.endswith((".jpg", ".jpeg", ".png", ".gif", ".mp4", ".webp")):
                 valid.append(os.path.join(category, f))
         valid.sort()
         return valid
@@ -97,14 +97,14 @@ def get_images_in_category(category):
         for root, dirs, files in os.walk(IMAGE_DIR):
             for f in files:
                 lf = f.lower()
-                if lf.endswith((".jpg", ".jpeg", ".png", ".gif")):
+                if lf.endswith((".jpg", ".jpeg", ".png", ".gif", ".mp4", ".webp")):
                     rel = os.path.relpath(os.path.join(root, f), IMAGE_DIR)
                     results.append(rel)
         results.sort()
         return results
 
 def get_mixed_images(folder_list):
-    """Return combined image paths from multiple subfolders."""
+    """Return combined media file paths from multiple subfolders."""
     all_files = []
     for cat in folder_list:
         catlist = get_images_in_category(cat)

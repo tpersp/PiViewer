@@ -2,7 +2,7 @@
 #
 # setup.sh - Simple "It Just Works" viewer + controller installation
 #
-# NOTE: This setup.sh is designed for PiViewer version 1.0.8
+# NOTE: This setup.sh is designed for PiViewer version 1.0.8+
 #
 #   1) Installs LightDM (with Xorg), mpv, python3, etc.
 #   2) Installs pip dependencies (with --break-system-packages)
