@@ -66,13 +66,18 @@ def detect_monitors():
         "HDMI-1": {"resolution": "1920x1080", "name": "HDMI-1"},
         ...
       }
-    Fallback if none.
+    If xrandr returns none, we check if /dev/fb1 exists and fallback to a single "FB1" monitor.
+    Otherwise final fallback is "Display0".
     """
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
         lines = out.split("\n")
         if len(lines) <= 1:
-            return {"Display0": {"resolution": "unknown", "name": "Display0"}}
+            # xrandr sees no monitors
+            if os.path.exists("/dev/fb1"):
+                return {"FB1": {"resolution": "480x320", "name": "FB1"}}
+            else:
+                return {"Display0": {"resolution": "unknown", "name": "Display0"}}
         monitors = {}
         for line in lines[1:]:
             parts = line.strip().split()
@@ -100,10 +105,18 @@ def detect_monitors():
             name_clean = actual_name.strip("+*")
             monitors[name_clean] = {"resolution": resolution, "name": name_clean}
         if not monitors:
-            return {"Display0": {"resolution": "unknown", "name": "Display0"}}
+            # No recognized monitors from xrandr
+            if os.path.exists("/dev/fb1"):
+                return {"FB1": {"resolution": "480x320", "name": "FB1"}}
+            else:
+                return {"Display0": {"resolution": "unknown", "name": "Display0"}}
         return monitors
     except:
-        return {"Display0": {"resolution": "unknown", "name": "Display0"}}
+        # if xrandr fails entirely:
+        if os.path.exists("/dev/fb1"):
+            return {"FB1": {"resolution": "480x320", "name": "FB1"}}
+        else:
+            return {"Display0": {"resolution": "unknown", "name": "Display0"}}
 
 def get_hostname():
     try:
@@ -219,8 +232,3 @@ def pull_displays_from_remote(ip):
         return None
     # We only care about "displays".
     return remote_cfg.get("displays", {})
-
-# ---------------------------------------------------------------------
-# No "maybe_push_to_subdevices" auto logic anymore. We rely on manual
-# push/pull from device_manager, so we do not keep forcing roles.
-# ---------------------------------------------------------------------

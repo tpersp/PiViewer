@@ -11,7 +11,8 @@ import threading
 from datetime import datetime
 
 from config import APP_VERSION, VIEWER_HOME, IMAGE_DIR, CONFIG_PATH, LOG_PATH
-# We'll reuse the log_message, but to avoid circular import, we can define a mini logger here:
+
+# We'll reuse a mini logger here to avoid import loops:
 def log_message(msg):
     print(msg)
     with open(LOG_PATH, "a") as f:
@@ -38,12 +39,19 @@ def mpv_command(sock_path, cmd_dict):
         log_message(f"[mpv_command] error: {e}")
 
 def detect_monitors():
-    """Return a list of monitor names using xrandr --listmonitors. Fallback if none found."""
+    """
+    Local copy of detect_monitors.  If xrandr sees none,
+    fallback to /dev/fb1 or "Display0".
+    """
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
         lines = out.split("\n")
         if len(lines) <= 1:
-            return ["Display0"]
+            # xrandr sees no monitors
+            if os.path.exists("/dev/fb1"):
+                return ["FB1"]
+            else:
+                return ["Display0"]
         monitors = []
         for line in lines[1:]:
             parts = line.strip().split()
@@ -52,10 +60,16 @@ def detect_monitors():
                 mname = raw_name.strip("+*")
                 monitors.append(mname)
         if not monitors:
-            return ["Display0"]
+            if os.path.exists("/dev/fb1"):
+                return ["FB1"]
+            else:
+                return ["Display0"]
         return monitors
     except:
-        return ["Display0"]
+        if os.path.exists("/dev/fb1"):
+            return ["FB1"]
+        else:
+            return ["Display0"]
 
 def build_full_path(relpath):
     """e.g. relpath="Nature/flower.jpg" => /mnt/PiViewers/Nature/flower.jpg"""
@@ -98,12 +112,25 @@ def get_mixed_images(folder_list):
     return sorted(all_files)
 
 def get_screen_index(monitor_name):
-    """Map monitor name to xrandr-based screen index."""
-    monitors = detect_monitors()
+    """
+    We do xrandr again, see the order. If it matches monitor_name, return that index.
+    Otherwise 0.
+    """
+    all_mons = []
     try:
-        return monitors.index(monitor_name)
-    except ValueError:
-        return 0
+        out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
+        lines = out.split("\n")
+        for line in lines[1:]:
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                raw_name = parts[-1]
+                mname = raw_name.strip("+*")
+                all_mons.append(mname)
+    except:
+        pass
+    if monitor_name in all_mons:
+        return all_mons.index(monitor_name)
+    return 0
 
 class DisplayThread(threading.Thread):
     def __init__(self, disp_name):

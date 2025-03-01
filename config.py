@@ -6,7 +6,8 @@ import os
 # ------------------------------------------------------------
 # Application Version & Paths
 # ------------------------------------------------------------
-APP_VERSION = "1.0.7"  # Bumped from 1.0.6 -> 1.0.7
+# Bumped from 1.0.8 to 1.0.9
+APP_VERSION = "1.0.9"
 
 VIEWER_HOME = os.environ.get("VIEWER_HOME", "/home/pi/PiViewer")
 IMAGE_DIR   = os.environ.get("IMAGE_DIR", "/mnt/PiViewers")
