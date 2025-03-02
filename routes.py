@@ -539,7 +539,7 @@ def update_app():
     if old_hash and new_hash and old_hash != new_hash:
         log_message("setup.sh changed. Re-running setup.sh in --auto-update mode...")
         try:
-            subprocess.check_call(["bash", "setup.sh", "--auto-update"], cwd=VIEWER_HOME)
+            subprocess.check_call(["sudo", "bash", "setup.sh", "--auto-update"], cwd=VIEWER_HOME)
         except subprocess.CalledProcessError as e:
             log_message(f"Re-running setup.sh failed: {e}")
 
