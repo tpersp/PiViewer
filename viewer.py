@@ -11,7 +11,7 @@ import threading
 from datetime import datetime
 
 from config import APP_VERSION, VIEWER_HOME, IMAGE_DIR, CONFIG_PATH, LOG_PATH
-# We'll reuse the log_message, but to avoid circular import, we can define a mini logger here:
+
 def log_message(msg):
     print(msg)
     with open(LOG_PATH, "a") as f:
@@ -23,9 +23,6 @@ def load_config():
     with open(CONFIG_PATH, "r") as f:
         return json.load(f)
 
-# ------------------------------------------------------------------
-# MPV Helpers
-# ------------------------------------------------------------------
 def mpv_command(sock_path, cmd_dict):
     """Send a JSON IPC command to MPV's UNIX socket."""
     if not os.path.exists(sock_path):
@@ -37,13 +34,23 @@ def mpv_command(sock_path, cmd_dict):
     except Exception as e:
         log_message(f"[mpv_command] error: {e}")
 
+def apply_loop_property(sock_path, fullpath):
+    """For images, always set loop-file to inf."""
+    mpv_command(sock_path, {"command": ["set_property", "loop-file", "inf"]})
+
 def detect_monitors():
-    """Return a list of monitor names using xrandr --listmonitors. Fallback if none found."""
+    """
+    Use xrandr --listmonitors to detect connected monitors.
+    Returns a list of monitor names, e.g. ["HDMI-1", "HDMI-2"], or ["Display0"] as fallback.
+    """
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
         lines = out.split("\n")
         if len(lines) <= 1:
-            return ["Display0"]
+            if os.path.exists("/dev/fb1"):
+                return ["FB1"]
+            else:
+                return ["Display0"]
         monitors = []
         for line in lines[1:]:
             parts = line.strip().split()
@@ -52,19 +59,24 @@ def detect_monitors():
                 mname = raw_name.strip("+*")
                 monitors.append(mname)
         if not monitors:
-            return ["Display0"]
+            if os.path.exists("/dev/fb1"):
+                return ["FB1"]
+            else:
+                return ["Display0"]
         return monitors
     except:
-        return ["Display0"]
+        if os.path.exists("/dev/fb1"):
+            return ["FB1"]
+        else:
+            return ["Display0"]
 
 def build_full_path(relpath):
-    """e.g. relpath="Nature/flower.jpg" => /mnt/PiViewers/Nature/flower.jpg"""
     return os.path.join(IMAGE_DIR, relpath)
 
 def get_images_in_category(category):
     """
     Return list of image paths (relative to IMAGE_DIR) for the given category.
-    If category is empty, returns images in all subfolders.
+    Only accept GIF, JPG, JPEG, PNG.
     """
     if category:
         base = os.path.join(IMAGE_DIR, category)
@@ -90,7 +102,7 @@ def get_images_in_category(category):
         return results
 
 def get_mixed_images(folder_list):
-    """Return combined image paths from multiple subfolders."""
+    """Combine images from multiple folders into one sorted list."""
     all_files = []
     for cat in folder_list:
         catlist = get_images_in_category(cat)
@@ -98,12 +110,25 @@ def get_mixed_images(folder_list):
     return sorted(all_files)
 
 def get_screen_index(monitor_name):
-    """Map monitor name to xrandr-based screen index."""
-    monitors = detect_monitors()
+    """
+    Attempts to find index of monitor_name from xrandr --listmonitors output
+    so mpv can use --screen=X.
+    """
+    all_mons = []
     try:
-        return monitors.index(monitor_name)
-    except ValueError:
-        return 0
+        out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
+        lines = out.split("\n")
+        for line in lines[1:]:
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                raw_name = parts[-1]
+                mname = raw_name.strip("+*")
+                all_mons.append(mname)
+    except:
+        pass
+    if monitor_name in all_mons:
+        return all_mons.index(monitor_name)
+    return 0
 
 class DisplayThread(threading.Thread):
     def __init__(self, disp_name):
@@ -114,7 +139,6 @@ class DisplayThread(threading.Thread):
         self.mpv_proc = None
 
     def run(self):
-        # Build mpv command with --screen parameter
         mpv_cmd = [
             "mpv",
             "--idle",
@@ -131,11 +155,12 @@ class DisplayThread(threading.Thread):
         mpv_cmd.append(f"--screen={screen_index}")
         log_message(f"[{self.disp_name}] Starting MPV (version {APP_VERSION}): {' '.join(mpv_cmd)}")
         self.mpv_proc = subprocess.Popen(mpv_cmd)
+
         while not self.stop_flag:
             cfg = load_config()
             disp_cfg = cfg.get("displays", {}).get(self.disp_name, {})
             mode = disp_cfg.get("mode", "random_image")
-            interval = disp_cfg.get("image_interval", 60)
+
             if mode == "random_image":
                 self.random_slideshow(disp_cfg)
             elif mode == "specific_image":
@@ -145,6 +170,7 @@ class DisplayThread(threading.Thread):
             else:
                 log_message(f"[{self.disp_name}] Unknown mode '{mode}', sleeping 5s.")
                 time.sleep(5)
+
         log_message(f"[{self.disp_name}] Stopping MPV.")
         self.mpv_proc.terminate()
         self.mpv_proc.wait()
@@ -162,25 +188,32 @@ class DisplayThread(threading.Thread):
             log_message(f"[{self.disp_name}] No images in category='{cat}', wait 10s.")
             time.sleep(10)
             return
+
         if shuffle:
             random.shuffle(images)
         idx = 0
+
         while True:
+            # Check if the mode changed mid-loop:
             c2 = load_config().get("displays", {}).get(self.disp_name, {})
             if c2.get("mode") != "random_image":
                 break
             if c2.get("image_category", "") != cat:
                 break
-            fn = images[idx]
-            fullpath = build_full_path(fn)
-            log_message(f"[{self.disp_name}] loadfile: {fullpath}")
+
+            fullpath = build_full_path(images[idx])
+            # (Previously we logged every loadfile, now we skip it to reduce spam)
             mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+            apply_loop_property(self.sock_path, fullpath)
             self.apply_rotation(disp_cfg)
+
             idx += 1
             if idx >= len(images):
                 idx = 0
                 if shuffle:
                     random.shuffle(images)
+
+            # Wait interval seconds, checking stop_flag or mode changes
             for _ in range(interval):
                 if self.stop_flag:
                     return
@@ -196,14 +229,18 @@ class DisplayThread(threading.Thread):
             log_message(f"[{self.disp_name}] No specific_image set, sleeping 10s.")
             time.sleep(10)
             return
+
         fullpath = os.path.join(IMAGE_DIR, cat, spec)
         if not os.path.exists(fullpath):
             log_message(f"[{self.disp_name}] specific_image '{fullpath}' not found, sleeping 10s.")
             time.sleep(10)
             return
-        log_message(f"[{self.disp_name}] loadfile (specific): {fullpath}")
+
+        # (We skip logging "loadfile" to reduce spam)
         mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+        apply_loop_property(self.sock_path, fullpath)
         self.apply_rotation(disp_cfg)
+
         while not self.stop_flag:
             c2 = load_config().get("displays", {}).get(self.disp_name, {})
             if c2.get("mode") != "specific_image":
@@ -218,32 +255,37 @@ class DisplayThread(threading.Thread):
             log_message(f"[{self.disp_name}] No folders in 'mixed_folders', sleeping 10s.")
             time.sleep(10)
             return
+
         images = get_mixed_images(folder_list)
         if not images:
             log_message(f"[{self.disp_name}] 'mixed' mode but no images found in {folder_list}, sleeping 10s.")
             time.sleep(10)
             return
+
         shuffle = disp_cfg.get("shuffle_mode", False)
         interval = disp_cfg.get("image_interval", 60)
         if shuffle:
             random.shuffle(images)
         idx = 0
+
         while True:
             c2 = load_config().get("displays", {}).get(self.disp_name, {})
             if c2.get("mode") != "mixed":
                 break
             if c2.get("mixed_folders", []) != folder_list:
                 break
-            fn = images[idx]
-            fullpath = build_full_path(fn)
-            log_message(f"[{self.disp_name}] loadfile (mixed): {fullpath}")
+
+            fullpath = build_full_path(images[idx])
             mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+            apply_loop_property(self.sock_path, fullpath)
             self.apply_rotation(disp_cfg)
+
             idx += 1
             if idx >= len(images):
                 idx = 0
                 if shuffle:
                     random.shuffle(images)
+
             for _ in range(interval):
                 if self.stop_flag:
                     return
@@ -261,11 +303,13 @@ if __name__ == "__main__":
     if not monitors:
         log_message("No monitors detected. Exiting.")
         exit(0)
+
     threads = []
     for m in monitors:
         t = DisplayThread(m)
         t.start()
         threads.append(t)
+
     try:
         while True:
             time.sleep(5)

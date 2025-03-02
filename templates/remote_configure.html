@@ -2,6 +2,7 @@
 <html>
 <head>
   <title>Configure Remote Device</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script>
     function initMixedUI(dispName){
@@ -203,6 +204,9 @@
     </div>
   </form>
   <br>
+  <a href="{{ url_for('main.index') }}">
+    <button>Back to Main</button>
+  </a>
   <a href="{{ url_for('main.device_manager') }}">
     <button>Back to Device Manager</button>
   </a>

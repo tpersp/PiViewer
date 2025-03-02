@@ -2,26 +2,26 @@
 #
 # setup.sh - Simple "It Just Works" viewer + controller installation
 #
-# NOTE: This setup.sh is designed for PiViewer version 1.0.7
+# NOTE: This setup.sh is designed for PiViewer version 1.0.8
 #
 #   1) Installs LightDM (with Xorg), mpv, python3, etc.
 #   2) Installs pip dependencies (with --break-system-packages)
 #   3) Disables screen blanking (via raspi-config)
-#   4) Prompts for user + paths
+#   4) Prompts for user + paths (unless in --auto-update mode)
 #   5) Creates .env in VIEWER_HOME
 #   6) (Optional) mounts a CIFS network share
 #   7) Creates systemd services:
 #        - viewer.service (runs viewer.py slideshow on X:0)
 #        - controller.service (Flask web interface)
-#   8) Reboots
+#   8) Reboots (unless in --auto-update mode)
 #
 # After reboot, LightDM will auto-login to an X session on :0.
 # viewer.service will run viewer.py (which dynamically assigns mpv
 # to monitors based on xrandr).
 # controller.service will run app.py on port 8080:  http://<Pi-IP>:8080
 #
-# Usage:  sudo ./setup.sh
-
+# Usage:  sudo ./setup.sh  [--auto-update]
+#   If you run with --auto-update, we skip interactive prompts and the final reboot.
 
 # -------------------------------------------------------
 # Must be run as root (sudo):
@@ -31,21 +31,31 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-echo "================================================================="
-echo "  Simple 'It Just Works' Setup with LightDM + viewer + controller"
-echo "================================================================="
-echo
-echo "This script will:"
-echo " 1) Install lightdm (Xorg), mpv, python3, etc."
-echo " 2) pip-install your Python dependencies (with --break-system-packages)"
-echo " 3) Disable screen blanking"
-echo " 4) Prompt for user & paths"
-echo " 5) Create .env in VIEWER_HOME"
-echo " 6) (Optional) mount a network share"
-echo " 7) Create systemd services for viewer.py and app.py"
-echo " 8) Reboot"
-echo
-read -p "Press [Enter] to continue or Ctrl+C to abort..."
+# -------------------------------------------------------
+# Check if we're in "auto-update" mode
+# -------------------------------------------------------
+AUTO_UPDATE="false"
+if [[ "$1" == "--auto-update" ]]; then
+  AUTO_UPDATE="true"
+fi
+
+if [[ "$AUTO_UPDATE" == "false" ]]; then
+  echo "================================================================="
+  echo "  Simple 'It Just Works' Setup with LightDM + viewer + controller"
+  echo "================================================================="
+  echo
+  echo "This script will:"
+  echo " 1) Install lightdm (Xorg), mpv, python3, etc."
+  echo " 2) pip-install your Python dependencies (with --break-system-packages)"
+  echo " 3) Disable screen blanking"
+  echo " 4) Prompt for user & paths"
+  echo " 5) Create .env in VIEWER_HOME"
+  echo " 6) (Optional) mount a network share"
+  echo " 7) Create systemd services for viewer.py and app.py"
+  echo " 8) Reboot"
+  echo
+  read -p "Press [Enter] to continue or Ctrl+C to abort..."
+fi
 
 # -------------------------------------------------------
 # 1) Install apt packages
@@ -81,7 +91,7 @@ else
 fi
 
 # -------------------------------------------------------
-# 3) Disable screen blanking and mouse cursor
+# 3) Disable screen blanking and hide mouse cursor
 # -------------------------------------------------------
 echo
 echo "== Step 3: Disabling screen blanking via raspi-config =="
@@ -93,39 +103,75 @@ else
 fi
 
 # Remove mouse cursor from X sessions:
-sudo sed -i -- "s/#xserver-command=X/xserver-command=X -nocursor/" /etc/lightdm/lightdm.conf
+sed -i -- "s/#xserver-command=X/xserver-command=X -nocursor/" /etc/lightdm/lightdm.conf
 
 # -------------------------------------------------------
-# 4) Prompt user for config
+# 3a) Update boot firmware configuration
 # -------------------------------------------------------
 echo
-echo "== Step 4: Configuration =="
-read -p "Enter the Linux username to run the viewer & controller (default: pi): " VIEWER_USER
-VIEWER_USER=${VIEWER_USER:-pi}
+echo "== Step 3a: Updating boot firmware configuration in /boot/firmware/config.txt =="
+cp /boot/firmware/config.txt /boot/firmware/config.txt.backup
 
-USER_ID="$(id -u "$VIEWER_USER" 2>/dev/null)"
-if [ -z "$USER_ID" ]; then
-  echo "User '$VIEWER_USER' not found. Create user? (y/n)"
-  read create_user
-  if [[ "$create_user" =~ ^[Yy]$ ]]; then
-    adduser --gecos "" --disabled-password "$VIEWER_USER"
-    USER_ID="$(id -u "$VIEWER_USER")"
-    echo "User '$VIEWER_USER' created with no password (you can set one later if desired)."
+# Insert dtoverlay if missing, right after the comment line.
+grep -q '^dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt" || \
+  sed -i '/^# Enable DRM VC4 V3D driver/ a dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt"
+
+# Insert max_framebuffers if missing, immediately after the dtoverlay line.
+grep -q '^max_framebuffers=2' "/boot/firmware/config.txt" || \
+  sed -i '/^dtoverlay=vc4-kms-v3d/ a max_framebuffers=2' "/boot/firmware/config.txt"
+
+# Insert hdmi_force_hotplug if missing, immediately after the max_framebuffers line.
+grep -q '^hdmi_force_hotplug=1' "/boot/firmware/config.txt" || \
+  sed -i '/^max_framebuffers=2/ a hdmi_force_hotplug=1' "/boot/firmware/config.txt"
+
+# -------------------------------------------------------
+# 4) Prompt user for config (skip if AUTO_UPDATE)
+# -------------------------------------------------------
+if [[ "$AUTO_UPDATE" == "false" ]]; then
+  echo
+  echo "== Step 4: Configuration =="
+  read -p "Enter the Linux username to run the viewer & controller (default: pi): " VIEWER_USER
+  VIEWER_USER=${VIEWER_USER:-pi}
+
+  USER_ID="$(id -u "$VIEWER_USER" 2>/dev/null)"
+  if [ -z "$USER_ID" ]; then
+    echo "User '$VIEWER_USER' not found. Create user? (y/n)"
+    read create_user
+    if [[ "$create_user" =~ ^[Yy]$ ]]; then
+      adduser --gecos "" --disabled-password "$VIEWER_USER"
+      USER_ID="$(id -u "$VIEWER_USER")"
+      echo "User '$VIEWER_USER' created with no password (you can set one later if desired)."
+    else
+      echo "Cannot proceed without a valid user. Exiting."
+      exit 1
+    fi
+  fi
+
+  read -p "Enter the path for VIEWER_HOME (default: /home/$VIEWER_USER/PiViewer): " input_home
+  if [ -z "$input_home" ]; then
+    VIEWER_HOME="/home/$VIEWER_USER/PiViewer"
   else
-    echo "Cannot proceed without a valid user. Exiting."
+    VIEWER_HOME="$input_home"
+  fi
+
+  read -p "Enter the path for IMAGE_DIR (default: /mnt/PiViewers): " input_dir
+  IMAGE_DIR=${input_dir:-/mnt/PiViewers}
+
+else
+  # In --auto-update mode, set some defaults without prompting
+  echo
+  echo "== Auto-Update Mode: skipping interactive prompts. Using defaults. =="
+  VIEWER_USER="pi"
+  USER_ID="$(id -u "$VIEWER_USER")"
+  # If user 'pi' doesn't exist, no prompts => we can't proceed
+  if [ -z "$USER_ID" ]; then
+    echo "User 'pi' not found. Exiting auto-update."
     exit 1
   fi
-fi
 
-read -p "Enter the path for VIEWER_HOME (default: /home/$VIEWER_USER/PiViewer): " input_home
-if [ -z "$input_home" ]; then
   VIEWER_HOME="/home/$VIEWER_USER/PiViewer"
-else
-  VIEWER_HOME="$input_home"
+  IMAGE_DIR="/mnt/PiViewers"
 fi
-
-read -p "Enter the path for IMAGE_DIR (default: /mnt/PiViewers): " input_dir
-IMAGE_DIR=${input_dir:-/mnt/PiViewers}
 
 echo
 echo "Creating $VIEWER_HOME if it doesn't exist..."
@@ -149,40 +195,45 @@ cat "$ENV_FILE"
 echo
 
 # -------------------------------------------------------
-# 6) (Optional) Configure CIFS/SMB share
+# 6) (Optional) Configure CIFS/SMB share (skip if AUTO_UPDATE)
 # -------------------------------------------------------
-echo
-echo "== Step 6: (Optional) Network Share at $IMAGE_DIR =="
-read -p "Mount a network share at $IMAGE_DIR via CIFS? (y/n): " mount_answer
-if [[ "$mount_answer" =~ ^[Yy]$ ]]; then
-  read -p "Enter server share path (e.g. //192.168.1.100/MyShare): " SERVER_SHARE
-  if [ -z "$SERVER_SHARE" ]; then
-    echo "No share path entered. Skipping."
-  else
-    read -p "Mount options (e.g. guest,uid=$USER_ID,gid=$USER_ID,vers=3.0) [ENTER for default]: " MOUNT_OPTS
-    if [ -z "$MOUNT_OPTS" ]; then
-      MOUNT_OPTS="guest,uid=$USER_ID,gid=$USER_ID,vers=3.0"
-    fi
-
-    echo "Creating mount dir: $IMAGE_DIR"
-    mkdir -p "$IMAGE_DIR"
-
-    FSTAB_LINE="$SERVER_SHARE  $IMAGE_DIR  cifs  $MOUNT_OPTS  0  0"
-    if grep -qs "$SERVER_SHARE" /etc/fstab; then
-      echo "Share already in /etc/fstab; skipping append."
+if [[ "$AUTO_UPDATE" == "false" ]]; then
+  echo
+  echo "== Step 6: (Optional) Network Share at $IMAGE_DIR =="
+  read -p "Mount a network share at $IMAGE_DIR via CIFS? (y/n): " mount_answer
+  if [[ "$mount_answer" =~ ^[Yy]$ ]]; then
+    read -p "Enter server share path (e.g. //192.168.1.100/MyShare): " SERVER_SHARE
+    if [ -z "$SERVER_SHARE" ]; then
+      echo "No share path entered. Skipping."
     else
-      echo "Appending to /etc/fstab: $FSTAB_LINE"
-      echo "$FSTAB_LINE" >> /etc/fstab
-    fi
+      read -p "Mount options (e.g. guest,uid=$USER_ID,gid=$USER_ID,vers=3.0) [ENTER for default]: " MOUNT_OPTS
+      if [ -z "$MOUNT_OPTS" ]; then
+        MOUNT_OPTS="guest,uid=$USER_ID,gid=$USER_ID,vers=3.0"
+      fi
 
-    echo "Mounting all..."
-    mount -a
-    if [ $? -ne 0 ]; then
-      echo "WARNING: mount -a failed. Check credentials/options."
-    else
-      echo "Share mounted at $IMAGE_DIR."
+      echo "Creating mount dir: $IMAGE_DIR"
+      mkdir -p "$IMAGE_DIR"
+
+      FSTAB_LINE="$SERVER_SHARE  $IMAGE_DIR  cifs  $MOUNT_OPTS  0  0"
+      if grep -qs "$SERVER_SHARE" /etc/fstab; then
+        echo "Share already in /etc/fstab; skipping append."
+      else
+        echo "Appending to /etc/fstab: $FSTAB_LINE"
+        echo "$FSTAB_LINE" >> /etc/fstab
+      fi
+
+      echo "Mounting all..."
+      mount -a
+      if [ $? -ne 0 ]; then
+        echo "WARNING: mount -a failed. Check credentials/options."
+      else
+        echo "Share mounted at $IMAGE_DIR."
+      fi
     fi
   fi
+else
+  echo
+  echo "== Auto-Update Mode: skipping CIFS prompt. =="
 fi
 
 # -------------------------------------------------------
@@ -264,17 +315,22 @@ systemctl start viewer.service
 systemctl start controller.service
 
 # -------------------------------------------------------
-# 8) Reboot
+# 8) Reboot (skip if AUTO_UPDATE)
 # -------------------------------------------------------
-echo
-echo "========================================================"
-echo "Setup is complete. The Pi will now reboot."
-echo "Upon reboot:"
-echo " - LightDM auto-logs into X (DISPLAY=:0)."
-echo " - viewer.service starts viewer.py, supporting multi-monitors."
-echo " - controller.service starts app.py on port 8080."
-echo
-echo "You can configure slides at http://<Pi-IP>:8080"
-echo "Rebooting in 5 seconds..."
-sleep 5
-reboot
+if [[ "$AUTO_UPDATE" == "false" ]]; then
+  echo
+  echo "========================================================"
+  echo "Setup is complete. The Pi will now reboot."
+  echo "Upon reboot:"
+  echo " - LightDM auto-logs into X (DISPLAY=:0)."
+  echo " - viewer.service starts viewer.py, supporting multi-monitors."
+  echo " - controller.service starts app.py on port 8080."
+  echo
+  echo "You can configure slides at http://<Pi-IP>:8080"
+  echo "Rebooting in 5 seconds..."
+  sleep 5
+  reboot
+else
+  echo
+  echo "== Auto-Update Mode: skipping final reboot. =="
+fi

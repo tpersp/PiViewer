@@ -63,9 +63,6 @@ Then navigate to advanced/X11 options, and ensure Wayland is disabled.
 sudo apt update
 sudo apt install git -y
 git clone https://github.com/tpersp/PiViewer.git
-```
-Navigate to the project folder:
-```
 cd PiViewer
 ```
 

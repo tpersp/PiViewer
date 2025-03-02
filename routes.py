@@ -2,19 +2,19 @@
 # -*- coding: utf-8 -*-
 
 import os
-import subprocess  # for restart_viewer
+import subprocess
 import requests
 from flask import (
     Blueprint, request, redirect, url_for, render_template,
     send_from_directory, send_file, jsonify
 )
 
-from config import APP_VERSION, WEB_BG, IMAGE_DIR, LOG_PATH
+from config import APP_VERSION, WEB_BG, IMAGE_DIR, LOG_PATH, UPDATE_BRANCH, VIEWER_HOME
 from utils import (
     load_config, save_config, init_config, log_message,
     get_system_stats, get_subfolders, count_files_in_folder,
     detect_monitors, get_remote_config, get_remote_monitors,
-    pull_displays_from_remote, push_displays_to_remote,   # <--- new partial sync calls
+    pull_displays_from_remote, push_displays_to_remote,
     get_hostname, get_ip_address, get_pi_model, get_folder_prefix
 )
 
@@ -34,7 +34,6 @@ def stats_json():
 
 @main_bp.route("/list_monitors")
 def list_monitors():
-    # Return the actual monitor info (including resolution) as detected.
     return jsonify(detect_monitors())
 
 
@@ -103,6 +102,7 @@ def upload_media():
             continue
         original_name = file.filename
         ext = os.path.splitext(original_name.lower())[1]
+        # Only allow GIF, JPG, JPEG, PNG
         if ext not in [".gif", ".jpg", ".jpeg", ".png"]:
             log_message(f"Skipped file (unsupported): {original_name}")
             continue
@@ -113,7 +113,6 @@ def upload_media():
         log_message(f"Uploaded file saved to: {final_path}")
 
     return redirect(url_for("main.index"))
-
 
 def get_next_filename(subfolder_name, folder_path, desired_ext):
     prefix = get_folder_prefix(subfolder_name)
@@ -130,7 +129,6 @@ def get_next_filename(subfolder_name, folder_path, desired_ext):
             except:
                 pass
     return f"{prefix}{(max_num + 1):03d}{desired_ext}"
-
 
 @main_bp.route("/restart_viewer", methods=["POST"])
 def restart_viewer():
@@ -158,10 +156,12 @@ def settings():
         save_config(cfg)
         return redirect(url_for("main.settings"))
 
+    # Pass UPDATE_BRANCH into the template
     return render_template(
         "settings.html",
         theme=cfg.get("theme", "dark"),
-        cfg=cfg
+        cfg=cfg,
+        update_branch=UPDATE_BRANCH
     )
 
 
@@ -170,7 +170,6 @@ def index():
     cfg = load_config()
     monitors = detect_monitors()
 
-    # Sync local config with physically connected monitors
     for m in monitors:
         if m not in cfg["displays"]:
             cfg["displays"][m] = {
@@ -183,11 +182,7 @@ def index():
                 "rotate": 0
             }
 
-    # Remove stale displays
-    remove_list = []
-    for d in list(cfg["displays"].keys()):
-        if d not in monitors:
-            remove_list.append(d)
+    remove_list = [d for d in list(cfg["displays"].keys()) if d not in monitors]
     for r in remove_list:
         del cfg["displays"][r]
 
@@ -208,12 +203,10 @@ def index():
                 mixed_str = request.form.get(pre + "mixed_order", "")
                 mixed_list = [x for x in mixed_str.split(",") if x]
 
-                # parse interval
                 try:
                     new_interval = int(new_interval_s)
                 except:
                     new_interval = dcfg["image_interval"]
-                # parse rotate
                 try:
                     new_rotate = int(rotate_str)
                 except:
@@ -234,7 +227,6 @@ def index():
             save_config(cfg)
             return redirect(url_for("main.index"))
 
-    # Info for local displays
     folder_counts = {}
     for sf in get_subfolders():
         folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
@@ -260,14 +252,12 @@ def index():
     model = get_pi_model()
     theme = cfg.get("theme", "dark")
 
-    # If sub device
     sub_info_line = ""
     if cfg.get("role") == "sub":
         sub_info_line = "This device is SUB"
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
-    # If main, gather remote info (just so we can show on index page)
     remote_displays = []
     if cfg.get("role") == "main":
         for dev in cfg.get("devices", []):
@@ -279,15 +269,11 @@ def index():
             if not rem_cfg:
                 continue
             remote_mons = get_remote_monitors(dev_ip)
-
-            # Build a simplified table of remote "displays"
             table_of_displays = []
             for rdname, rdcfg in rem_cfg.get("displays", {}).items():
                 resolution = "unknown"
-                # Now remote_mons is a dict like {"HDMI-1": {"resolution": "?"}, ...}
                 if remote_mons and rdname in remote_mons:
                     resolution = remote_mons[rdname].get("resolution", "unknown")
-
                 mode = rdcfg.get("mode", "?")
                 if mode == "mixed":
                     folder_str = ", ".join(rdcfg.get("mixed_folders", [])) or "None"
@@ -296,9 +282,7 @@ def index():
                 else:
                     cat = rdcfg.get("image_category", "")
                     folder_str = cat if cat else "All"
-
                 shuffle_str = "Yes" if rdcfg.get("shuffle_mode") else "No"
-
                 table_of_displays.append({
                     "dname": rdname,
                     "resolution": resolution,
@@ -306,7 +290,6 @@ def index():
                     "folders": folder_str,
                     "shuffle": shuffle_str
                 })
-
             remote_displays.append({
                 "name": dev_name,
                 "ip": dev_ip,
@@ -334,7 +317,6 @@ def index():
         remote_displays=remote_displays
     )
 
-
 @main_bp.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
 def remote_configure(dev_index):
     """Main device can configure a sub-device's display settings (like a remote editor)."""
@@ -349,20 +331,16 @@ def remote_configure(dev_index):
     dev_ip = dev_info.get("ip")
     dev_name = dev_info.get("name")
 
-    # Pull remote config (full), just for display
     remote_cfg = get_remote_config(dev_ip)
     if not remote_cfg:
         return f"Could not fetch remote config from {dev_ip}", 500
 
-    # Also remote monitors & subfolders
     remote_mons = get_remote_monitors(dev_ip)
     remote_folders = get_remote_subfolders(dev_ip)
 
-    # If we POST, we want to partially update the remote device's "displays"
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_remote":
-            # build a partial "displays" from the posted form
             new_disp = {}
             for dname, dcfg in remote_cfg.get("displays", {}).items():
                 pre = dname + "_"
@@ -395,7 +373,6 @@ def remote_configure(dev_index):
                 }
                 new_disp[dname] = sub_dict
 
-            # Push new_disp to remote
             push_displays_to_remote(dev_ip, new_disp)
             return redirect(url_for("main.remote_configure", dev_index=dev_index))
 
@@ -408,7 +385,6 @@ def remote_configure(dev_index):
         remote_folders=remote_folders
     )
 
-
 def get_remote_subfolders(ip):
     """List subfolders from remote or [] if fail."""
     url = f"http://{ip}:8080/list_folders"
@@ -420,42 +396,34 @@ def get_remote_subfolders(ip):
         log_message(f"Error fetching remote folders from {ip}: {e}")
     return []
 
-
 @main_bp.route("/sync_config", methods=["GET"])
 def sync_config():
     """Return entire config as JSON for remote GET."""
     return load_config()
 
-
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
     """
-    Another device can POST partial config. We simply merge it into local.
-    If it includes "displays", we overwrite local "displays".
-    If it includes "theme", we overwrite local "theme".
-    We do NOT overwrite role, main_ip, or devices here.
+    Another device can POST partial config. We merge allowed keys.
     """
     incoming = request.get_json()
     if not incoming:
         return "No JSON received", 400
 
     cfg = load_config()
-    # Merge only keys that we allow
     if "displays" in incoming:
         cfg["displays"] = incoming["displays"]
     if "theme" in incoming:
         cfg["theme"] = incoming["theme"]
-    # (Add more if you want to allow them from remote)
 
     save_config(cfg)
     log_message("Local config partially updated via /update_config")
     return "Config updated", 200
 
-
 @main_bp.route("/device_manager", methods=["GET", "POST"])
 def device_manager():
     """
-    If role == 'main', manage sub devices: add, remove, push/pull, configure.
+    If role == 'main', manage sub devices.
     """
     cfg = load_config()
     if cfg.get("role") != "main":
@@ -474,7 +442,6 @@ def device_manager():
             else:
                 if "devices" not in cfg:
                     cfg["devices"] = []
-                # Add new device with empty "displays"
                 cfg["devices"].append({
                     "name": dev_name,
                     "ip": dev_ip,
@@ -482,7 +449,6 @@ def device_manager():
                 })
                 save_config(cfg)
                 log_message(f"Added sub device: {dev_name} ({dev_ip})")
-
         elif action.startswith("remove_"):
             idx_str = action.replace("remove_", "")
             try:
@@ -493,22 +459,17 @@ def device_manager():
                     log_message(f"Removed sub device: {removed}")
             except:
                 pass
-
         elif action.startswith("push_"):
-            # Pushing local known "devices[idx].displays" to the sub
             idx_str = action.replace("push_", "")
             try:
                 idx = int(idx_str)
                 dev_info = cfg["devices"][idx]
                 dev_ip = dev_info.get("ip")
                 if dev_ip:
-                    # we push only dev_info["displays"] to that sub device
                     push_displays_to_remote(dev_ip, dev_info.get("displays", {}))
             except Exception as e:
                 log_message(f"Push error: {e}")
-
         elif action.startswith("pull_"):
-            # Pull the remote's displays and store them in devices[idx].displays
             idx_str = action.replace("pull_", "")
             try:
                 idx = int(idx_str)
@@ -522,7 +483,6 @@ def device_manager():
                         log_message(f"Pulled remote displays from {dev_ip} into devices[{idx}].displays")
             except Exception as e:
                 log_message(f"Pull error: {e}")
-
         return redirect(url_for("main.device_manager"))
 
     return render_template(
@@ -530,3 +490,67 @@ def device_manager():
         cfg=cfg,
         theme=cfg.get("theme", "dark")
     )
+
+
+# ------------------------------------------------
+#      NEW: Update from GitHub
+# ------------------------------------------------
+@main_bp.route("/update_app", methods=["POST"])
+def update_app():
+    """
+    Pulls latest code from GitHub, using the UPDATE_BRANCH from config.py.
+    Forces local code to match remote (discarding local changes),
+    then if setup.sh changed, re-runs it in 'no-prompt' mode.
+    """
+    cfg = load_config()
+
+    # 1) Save old commit hash for setup.sh so we can compare
+    old_hash = ""
+    try:
+        old_hash = subprocess.check_output(
+            ["git", "rev-parse", f"HEAD:setup.sh"],
+            cwd=VIEWER_HOME
+        ).decode().strip()
+    except Exception as e:
+        log_message(f"update_app: Could not get old setup.sh hash: {e}")
+
+    # 2) Perform forced update (discard local changes):
+    try:
+        log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
+        subprocess.check_call(["git", "fetch"], cwd=VIEWER_HOME)
+        subprocess.check_call(["git", "checkout", UPDATE_BRANCH], cwd=VIEWER_HOME)
+        # Force local to match remote exactly:
+        subprocess.check_call(["git", "reset", "--hard", f"origin/{UPDATE_BRANCH}"], cwd=VIEWER_HOME)
+    except subprocess.CalledProcessError as e:
+        log_message(f"Git update failed: {e}")
+        return "Git update failed. Check logs.", 500
+
+    # 3) Compare new commit hash for setup.sh
+    new_hash = ""
+    try:
+        new_hash = subprocess.check_output(
+            ["git", "rev-parse", f"HEAD:setup.sh"],
+            cwd=VIEWER_HOME
+        ).decode().strip()
+    except Exception as e:
+        log_message(f"update_app: Could not get new setup.sh hash: {e}")
+
+    # 4) If changed, run the updated setup.sh with --auto-update
+    if old_hash and new_hash and old_hash != new_hash:
+        log_message("setup.sh changed. Re-running setup.sh in --auto-update mode...")
+        try:
+            subprocess.check_call(["sudo", "bash", "setup.sh", "--auto-update"], cwd=VIEWER_HOME)
+        except subprocess.CalledProcessError as e:
+            log_message(f"Re-running setup.sh failed: {e}")
+
+    # 5) (Optional) Restart services if you like:
+    #"""
+    try:
+        subprocess.check_call(["sudo", "systemctl", "restart", "viewer.service"])
+        subprocess.check_call(["sudo", "systemctl", "restart", "controller.service"])
+    except subprocess.CalledProcessError as e:
+        log_message(f"Failed to restart services after update: {e}")
+    #"""
+
+    log_message("Update completed successfully.")
+    return redirect(url_for("main.settings"))
