@@ -20,10 +20,9 @@ WEB_BG      = os.path.join(VIEWER_HOME, "web_bg.jpg")
 # Git Update Branch
 # ------------------------------------------------------------
 # You can change this in your environment or directly in this file.
-# When the user clicks the Update button in Settings, we'll do:
-#   git fetch
-#   git checkout UPDATE_BRANCH
-#   git pull
-# from the PiViewer code folder.
+# When the user clicks the Update button in Settings, all local 
+# files will be overwritten with the updated ones.
+# main = stable
+# dev = experimental features
 #
 UPDATE_BRANCH = os.environ.get("UPDATE_BRANCH", "dev")
