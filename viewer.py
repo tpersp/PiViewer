@@ -12,7 +12,6 @@ from datetime import datetime
 
 from config import APP_VERSION, VIEWER_HOME, IMAGE_DIR, CONFIG_PATH, LOG_PATH
 
-# We'll reuse a mini logger here to avoid import loops:
 def log_message(msg):
     print(msg)
     with open(LOG_PATH, "a") as f:
@@ -24,9 +23,6 @@ def load_config():
     with open(CONFIG_PATH, "r") as f:
         return json.load(f)
 
-# ------------------------------------------------------------------
-# MPV Helpers
-# ------------------------------------------------------------------
 def mpv_command(sock_path, cmd_dict):
     """Send a JSON IPC command to MPV's UNIX socket."""
     if not os.path.exists(sock_path):
@@ -38,16 +34,15 @@ def mpv_command(sock_path, cmd_dict):
     except Exception as e:
         log_message(f"[mpv_command] error: {e}")
 
+def apply_loop_property(sock_path, fullpath):
+    """For images, always set loop-file to inf."""
+    mpv_command(sock_path, {"command": ["set_property", "loop-file", "inf"]})
+
 def detect_monitors():
-    """
-    Local copy of detect_monitors.  If xrandr sees none,
-    fallback to /dev/fb1 or "Display0".
-    """
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
         lines = out.split("\n")
         if len(lines) <= 1:
-            # xrandr sees no monitors
             if os.path.exists("/dev/fb1"):
                 return ["FB1"]
             else:
@@ -72,13 +67,12 @@ def detect_monitors():
             return ["Display0"]
 
 def build_full_path(relpath):
-    """e.g. relpath="Nature/flower.jpg" => /mnt/PiViewers/Nature/flower.jpg"""
     return os.path.join(IMAGE_DIR, relpath)
 
 def get_images_in_category(category):
     """
-    Return list of image/video paths (relative to IMAGE_DIR) for the given category.
-    If category is empty, returns media files in all subfolders.
+    Return list of image paths (relative to IMAGE_DIR) for the given category.
+    Only accept GIF, JPG, JPEG, PNG.
     """
     if category:
         base = os.path.join(IMAGE_DIR, category)
@@ -88,7 +82,7 @@ def get_images_in_category(category):
         valid = []
         for f in files:
             lf = f.lower()
-            if lf.endswith((".jpg", ".jpeg", ".png", ".gif", ".mp4", ".webp")):
+            if lf.endswith((".jpg", ".jpeg", ".png", ".gif")):
                 valid.append(os.path.join(category, f))
         valid.sort()
         return valid
@@ -97,14 +91,13 @@ def get_images_in_category(category):
         for root, dirs, files in os.walk(IMAGE_DIR):
             for f in files:
                 lf = f.lower()
-                if lf.endswith((".jpg", ".jpeg", ".png", ".gif", ".mp4", ".webp")):
+                if lf.endswith((".jpg", ".jpeg", ".png", ".gif")):
                     rel = os.path.relpath(os.path.join(root, f), IMAGE_DIR)
                     results.append(rel)
         results.sort()
         return results
 
 def get_mixed_images(folder_list):
-    """Return combined media file paths from multiple subfolders."""
     all_files = []
     for cat in folder_list:
         catlist = get_images_in_category(cat)
@@ -112,10 +105,6 @@ def get_mixed_images(folder_list):
     return sorted(all_files)
 
 def get_screen_index(monitor_name):
-    """
-    We do xrandr again, see the order. If it matches monitor_name, return that index.
-    Otherwise 0.
-    """
     all_mons = []
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
@@ -141,7 +130,6 @@ class DisplayThread(threading.Thread):
         self.mpv_proc = None
 
     def run(self):
-        # Build mpv command with --screen parameter
         mpv_cmd = [
             "mpv",
             "--idle",
@@ -202,6 +190,7 @@ class DisplayThread(threading.Thread):
             fullpath = build_full_path(fn)
             log_message(f"[{self.disp_name}] loadfile: {fullpath}")
             mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+            apply_loop_property(self.sock_path, fullpath)
             self.apply_rotation(disp_cfg)
             idx += 1
             if idx >= len(images):
@@ -230,6 +219,7 @@ class DisplayThread(threading.Thread):
             return
         log_message(f"[{self.disp_name}] loadfile (specific): {fullpath}")
         mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+        apply_loop_property(self.sock_path, fullpath)
         self.apply_rotation(disp_cfg)
         while not self.stop_flag:
             c2 = load_config().get("displays", {}).get(self.disp_name, {})
@@ -265,6 +255,7 @@ class DisplayThread(threading.Thread):
             fullpath = build_full_path(fn)
             log_message(f"[{self.disp_name}] loadfile (mixed): {fullpath}")
             mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
+            apply_loop_property(self.sock_path, fullpath)
             self.apply_rotation(disp_cfg)
             idx += 1
             if idx >= len(images):

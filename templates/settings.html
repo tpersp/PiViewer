@@ -2,6 +2,7 @@
 <html>
 <head>
   <title>Settings</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script>
     function toggleMainIP(){
@@ -47,7 +48,21 @@
 
     <button type="submit">Save Settings</button>
   </form>
+
   <br>
+  <hr>
+  <!-- Update Section -->
+  <form method="POST" action="{{ url_for('main.update_app') }}">
+    <p><strong>Update from GitHub:</strong></p>
+    <p>
+      Branch: <em>{{ update_branch }}</em>  
+      (Configured in <code>config.py</code>)
+    </p>
+    <button type="submit">Update Now</button>
+  </form>
+  <hr>
+  <br>
+
   <a href="{{ url_for('main.download_log') }}"><button>Download Log</button></a>
   <br><br>
   <a href="{{ url_for('main.index') }}"><button>Back to Main</button></a>

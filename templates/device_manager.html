@@ -2,6 +2,7 @@
 <html>
 <head>
   <title>Manage Devices</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="{{ theme }}">
@@ -19,7 +20,6 @@
     <button type="submit" name="action" value="add_device">Add Device</button>
   </form>
 
-  <!-- Use a special table class if you like, e.g. devmgr-table -->
   <table class="devmgr-table">
     <thead>
       <tr>
