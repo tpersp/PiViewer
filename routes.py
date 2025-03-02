@@ -544,13 +544,13 @@ def update_app():
             log_message(f"Re-running setup.sh failed: {e}")
 
     # 5) (Optional) Restart services if you like:
-    """
+    #"""
     try:
         subprocess.check_call(["sudo", "systemctl", "restart", "viewer.service"])
         subprocess.check_call(["sudo", "systemctl", "restart", "controller.service"])
     except subprocess.CalledProcessError as e:
         log_message(f"Failed to restart services after update: {e}")
-    """
+    #"""
 
     log_message("Update completed successfully.")
     return redirect(url_for("main.settings"))
