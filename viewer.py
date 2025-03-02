@@ -39,6 +39,10 @@ def apply_loop_property(sock_path, fullpath):
     mpv_command(sock_path, {"command": ["set_property", "loop-file", "inf"]})
 
 def detect_monitors():
+    """
+    Use xrandr --listmonitors to detect connected monitors.
+    Returns a list of monitor names, e.g. ["HDMI-1", "HDMI-2"], or ["Display0"] as fallback.
+    """
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
         lines = out.split("\n")
@@ -98,6 +102,7 @@ def get_images_in_category(category):
         return results
 
 def get_mixed_images(folder_list):
+    """Combine images from multiple folders into one sorted list."""
     all_files = []
     for cat in folder_list:
         catlist = get_images_in_category(cat)
@@ -105,6 +110,10 @@ def get_mixed_images(folder_list):
     return sorted(all_files)
 
 def get_screen_index(monitor_name):
+    """
+    Attempts to find index of monitor_name from xrandr --listmonitors output
+    so mpv can use --screen=X.
+    """
     all_mons = []
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
@@ -146,11 +155,12 @@ class DisplayThread(threading.Thread):
         mpv_cmd.append(f"--screen={screen_index}")
         log_message(f"[{self.disp_name}] Starting MPV (version {APP_VERSION}): {' '.join(mpv_cmd)}")
         self.mpv_proc = subprocess.Popen(mpv_cmd)
+
         while not self.stop_flag:
             cfg = load_config()
             disp_cfg = cfg.get("displays", {}).get(self.disp_name, {})
             mode = disp_cfg.get("mode", "random_image")
-            interval = disp_cfg.get("image_interval", 60)
+
             if mode == "random_image":
                 self.random_slideshow(disp_cfg)
             elif mode == "specific_image":
@@ -160,6 +170,7 @@ class DisplayThread(threading.Thread):
             else:
                 log_message(f"[{self.disp_name}] Unknown mode '{mode}', sleeping 5s.")
                 time.sleep(5)
+
         log_message(f"[{self.disp_name}] Stopping MPV.")
         self.mpv_proc.terminate()
         self.mpv_proc.wait()
@@ -177,26 +188,32 @@ class DisplayThread(threading.Thread):
             log_message(f"[{self.disp_name}] No images in category='{cat}', wait 10s.")
             time.sleep(10)
             return
+
         if shuffle:
             random.shuffle(images)
         idx = 0
+
         while True:
+            # Check if the mode changed mid-loop:
             c2 = load_config().get("displays", {}).get(self.disp_name, {})
             if c2.get("mode") != "random_image":
                 break
             if c2.get("image_category", "") != cat:
                 break
-            fn = images[idx]
-            fullpath = build_full_path(fn)
-            log_message(f"[{self.disp_name}] loadfile: {fullpath}")
+
+            fullpath = build_full_path(images[idx])
+            # (Previously we logged every loadfile, now we skip it to reduce spam)
             mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
             apply_loop_property(self.sock_path, fullpath)
             self.apply_rotation(disp_cfg)
+
             idx += 1
             if idx >= len(images):
                 idx = 0
                 if shuffle:
                     random.shuffle(images)
+
+            # Wait interval seconds, checking stop_flag or mode changes
             for _ in range(interval):
                 if self.stop_flag:
                     return
@@ -212,15 +229,18 @@ class DisplayThread(threading.Thread):
             log_message(f"[{self.disp_name}] No specific_image set, sleeping 10s.")
             time.sleep(10)
             return
+
         fullpath = os.path.join(IMAGE_DIR, cat, spec)
         if not os.path.exists(fullpath):
             log_message(f"[{self.disp_name}] specific_image '{fullpath}' not found, sleeping 10s.")
             time.sleep(10)
             return
-        log_message(f"[{self.disp_name}] loadfile (specific): {fullpath}")
+
+        # (We skip logging "loadfile" to reduce spam)
         mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
         apply_loop_property(self.sock_path, fullpath)
         self.apply_rotation(disp_cfg)
+
         while not self.stop_flag:
             c2 = load_config().get("displays", {}).get(self.disp_name, {})
             if c2.get("mode") != "specific_image":
@@ -235,33 +255,37 @@ class DisplayThread(threading.Thread):
             log_message(f"[{self.disp_name}] No folders in 'mixed_folders', sleeping 10s.")
             time.sleep(10)
             return
+
         images = get_mixed_images(folder_list)
         if not images:
             log_message(f"[{self.disp_name}] 'mixed' mode but no images found in {folder_list}, sleeping 10s.")
             time.sleep(10)
             return
+
         shuffle = disp_cfg.get("shuffle_mode", False)
         interval = disp_cfg.get("image_interval", 60)
         if shuffle:
             random.shuffle(images)
         idx = 0
+
         while True:
             c2 = load_config().get("displays", {}).get(self.disp_name, {})
             if c2.get("mode") != "mixed":
                 break
             if c2.get("mixed_folders", []) != folder_list:
                 break
-            fn = images[idx]
-            fullpath = build_full_path(fn)
-            log_message(f"[{self.disp_name}] loadfile (mixed): {fullpath}")
+
+            fullpath = build_full_path(images[idx])
             mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
             apply_loop_property(self.sock_path, fullpath)
             self.apply_rotation(disp_cfg)
+
             idx += 1
             if idx >= len(images):
                 idx = 0
                 if shuffle:
                     random.shuffle(images)
+
             for _ in range(interval):
                 if self.stop_flag:
                     return
@@ -279,11 +303,13 @@ if __name__ == "__main__":
     if not monitors:
         log_message("No monitors detected. Exiting.")
         exit(0)
+
     threads = []
     for m in monitors:
         t = DisplayThread(m)
         t.start()
         threads.append(t)
+
     try:
         while True:
             time.sleep(5)
