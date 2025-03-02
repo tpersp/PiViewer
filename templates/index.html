@@ -154,7 +154,14 @@
 </head>
 <body class="{{ theme }}">
 <div class="container">
-  <h1 style="text-align:center;">Viewer Controller</h1>
+
+  <!-- Title with two icons: left normal, right mirrored -->
+  <h1 style="text-align:center; display:flex; align-items:center; justify-content:center; gap:20px;">
+    <img src="{{ url_for('static', filename='icon.png') }}" alt="Left Icon" style="height:48px;">
+    <span>Viewer Controller</span>
+    <img src="{{ url_for('static', filename='icon.png') }}" alt="Right Icon" style="height:48px; transform: scaleX(-1);">
+  </h1>
+
   <div style="text-align:center; font-size:12px; color:#888;">
     Version {{ version }}
   </div>
