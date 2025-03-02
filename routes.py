@@ -498,8 +498,9 @@ def device_manager():
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():
     """
-    Pulls latest code from GitHub, using the UPDATE_BRANCH from config.py,
-    and if setup.sh changed, runs it to apply any new systemd changes, etc.
+    Pulls latest code from GitHub, using the UPDATE_BRANCH from config.py.
+    Forces local code to match remote (discarding local changes),
+    then if setup.sh changed, re-runs it in 'no-prompt' mode.
     """
     cfg = load_config()
 
@@ -513,12 +514,13 @@ def update_app():
     except Exception as e:
         log_message(f"update_app: Could not get old setup.sh hash: {e}")
 
-    # 2) Perform the git operations
+    # 2) Perform forced update (discard local changes):
     try:
-        log_message(f"Starting update: git fetch + checkout {UPDATE_BRANCH} + pull")
+        log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
         subprocess.check_call(["git", "fetch"], cwd=VIEWER_HOME)
         subprocess.check_call(["git", "checkout", UPDATE_BRANCH], cwd=VIEWER_HOME)
-        subprocess.check_call(["git", "pull", "origin", UPDATE_BRANCH], cwd=VIEWER_HOME)
+        # Force local to match remote exactly:
+        subprocess.check_call(["git", "reset", "--hard", f"origin/{UPDATE_BRANCH}"], cwd=VIEWER_HOME)
     except subprocess.CalledProcessError as e:
         log_message(f"Git update failed: {e}")
         return "Git update failed. Check logs.", 500
@@ -533,16 +535,15 @@ def update_app():
     except Exception as e:
         log_message(f"update_app: Could not get new setup.sh hash: {e}")
 
-    # 4) If changed, run the updated setup.sh in "no-prompt" style
+    # 4) If changed, run the updated setup.sh with --auto-update
     if old_hash and new_hash and old_hash != new_hash:
-        log_message("setup.sh changed. Re-running setup.sh to apply updates...")
+        log_message("setup.sh changed. Re-running setup.sh in --auto-update mode...")
         try:
-            # You can add an argument to skip reboots or prompts inside setup.sh
-            subprocess.check_call(["bash", "setup.sh"], cwd=VIEWER_HOME)
+            subprocess.check_call(["bash", "setup.sh", "--auto-update"], cwd=VIEWER_HOME)
         except subprocess.CalledProcessError as e:
             log_message(f"Re-running setup.sh failed: {e}")
 
-    # 5) (Optional) Restart services if desired
+    # 5) (Optional) Restart services if you like:
     """
     try:
         subprocess.check_call(["sudo", "systemctl", "restart", "viewer.service"])
