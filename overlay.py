@@ -5,11 +5,13 @@
 overlay.py
 ----------
 A simple always-on-top overlay that shows the current time
-and (optionally) weather info. Designed to run under a 
-compositing window manager (e.g., picom + openbox).
-
-We now fetch lat/lon, API key, etc. from 'viewerconfig.json',
-under cfg['overlay'] (see routes.py).
+and (optionally) weather info. We now allow user adjustments
+(via 'overlay' dict in viewerconfig.json) for:
+ - overlay position (offset_x, offset_y)
+ - background color
+ - alpha transparency
+ - lat/lon & API key for weather
+Requires a compositing WM (e.g. picom) for real transparency.
 """
 
 import os
@@ -26,48 +28,63 @@ from utils import load_config, log_message
 REFRESH_INTERVAL_SEC = 300   # how often to refresh weather data
 FONT_SIZE = 26
 
-# For partial transparency, picom must be running. 
-# We'll use a semi-opaque background for readability.
-BG_COLOR = "#000000"   # black background
-BG_OPACITY = 0.4       # 40% opaque if compositing is enabled
 
 class OverlayApp:
     def __init__(self, root, overlay_cfg):
         self.root = root
         self.root.title("Clock & Weather Overlay")
         self.root.attributes("-topmost", True)
-        self.root.attributes("-alpha", BG_OPACITY)
         self.root.overrideredirect(True)
 
-        # Position in the top-right corner by default:
-        self.root.geometry("+20+20")
+        # Pull user settings
+        self.bg_opacity = overlay_cfg.get("bg_opacity", 0.4)
+        self.bg_color = overlay_cfg.get("bg_color", "#000000")
+        offset_x = overlay_cfg.get("offset_x", 20)
+        offset_y = overlay_cfg.get("offset_y", 20)
 
-        # A frame to hold time label and weather label
-        self.frame = tk.Frame(self.root, bg=BG_COLOR)
+        # Set geometry for offset
+        self.root.geometry(f"+{offset_x}+{offset_y}")
+
+        # Set alpha transparency
+        self.root.attributes("-alpha", self.bg_opacity)
+
+        # Also set root window's background color, so no white border
+        self.root.configure(bg=self.bg_color)
+
+        # Create a frame (borderless)
+        self.frame = tk.Frame(self.root, bg=self.bg_color, highlightthickness=0, bd=0)
         self.frame.pack(padx=10, pady=10)
 
+        # Clock label
         self.time_label = tk.Label(
-            self.frame, text="", fg="white", bg=BG_COLOR,
+            self.frame,
+            text="",
+            fg="white",
+            bg=self.bg_color,
             font=("Trebuchet MS", FONT_SIZE, "bold")
         )
         self.time_label.pack(anchor="e")
 
+        # Weather label
         self.weather_label = tk.Label(
-            self.frame, text="", fg="white", bg=BG_COLOR,
+            self.frame,
+            text="",
+            fg="white",
+            bg=self.bg_color,
             font=("Trebuchet MS", FONT_SIZE - 4)
         )
         self.weather_label.pack(anchor="e")
 
+        # Always update clock
         self.update_time()
 
-        # Check if weather is enabled:
+        # Check if weather is enabled
         self.weather_enabled = overlay_cfg.get("weather_enabled", False)
         if self.weather_enabled:
             self.api_key = overlay_cfg.get("api_key", "").strip()
             self.lat = overlay_cfg.get("lat")
             self.lon = overlay_cfg.get("lon")
             self.weather_info = None
-            # Only start the weather thread if we have a lat/lon and API key
             if self.api_key and self.lat is not None and self.lon is not None:
                 threading.Thread(target=self.update_weather_loop, daemon=True).start()
 
@@ -87,8 +104,7 @@ class OverlayApp:
             time.sleep(REFRESH_INTERVAL_SEC)
 
     def fetch_weather(self):
-        # Use free OWM format: 
-        #   https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric
+        # Use free OWM format with lat/lon
         url = (
             f"https://api.openweathermap.org/data/2.5/weather"
             f"?lat={self.lat}&lon={self.lon}"
@@ -104,11 +120,11 @@ class OverlayApp:
         if not self.weather_info:
             self.weather_label.config(text="(No data)")
             return
-        # Basic example: show temp and condition
         main = self.weather_info.get("weather", [{}])[0].get("main", "??")
         temp = self.weather_info.get("main", {}).get("temp", "?")
         text = f"{main}, {temp}°C"
         self.weather_label.config(text=text)
+
 
 def main():
     cfg = load_config()
@@ -116,6 +132,7 @@ def main():
     root = tk.Tk()
     app = OverlayApp(root, overlay_cfg)
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()

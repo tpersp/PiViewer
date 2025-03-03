@@ -9,20 +9,22 @@
 <div class="container">
   <h1>Overlay Settings</h1>
 
-  <!-- Weather Enable/Disable, plus API key, zip, country code, lat/lon, with a "Lookup" button. -->
-
   <form method="POST">
     <input type="hidden" name="action" value="save_overlay">
+
+    <!-- Weather checkbox -->
     <label>
       <input type="checkbox" name="weather_enabled" {% if overlay.weather_enabled %}checked{% endif %}>
       Enable Weather
     </label>
     <br><br>
 
+    <!-- OWM API Key -->
     <label>OpenWeatherMap API Key:</label><br>
     <input type="text" name="api_key" value="{{ overlay.api_key|default('') }}" style="width:300px;">
     <br><br>
 
+    <!-- Zip / Country for auto-lookup -->
     <label>Zip Code:</label><br>
     <input type="text" name="zip_code" value="{{ overlay.zip_code|default('') }}">
     <br><br>
@@ -31,12 +33,31 @@
     <input type="text" name="country_code" value="{{ overlay.country_code|default('') }}">
     <br><br>
 
+    <!-- Coordinates (if known) -->
     <label>Latitude:</label><br>
     <input type="text" name="lat" value="{{ overlay.lat|default('') }}">
     <br><br>
 
     <label>Longitude:</label><br>
     <input type="text" name="lon" value="{{ overlay.lon|default('') }}">
+    <br><br>
+
+    <!-- User controls for color and opacity -->
+    <label>Overlay BG Color (#RRGGBB):</label><br>
+    <input type="text" name="bg_color" value="{{ overlay.bg_color|default('#000000') }}">
+    <br><br>
+
+    <label>Overlay BG Opacity (0.0 - 1.0):</label><br>
+    <input type="text" name="bg_opacity" value="{{ overlay.bg_opacity|default(0.4) }}">
+    <br><br>
+
+    <!-- X/Y offsets -->
+    <label>X Offset:</label><br>
+    <input type="text" name="offset_x" value="{{ overlay.offset_x|default('20') }}">
+    <br><br>
+
+    <label>Y Offset:</label><br>
+    <input type="text" name="offset_y" value="{{ overlay.offset_y|default('20') }}">
     <br><br>
 
     <button type="submit">Save Overlay Settings</button>
