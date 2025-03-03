@@ -40,7 +40,7 @@ class OverlayApp:
         self.root.overrideredirect(True)
 
         # Position in the top-right corner by default:
-        self.root.geometry("+1600+20")
+        self.root.geometry("+20+20")
 
         # A frame to hold time label and weather label
         self.frame = tk.Frame(self.root, bg=BG_COLOR)
