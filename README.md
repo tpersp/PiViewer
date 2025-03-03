@@ -109,7 +109,9 @@ PiViewer/
 ├── routes.py             # Flask routes (blueprint)
 ├── viewer.py             # Slideshow: spawns mpv per detected monitor
 ├── static/
-│    └── style.css        # Consolidated CSS
+│    ├── style.css        # Consolidated CSS
+│    ├── favicon.png
+│    └── icon.png
 ├── templates/
 │    ├── index.html
 │    ├── settings.html
