@@ -2,7 +2,7 @@
 #
 # setup.sh - Simple "It Just Works" viewer + controller installation
 #
-# NOTE: This setup.sh is designed for PiViewer version 1.0.8
+# NOTE: This setup.sh is designed for PiViewer version 1.1.1
 #
 #   1) Installs LightDM (with Xorg), mpv, python3, etc.
 #   2) Installs pip dependencies (with --break-system-packages)
@@ -13,12 +13,14 @@
 #   7) Creates systemd services:
 #        - viewer.service (runs viewer.py slideshow on X:0)
 #        - controller.service (Flask web interface)
+#        - overlay.service (optional clock+weather overlay)
 #   8) Reboots (unless in --auto-update mode)
 #
 # After reboot, LightDM will auto-login to an X session on :0.
 # viewer.service will run viewer.py (which dynamically assigns mpv
 # to monitors based on xrandr).
 # controller.service will run app.py on port 8080:  http://<Pi-IP>:8080
+# overlay.service (if installed) will draw a transparent overlay window.
 #
 # Usage:  sudo ./setup.sh  [--auto-update]
 #   If you run with --auto-update, we skip interactive prompts and the final reboot.
@@ -51,7 +53,7 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo " 4) Prompt for user & paths"
   echo " 5) Create .env in VIEWER_HOME"
   echo " 6) (Optional) mount a network share"
-  echo " 7) Create systemd services for viewer.py and app.py"
+  echo " 7) Create systemd services for viewer.py, app.py, and overlay"
   echo " 8) Reboot"
   echo
   read -p "Press [Enter] to continue or Ctrl+C to abort..."
@@ -63,7 +65,8 @@ fi
 echo
 echo "== Step 1: Installing packages (lightdm, Xorg, mpv, python3, etc.) =="
 apt-get update
-apt-get install -y lightdm xorg x11-xserver-utils mpv python3 python3-pip cifs-utils ffmpeg raspi-config
+apt-get install -y lightdm xorg x11-xserver-utils mpv python3 python3-pip cifs-utils ffmpeg raspi-config \
+                   openbox picom conky python3-tk
 
 if [ $? -ne 0 ]; then
   echo "Error installing packages via apt. Exiting."
@@ -116,11 +119,11 @@ cp /boot/firmware/config.txt /boot/firmware/config.txt.backup
 grep -q '^dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt" || \
   sed -i '/^# Enable DRM VC4 V3D driver/ a dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt"
 
-# Insert max_framebuffers if missing, immediately after the dtoverlay line.
+# Insert max_framebuffers if missing
 grep -q '^max_framebuffers=2' "/boot/firmware/config.txt" || \
   sed -i '/^dtoverlay=vc4-kms-v3d/ a max_framebuffers=2' "/boot/firmware/config.txt"
 
-# Insert hdmi_force_hotplug if missing, immediately after the max_framebuffers line.
+# Insert hdmi_force_hotplug if missing
 grep -q '^hdmi_force_hotplug=1' "/boot/firmware/config.txt" || \
   sed -i '/^max_framebuffers=2/ a hdmi_force_hotplug=1' "/boot/firmware/config.txt"
 
@@ -163,7 +166,6 @@ else
   echo "== Auto-Update Mode: skipping interactive prompts. Using defaults. =="
   VIEWER_USER="pi"
   USER_ID="$(id -u "$VIEWER_USER")"
-  # If user 'pi' doesn't exist, no prompts => we can't proceed
   if [ -z "$USER_ID" ]; then
     echo "User 'pi' not found. Exiting auto-update."
     exit 1
@@ -303,16 +305,45 @@ Type=simple
 WantedBy=multi-user.target
 EOF
 
+# (C) overlay.service (optional transparent clock+weather overlay)
+OVERLAY_SERVICE="/etc/systemd/system/overlay.service"
+echo "Creating $OVERLAY_SERVICE ..."
+cat <<EOF > "$OVERLAY_SERVICE"
+[Unit]
+Description=Clock & Weather Overlay
+After=viewer.service
+Wants=viewer.service
+
+[Service]
+User=$VIEWER_USER
+Group=$VIEWER_USER
+WorkingDirectory=$VIEWER_HOME
+EnvironmentFile=$ENV_FILE
+
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
+
+ExecStart=/usr/bin/python3 overlay.py
+Restart=always
+RestartSec=5
+Type=simple
+
+[Install]
+WantedBy=graphical.target
+EOF
+
 echo "Reloading systemd..."
 systemctl daemon-reload
 
-echo "Enabling viewer.service & controller.service..."
+echo "Enabling viewer.service & controller.service & overlay.service..."
 systemctl enable viewer.service
 systemctl enable controller.service
+systemctl enable overlay.service
 
 echo "Starting them now..."
 systemctl start viewer.service
 systemctl start controller.service
+systemctl start overlay.service
 
 # -------------------------------------------------------
 # 8) Reboot (skip if AUTO_UPDATE)
@@ -323,8 +354,9 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo "Setup is complete. The Pi will now reboot."
   echo "Upon reboot:"
   echo " - LightDM auto-logs into X (DISPLAY=:0)."
-  echo " - viewer.service starts viewer.py, supporting multi-monitors."
-  echo " - controller.service starts app.py on port 8080."
+  echo " - viewer.service starts viewer.py"
+  echo " - controller.service starts app.py on port 8080"
+  echo " - overlay.service starts the transparent overlay window"
   echo
   echo "You can configure slides at http://<Pi-IP>:8080"
   echo "Rebooting in 5 seconds..."
