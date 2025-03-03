@@ -164,6 +164,79 @@ def settings():
         update_branch=UPDATE_BRANCH
     )
 
+@main_bp.route("/overlay_config", methods=["GET", "POST"])
+def overlay_config():
+    """
+    Manage settings for the clock & weather overlay.
+    We’ll store them in cfg["overlay"].
+    """
+    cfg = load_config()
+    if "overlay" not in cfg:
+        cfg["overlay"] = {
+            "weather_enabled": False,
+            "api_key": "",
+            "zip_code": "",
+            "country_code": "",
+            "lat": None,
+            "lon": None
+        }
+
+    over = cfg["overlay"]
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "save_overlay":
+            over["weather_enabled"] = (request.form.get("weather_enabled") == "on")
+            over["api_key"] = request.form.get("api_key", "").strip()
+            over["zip_code"] = request.form.get("zip_code", "").strip()
+            over["country_code"] = request.form.get("country_code", "").strip()
+            # lat/lon might have been retrieved or manually entered:
+            lat_str = request.form.get("lat", "").strip()
+            lon_str = request.form.get("lon", "").strip()
+            try:
+                over["lat"] = float(lat_str)
+            except:
+                over["lat"] = None
+            try:
+                over["lon"] = float(lon_str)
+            except:
+                over["lon"] = None
+
+            save_config(cfg)
+            return redirect(url_for("main.overlay_config"))
+
+        elif action == "lookup_latlon":
+            # We'll call the OWM Geo endpoint:
+            # http://api.openweathermap.org/geo/1.0/zip?zip={zip code},{country code}&appid={API key}
+            apikey = request.form.get("api_key", "").strip()
+            zip_c = request.form.get("zip_code", "").strip()
+            ctry = request.form.get("country_code", "").strip()
+
+            if apikey and zip_c and ctry:
+                url = f"http://api.openweathermap.org/geo/1.0/zip?zip={zip_c},{ctry}&appid={apikey}"
+                try:
+                    r = requests.get(url, timeout=5)
+                    if r.status_code == 200:
+                        data = r.json()
+                        # data should have lat, lon
+                        lat = data.get("lat")
+                        lon = data.get("lon")
+                        if lat is not None and lon is not None:
+                            over["lat"] = lat
+                            over["lon"] = lon
+                            over["api_key"] = apikey
+                            over["zip_code"] = zip_c
+                            over["country_code"] = ctry
+                            log_message(f"Overlay lat/lon updated: {lat}, {lon}")
+                            save_config(cfg)
+                    else:
+                        log_message(f"Geo lookup failed. Status code: {r.status_code}")
+                except Exception as e:
+                    log_message(f"Geo lookup error: {e}")
+
+            return redirect(url_for("main.overlay_config"))
+
+    return render_template("overlay.html", theme=cfg.get("theme", "dark"), overlay=over)
 
 @main_bp.route("/", methods=["GET", "POST"])
 def index():
