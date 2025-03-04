@@ -26,7 +26,7 @@ def init_config():
             "displays": {},   # local device's displays
             "role": "main",   # 'main' or 'sub'
             "main_ip": "",
-            "devices": []     # each device is {name, ip, displays: {...}}
+            "devices": []
         }
         # Auto-create local displays
         monitors = detect_monitors()
@@ -60,59 +60,160 @@ def log_message(msg):
 def detect_monitors():
     """
     Use xrandr --listmonitors to detect connected monitors.
-    Returns something like:
+    Returns a dict like:
       {
-        "HDMI-1": {"resolution": "1920x1080", "name": "HDMI-1"},
+        "HDMI-1": {
+          "resolution": "1920x1080",
+          "name": "HDMI-1",
+          "offset_x": 0,
+          "offset_y": 0
+        },
         ...
       }
     If xrandr returns none, we check if /dev/fb1 exists and fallback to a single "FB1" monitor.
-    Otherwise final fallback is "Display0".
+    Otherwise we fallback to "Display0".
+    We'll parse offset + geometry from lines like:
+      " 0: +*HDMI-1 1920/444x1080/249+0+0  HDMI-1"
     """
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
         lines = out.split("\n")
         if len(lines) <= 1:
+            # No real monitors found
             if os.path.exists("/dev/fb1"):
-                return {"FB1": {"resolution": "480x320", "name": "FB1"}}
+                return {
+                    "FB1": {
+                        "resolution": "480x320",
+                        "name": "FB1",
+                        "offset_x": 0,
+                        "offset_y": 0
+                    }
+                }
             else:
-                return {"Display0": {"resolution": "unknown", "name": "Display0"}}
+                return {
+                    "Display0": {
+                        "resolution": "unknown",
+                        "name": "Display0",
+                        "offset_x": 0,
+                        "offset_y": 0
+                    }
+                }
         monitors = {}
         for line in lines[1:]:
             parts = line.strip().split()
             if len(parts) < 3:
                 continue
-            geometry_idx = None
-            for i, p in enumerate(parts):
-                if 'x' in p and '/' in p:
-                    geometry_idx = i
+            # Typically: index, colons, geometry, name
+            # example: "0: +*HDMI-1 1920/444x1080/249+0+0  HDMI-1"
+            geometry_part = None
+            actual_name = None
+
+            # find geometry among parts
+            # geometry typically has "WxH+X+Y"
+            for p in parts:
+                if ("x" in p) and ("+" in p):
+                    geometry_part = p
                     break
-            if geometry_idx is None:
-                name_clean = parts[2].strip("+*")
-                monitors[name_clean] = {"resolution": "unknown", "name": name_clean}
+            # the real name might be the last part or second-last part
+            # but it's usually the final or near-final token
+            name_candidate = parts[-1]
+            name_clean = name_candidate.strip("+*")
+
+            if geometry_part is None:
+                # fallback: store unknown
+                monitors[name_clean] = {
+                    "resolution": "unknown",
+                    "name": name_clean,
+                    "offset_x": 0,
+                    "offset_y": 0
+                }
                 continue
-            geometry_part = parts[geometry_idx]
-            actual_name = parts[-1]
+
+            # parse geometry_part e.g. "1920/444x1080/249+0+0"
+            # we want "1920", "1080", and offset_x=0, offset_y=0
+            # split at 'x' -> left= "1920/444", right= "1080/249+0+0"
+            # then from the right part, split at '+' -> "1080/249", "0", "0"
             try:
-                left, right = geometry_part.split("x")
-                width = left.split("/")[0]
-                right_split_plus = right.split("+")[0]
-                height = right_split_plus.split("/")[0]
-                resolution = f"{width}x{height}"
-            except:
-                resolution = "unknown"
-            name_clean = actual_name.strip("+*")
-            monitors[name_clean] = {"resolution": resolution, "name": name_clean}
+                left, right = geometry_part.split("x", 1)
+                # left might be "1920/444" -> we want the first portion before '/'
+                w_str = left.split("/")[0]
+                # right might be "1080/249+0+0"
+                # we separate on the first '+' to get "1080/249" and "0+0"
+                # but let's just find the first plus index
+                plus_index = right.find("+")
+                height_part = right[:plus_index]  # e.g. "1080/249"
+                offsets_part = right[plus_index:]  # e.g. "+0+0"
+
+                h_str = height_part.split("/")[0]
+                # offsets_part e.g. "+0+0"
+                # remove leading '+' then split again
+                offsetbits = offsets_part.lstrip("+").split("+")
+                if len(offsetbits) == 2:
+                    ox_str, oy_str = offsetbits
+                else:
+                    ox_str, oy_str = ("0", "0")
+
+                width_val = int(w_str)
+                height_val = int(h_str)
+                offset_x_val = int(ox_str)
+                offset_y_val = int(oy_str)
+
+                monitors[name_clean] = {
+                    "resolution": f"{width_val}x{height_val}",
+                    "name": name_clean,
+                    "offset_x": offset_x_val,
+                    "offset_y": offset_y_val
+                }
+            except Exception:
+                # fallback
+                monitors[name_clean] = {
+                    "resolution": "unknown",
+                    "name": name_clean,
+                    "offset_x": 0,
+                    "offset_y": 0
+                }
+
         if not monitors:
+            # fallback
             if os.path.exists("/dev/fb1"):
-                return {"FB1": {"resolution": "480x320", "name": "FB1"}}
+                return {
+                    "FB1": {
+                        "resolution": "480x320",
+                        "name": "FB1",
+                        "offset_x": 0,
+                        "offset_y": 0
+                    }
+                }
             else:
-                return {"Display0": {"resolution": "unknown", "name": "Display0"}}
+                return {
+                    "Display0": {
+                        "resolution": "unknown",
+                        "name": "Display0",
+                        "offset_x": 0,
+                        "offset_y": 0
+                    }
+                }
         return monitors
     except:
+        # fallback
         if os.path.exists("/dev/fb1"):
-            return {"FB1": {"resolution": "480x320", "name": "FB1"}}
+            return {
+                "FB1": {
+                    "resolution": "480x320",
+                    "name": "FB1",
+                    "offset_x": 0,
+                    "offset_y": 0
+                }
+            }
         else:
-            return {"Display0": {"resolution": "unknown", "name": "Display0"}}
+            return {
+                "Display0": {
+                    "resolution": "unknown",
+                    "name": "Display0",
+                    "offset_x": 0,
+                    "offset_y": 0
+                }
+            }
 
 def get_hostname():
     try:

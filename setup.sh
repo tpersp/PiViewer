@@ -345,7 +345,7 @@ User=$VIEWER_USER
 Group=$VIEWER_USER
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
-ExecStart=/usr/bin/picom -b
+ExecStart=/usr/bin/picom
 Restart=always
 
 [Install]
