@@ -256,7 +256,7 @@ Wants=lightdm.service
 [Service]
 User=$VIEWER_USER
 Group=$VIEWER_USER
-ExecStartPre=/bin/sleep 10
+ExecStartPre=/bin/sleep 5
 WorkingDirectory=$VIEWER_HOME
 EnvironmentFile=$ENV_FILE
 
