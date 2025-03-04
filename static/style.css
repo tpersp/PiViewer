@@ -302,3 +302,30 @@ body.custom button {
     cursor: move;
     background: transparent; /* so we see the dashed boundary below it */
 }
+
+/* Additional overlay config layout */
+.overlay-section {
+    margin-bottom: 20px;
+}
+.overlay-section fieldset {
+    border: 1px solid #aaa;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+.overlay-section legend {
+    font-weight: bold;
+    padding: 0 5px;
+}
+.overlay-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    align-items: center;
+}
+.overlay-form-grid label {
+    justify-self: end;
+}
+.overlay-form-grid input,
+.overlay-form-grid select {
+    justify-self: start;
+}

@@ -20,12 +20,9 @@
       let dragBox = document.getElementById("overlayDraggable");
       if(!previewBox || !dragBox) return;
 
-      let wInput = document.getElementById("overlay_width");
-      let hInput = document.getElementById("overlay_height");
       let xInput = document.getElementById("offset_x");
       let yInput = document.getElementById("offset_y");
 
-      // On mousedown inside dragBox
       dragBox.addEventListener("mousedown", function(e){
         e.preventDefault();
         isDragging = true;
@@ -35,7 +32,6 @@
         dragOffsetY = parseFloat(dragBox.style.top || "0");
       });
 
-      // On mousemove in the entire document
       document.addEventListener("mousemove", function(e){
         if(!isDragging) return;
         e.preventDefault();
@@ -98,78 +94,117 @@
   <form method="POST">
     <input type="hidden" name="action" value="save_overlay">
 
-    <!-- Weather checkbox -->
-    <label>
-      <input type="checkbox" name="weather_enabled" {% if overlay.weather_enabled %}checked{% endif %}>
-      Enable Weather
-    </label>
-    <br><br>
+    <div class="overlay-section">
+      <fieldset>
+        <legend>Overlay Toggles</legend>
+        <div class="overlay-form-grid">
+          <label for="overlay_enabled">Enable Overlay:</label>
+          <input type="checkbox" name="overlay_enabled" id="overlay_enabled"
+                 {% if overlay.overlay_enabled %}checked{% endif %}>
+          
+          <label for="clock_enabled">Show Clock:</label>
+          <input type="checkbox" name="clock_enabled" id="clock_enabled"
+                 {% if overlay.clock_enabled %}checked{% endif %}>
 
-    <!-- OWM API Key -->
-    <label>OpenWeatherMap API Key:</label><br>
-    <input type="text" name="api_key" value="{{ overlay.api_key|default('') }}" style="width:300px;">
-    <br><br>
+          <label for="weather_enabled">Show Weather:</label>
+          <input type="checkbox" name="weather_enabled" id="weather_enabled"
+                 {% if overlay.weather_enabled %}checked{% endif %}>
 
-    <!-- Zip / Country for auto-lookup -->
-    <label>Zip Code:</label><br>
-    <input type="text" name="zip_code" value="{{ overlay.zip_code|default('') }}">
-    <br><br>
+          <label for="background_enabled">Show Background Box:</label>
+          <input type="checkbox" name="background_enabled" id="background_enabled"
+                 {% if overlay.background_enabled %}checked{% endif %}>
+        </div>
+      </fieldset>
 
-    <label>Country Code (2-letter, e.g. US):</label><br>
-    <input type="text" name="country_code" value="{{ overlay.country_code|default('') }}">
-    <br><br>
+      <fieldset>
+        <legend>Layout & Fonts</legend>
+        <div class="overlay-form-grid">
+          <label>Clock Font Size:</label>
+          <input type="number" name="clock_font_size"
+                 value="{{ overlay.clock_font_size|default(26) }}">
 
-    <!-- Coordinates (if known) -->
-    <label>Latitude:</label><br>
-    <input type="text" name="lat" value="{{ overlay.lat|default('') }}">
-    <br><br>
+          <label>Weather Font Size:</label>
+          <input type="number" name="weather_font_size"
+                 value="{{ overlay.weather_font_size|default(22) }}">
 
-    <label>Longitude:</label><br>
-    <input type="text" name="lon" value="{{ overlay.lon|default('') }}">
-    <br><br>
+          <label>Font Color:</label>
+          <input type="color" name="font_color"
+                 value="{{ overlay.font_color|default('#FFFFFF') }}">
 
-    <!-- Overlay color and opacity -->
-    <label>Overlay BG Color (#RRGGBB):</label><br>
-    <input type="text" name="bg_color" value="{{ overlay.bg_color|default('#000000') }}">
-    <br><br>
+          <label>Layout Style:</label>
+          <select name="layout_style">
+            <option value="stacked" {% if overlay.layout_style == "stacked" %}selected{% endif %}>Stacked</option>
+            <option value="inline" {% if overlay.layout_style == "inline" %}selected{% endif %}>Inline</option>
+          </select>
 
-    <label>Overlay BG Opacity (0.0 - 1.0):</label><br>
-    <input type="text" name="bg_opacity" value="{{ overlay.bg_opacity|default(0.4) }}">
-    <br><br>
+          <label>Padding X:</label>
+          <input type="number" name="padding_x"
+                 value="{{ overlay.padding_x|default(8) }}">
 
-    <!-- Advanced layout controls -->
-    <fieldset style="border:1px dashed #666; padding:10px; margin:15px 0;">
-      <legend style="font-weight:bold;">Layout & Font Options</legend>
+          <label>Padding Y:</label>
+          <input type="number" name="padding_y"
+                 value="{{ overlay.padding_y|default(6) }}">
+        </div>
+      </fieldset>
 
-      <label>Clock Font Size:</label><br>
-      <input type="number" name="clock_font_size" value="{{ overlay.clock_font_size|default(26) }}">
-      <br><br>
+      <fieldset>
+        <legend>Weather Details</legend>
+        <p style="font-size:14px; color:#999;">(Select which info to display if weather is enabled)</p>
+        <div class="overlay-form-grid">
+          <label for="show_desc">Description (e.g. "Cloudy")</label>
+          <input type="checkbox" name="show_desc" id="show_desc"
+                 {% if overlay.show_desc %}checked{% endif %}>
 
-      <label>Weather Font Size:</label><br>
-      <input type="number" name="weather_font_size" value="{{ overlay.weather_font_size|default(22) }}">
-      <br><br>
+          <label for="show_temp">Temperature</label>
+          <input type="checkbox" name="show_temp" id="show_temp"
+                 {% if overlay.show_temp %}checked{% endif %}>
 
-      <label>Layout Style:</label><br>
-      <select name="layout_style">
-        <option value="stacked" {% if overlay.layout_style == "stacked" %}selected{% endif %}>Stacked</option>
-        <option value="inline" {% if overlay.layout_style == "inline" %}selected{% endif %}>Inline</option>
-      </select>
-      <br><br>
+          <label for="show_feels_like">Feels Like</label>
+          <input type="checkbox" name="show_feels_like" id="show_feels_like"
+                 {% if overlay.show_feels_like %}checked{% endif %}>
 
-      <label>Padding X (horizontal padding):</label><br>
-      <input type="number" name="padding_x" value="{{ overlay.padding_x|default(8) }}">
-      <br><br>
+          <label for="show_humidity">Humidity</label>
+          <input type="checkbox" name="show_humidity" id="show_humidity"
+                 {% if overlay.show_humidity %}checked{% endif %}>
+        </div>
+      </fieldset>
 
-      <label>Padding Y (vertical padding):</label><br>
-      <input type="number" name="padding_y" value="{{ overlay.padding_y|default(6) }}">
-      <br>
-    </fieldset>
+      <fieldset>
+        <legend>Box Position & Size</legend>
+        <p style="font-size:14px; color:#999;">
+          Use 0 width/height for dynamic sizing based on content.
+        </p>
+        <div class="overlay-form-grid">
+          <label>Offset X:</label>
+          <input type="number" name="offset_x" id="offset_x"
+                 value="{{ overlay.offset_x|default('20') }}">
 
-    <!-- Hidden fields for X/Y + size from the drag UI -->
-    <input type="hidden" name="offset_x" id="offset_x" value="{{ overlay.offset_x|default('20') }}">
-    <input type="hidden" name="offset_y" id="offset_y" value="{{ overlay.offset_y|default('20') }}">
-    <input type="hidden" name="overlay_width"  id="overlay_width"  value="{{ overlay.overlay_width|default('300') }}">
-    <input type="hidden" name="overlay_height" id="overlay_height" value="{{ overlay.overlay_height|default('150') }}">
+          <label>Offset Y:</label>
+          <input type="number" name="offset_y" id="offset_y"
+                 value="{{ overlay.offset_y|default('20') }}">
+
+          <label>Overlay Width:</label>
+          <input type="number" name="overlay_width" id="overlay_width"
+                 value="{{ overlay.overlay_width|default('300') }}">
+
+          <label>Overlay Height:</label>
+          <input type="number" name="overlay_height" id="overlay_height"
+                 value="{{ overlay.overlay_height|default('150') }}">
+
+          <label>Background Color:</label>
+          <input type="color" name="bg_color"
+                 value="{{ overlay.bg_color|default('#000000') }}">
+
+          <label>Background Opacity (0-1):</label>
+          <input type="text" name="bg_opacity"
+                 value="{{ overlay.bg_opacity|default(0.4) }}">
+        </div>
+      </fieldset>
+    </div>
+
+    <!-- Hidden fields for the scaled preview offsets -->
+    <input type="hidden" name="offset_x"  id="offset_x"  value="{{ overlay.offset_x|default('20') }}">
+    <input type="hidden" name="offset_y"  id="offset_y"  value="{{ overlay.offset_y|default('20') }}">
 
     <!-- Draggable overlay preview area -->
     <div class="overlay-preview-container">

@@ -4,14 +4,9 @@
 """
 overlay.py
 ----------
-A simple always-on-top overlay that shows the current time
-and (optionally) weather info, with user-settable:
- - offsets + monitor selection
- - background color & transparency
- - clock & weather font sizes
- - layout: stacked or inline
- - padding
-Requires a compositing WM (like picom) for real alpha transparency.
+A simple always-on-top overlay that shows a clock and (optionally) weather info,
+with user-settable toggles for overlay, clock, and background, plus layout, font,
+and weather data preferences. Requires a compositing WM (like picom) for real alpha.
 """
 
 import os
@@ -28,74 +23,108 @@ from utils import load_config, log_message, detect_monitors
 REFRESH_INTERVAL_SEC = 300
 
 class OverlayApp:
-    def __init__(self, root, overlay_cfg):
+    def __init__(self, root, overlay_cfg, weather_cfg):
         self.root = root
         self.root.title("Clock & Weather Overlay")
         self.root.attributes("-topmost", True)
         self.root.overrideredirect(True)
 
-        # Pull user settings
-        self.bg_opacity   = overlay_cfg.get("bg_opacity", 0.4)
+        # Check if overlay is enabled
+        if not overlay_cfg.get("overlay_enabled", True):
+            # If overlay is disabled, we just exit
+            log_message("Overlay is disabled by config; exiting overlay process.")
+            self.root.destroy()
+            sys.exit(0)
+
+        # Basic toggles
+        self.clock_enabled   = overlay_cfg.get("clock_enabled", True)
+        self.weather_enabled = overlay_cfg.get("weather_enabled", False)
+        self.bg_enabled      = overlay_cfg.get("background_enabled", True)
+
+        # Colors and layout
+        self.bg_opacity   = overlay_cfg.get("bg_opacity", 0.4) if self.bg_enabled else 0.0
         self.bg_color     = overlay_cfg.get("bg_color", "#000000")
-        self.user_offset_x= overlay_cfg.get("offset_x", 20)
-        self.user_offset_y= overlay_cfg.get("offset_y", 20)
-        self.win_w        = overlay_cfg.get("overlay_width", 300)
-        self.win_h        = overlay_cfg.get("overlay_height", 150)
-        self.monitor_sel  = overlay_cfg.get("monitor_selection", "All")
-        self.weather_en   = overlay_cfg.get("weather_enabled", False)
-        self.api_key      = overlay_cfg.get("api_key", "").strip()
-        self.lat          = overlay_cfg.get("lat")
-        self.lon          = overlay_cfg.get("lon")
-        # new advanced text settings
+        self.font_color   = overlay_cfg.get("font_color", "#FFFFFF")
         self.clock_font   = overlay_cfg.get("clock_font_size", 26)
         self.weather_font = overlay_cfg.get("weather_font_size", 22)
         self.layout_style = overlay_cfg.get("layout_style", "stacked")  # "inline" or "stacked"
         self.pad_x        = overlay_cfg.get("padding_x", 8)
         self.pad_y        = overlay_cfg.get("padding_y", 6)
 
-        # Start with a minimal geometry
-        self.root.geometry("1x1+0+0")
-        self.root.attributes("-alpha", self.bg_opacity)
-        self.root.configure(bg=self.bg_color)
+        # Which weather details to show
+        self.show_desc       = overlay_cfg.get("show_desc", True)
+        self.show_temp       = overlay_cfg.get("show_temp", True)
+        self.show_feels_like = overlay_cfg.get("show_feels_like", False)
+        self.show_humidity   = overlay_cfg.get("show_humidity", False)
 
-        # Build frame
-        self.frame = tk.Frame(self.root, bg=self.bg_color, highlightthickness=0, bd=0)
+        # geometry / position
+        self.user_offset_x = overlay_cfg.get("offset_x", 20)
+        self.user_offset_y = overlay_cfg.get("offset_y", 20)
+        self.user_width    = overlay_cfg.get("overlay_width", 300)
+        self.user_height   = overlay_cfg.get("overlay_height", 150)
+
+        # Monitor selection
+        self.monitor_sel  = overlay_cfg.get("monitor_selection", "All")
+
+        # Weather config
+        self.api_key    = weather_cfg.get("api_key", "").strip()
+        self.lat        = weather_cfg.get("lat", None)
+        self.lon        = weather_cfg.get("lon", None)
+
+        # build the main window
+        self.root.geometry("1x1+0+0")  # minimal to start
+        self.root.attributes("-alpha", self.bg_opacity)
+        if not self.bg_enabled:
+            # if background disabled, ensure we set label backgrounds to "transparent"
+            # but real transparency needs a compositor. We'll just set alpha=0 above.
+            pass
+
+        # container frame
+        self.frame = tk.Frame(self.root, bg=self.bg_color if self.bg_enabled else "", highlightthickness=0, bd=0)
         self.frame.pack(fill=tk.BOTH, expand=True)
 
         # If layout_style == "inline", we combine clock & weather in a single label
+        self.inline_label = None
+        self.clock_label = None
+        self.weather_label = None
+
         if self.layout_style == "inline":
             self.inline_label = tk.Label(
                 self.frame,
                 text="",
-                fg="white",
-                bg=self.bg_color,
-                font=("Trebuchet MS", self.clock_font)  # we'll unify font
+                fg=self.font_color,
+                bg=self.bg_color if self.bg_enabled else "",
+                font=("Trebuchet MS", max(self.clock_font, self.weather_font))
             )
             self.inline_label.pack(anchor="nw", padx=self.pad_x, pady=self.pad_y)
         else:
             # stacked
-            self.clock_label = tk.Label(
-                self.frame,
-                text="",
-                fg="white",
-                bg=self.bg_color,
-                font=("Trebuchet MS", self.clock_font, "bold")
-            )
-            self.clock_label.pack(anchor="nw", padx=self.pad_x, pady=(self.pad_y, 0))
+            if self.clock_enabled:
+                self.clock_label = tk.Label(
+                    self.frame,
+                    text="",
+                    fg=self.font_color,
+                    bg=self.bg_color if self.bg_enabled else "",
+                    font=("Trebuchet MS", self.clock_font, "bold")
+                )
+                self.clock_label.pack(anchor="nw", padx=self.pad_x, pady=(self.pad_y, 0))
 
-            self.weather_label = tk.Label(
-                self.frame,
-                text="",
-                fg="white",
-                bg=self.bg_color,
-                font=("Trebuchet MS", self.weather_font)
-            )
-            self.weather_label.pack(anchor="nw", padx=self.pad_x, pady=(0, self.pad_y))
+            if self.weather_enabled:
+                self.weather_label = tk.Label(
+                    self.frame,
+                    text="",
+                    fg=self.font_color,
+                    bg=self.bg_color if self.bg_enabled else "",
+                    font=("Trebuchet MS", self.weather_font)
+                )
+                self.weather_label.pack(anchor="nw", padx=self.pad_x, pady=(0, self.pad_y))
 
-        self.update_time()
+        # dynamic updating
+        if self.clock_enabled:
+            self.update_time()
 
-        if self.weather_en and self.api_key and (self.lat is not None) and (self.lon is not None):
-            self.weather_info = None
+        if self.weather_enabled and self.api_key and (self.lat is not None) and (self.lon is not None):
+            self.weather_info = {}
             threading.Thread(target=self.update_weather_loop, daemon=True).start()
 
         # measure content
@@ -103,9 +132,8 @@ class OverlayApp:
         w_req = self.frame.winfo_reqwidth()
         h_req = self.frame.winfo_reqheight()
 
-        # If user picked a single monitor, shift by that monitor's offset
-        mon_offset_x = 0
-        mon_offset_y = 0
+        # offset from chosen monitor
+        mon_offset_x, mon_offset_y = 0, 0
         if self.monitor_sel != "All":
             mon_dict = detect_monitors()
             if self.monitor_sel in mon_dict:
@@ -115,44 +143,76 @@ class OverlayApp:
         final_x = mon_offset_x + self.user_offset_x
         final_y = mon_offset_y + self.user_offset_y
 
-        # If the user specified overlay_width/height, respect them only if they're bigger than content
-        # or else we can clamp. We'll let the user explicitly override if they want a larger box
-        # even if the text doesn't fill it.
-        final_w = max(w_req, self.win_w)
-        final_h = max(h_req, self.win_h)
+        # If user_width or user_height are <= 0, treat as "auto" from content
+        if self.user_width <= 0:
+            final_w = w_req
+        else:
+            final_w = max(w_req, self.user_width)
+
+        if self.user_height <= 0:
+            final_h = h_req
+        else:
+            final_h = max(h_req, self.user_height)
 
         self.root.geometry(f"{final_w}x{final_h}+{final_x}+{final_y}")
 
     def update_time(self):
         now_str = datetime.now().strftime("%H:%M:%S")
-        if self.layout_style == "inline":
-            # If inline, also show weather in same line
-            # if weather_info is available
-            if hasattr(self, "weather_info") and self.weather_info:
-                main_desc = self.weather_info.get("weather", [{}])[0].get("main", "??")
-                temp_val  = self.weather_info.get("main", {}).get("temp", "?")
-                weather_str = f"{main_desc}, {temp_val}°C"
-                display_str = f"{now_str}   {weather_str}"
-            else:
-                # no weather yet
-                display_str = now_str
+        if self.layout_style == "inline" and self.inline_label is not None:
+            clock_part = now_str if self.clock_enabled else ""
+            weather_part = ""
+            if self.weather_enabled and hasattr(self, "weather_info"):
+                weather_part = self.build_weather_string()
+            display_str = clock_part
+            if clock_part and weather_part:
+                display_str += "   " + weather_part
+            elif weather_part:
+                display_str = weather_part
             self.inline_label.config(text=display_str)
         else:
             # stacked
-            self.clock_label.config(text=now_str)
+            if self.clock_label:
+                self.clock_label.config(text=now_str)
+
         self.root.after(1000, self.update_time)
 
+    def build_weather_string(self):
+        """
+        Construct the weather text based on user-chosen fields:
+          - show_desc
+          - show_temp
+          - show_feels_like
+          - show_humidity
+        """
+        if not self.weather_info:
+            return ""
+        parts = []
+        if self.show_desc:
+            desc = self.weather_info.get("weather", [{}])[0].get("main", "?")
+            parts.append(desc)
+        if self.show_temp:
+            t = self.weather_info.get("main", {}).get("temp", "?")
+            parts.append(f"{t}°C")
+        if self.show_feels_like:
+            fl = self.weather_info.get("main", {}).get("feels_like", "?")
+            parts.append(f"Feels:{fl}°C")
+        if self.show_humidity:
+            h = self.weather_info.get("main", {}).get("humidity", "?")
+            parts.append(f"Hum:{h}%")
+        return ", ".join(str(x) for x in parts if x)
+
     def update_weather_loop(self):
-        import time
         while True:
             try:
                 self.fetch_weather()
-                if self.layout_style == "stacked":
-                    self.update_stacked_weather()
-                # if inline, the inline label is updated next time clock ticks
+                if self.layout_style == "stacked" and self.weather_label is not None:
+                    self.weather_label.config(text=self.build_weather_string())
+                elif self.layout_style == "inline" and self.inline_label is not None:
+                    # next clock tick will refresh the inline label, so do nothing else
+                    pass
             except Exception as ex:
                 log_message(f"Overlay Weather Error: {ex}")
-                if self.layout_style == "stacked":
+                if self.layout_style == "stacked" and self.weather_label is not None:
                     self.weather_label.config(text="(Weather Error)")
             time.sleep(REFRESH_INTERVAL_SEC)
 
@@ -166,22 +226,14 @@ class OverlayApp:
         if resp.status_code == 200:
             self.weather_info = resp.json()
         else:
-            self.weather_info = None
-
-    def update_stacked_weather(self):
-        if not self.weather_info:
-            self.weather_label.config(text="(No data)")
-            return
-        main_desc = self.weather_info.get("weather", [{}])[0].get("main", "??")
-        temp_val  = self.weather_info.get("main", {}).get("temp", "?")
-        self.weather_label.config(text=f"{main_desc}, {temp_val}°C")
-
+            self.weather_info = {}
 
 def main():
     cfg = load_config()
-    overlay = cfg.get("overlay", {})
+    overlay_cfg = cfg.get("overlay", {})
+    weather_cfg = cfg.get("weather", {})
     root = tk.Tk()
-    app = OverlayApp(root, overlay)
+    app = OverlayApp(root, overlay_cfg, weather_cfg)
     root.mainloop()
 
 if __name__ == "__main__":

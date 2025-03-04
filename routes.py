@@ -102,12 +102,10 @@ def upload_media():
             continue
         original_name = file.filename
         ext = os.path.splitext(original_name.lower())[1]
-        # Only allow GIF, JPG, JPEG, PNG
         if ext not in [".gif", ".jpg", ".jpeg", ".png"]:
             log_message(f"Skipped file (unsupported): {original_name}")
             continue
 
-        new_filename = get_folder_prefix(subfolder)
         new_filename = get_next_filename(subfolder, target_dir, ext)
         final_path = os.path.join(IMAGE_DIR, subfolder, new_filename)
         file.save(final_path)
@@ -135,10 +133,6 @@ def get_next_filename(subfolder_name, folder_path, desired_ext):
 
 @main_bp.route("/restart_viewer", methods=["POST"])
 def restart_viewer():
-    """
-    Restarts both viewer.service and overlay.service so that
-    any display or overlay changes take effect.
-    """
     try:
         subprocess.check_output(["sudo", "systemctl", "restart", "viewer.service"])
         subprocess.check_output(["sudo", "systemctl", "restart", "overlay.service"])
@@ -150,6 +144,15 @@ def restart_viewer():
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
     cfg = load_config()
+    if "weather" not in cfg:
+        cfg["weather"] = {
+            "api_key": "",
+            "zip_code": "",
+            "country_code": "",
+            "lat": None,
+            "lon": None
+        }
+
     if request.method == "POST":
         new_theme = request.form.get("theme", "dark")
         new_role = request.form.get("role", "main")
@@ -160,6 +163,37 @@ def settings():
             cfg["main_ip"] = request.form.get("main_ip", "").strip()
         else:
             cfg["main_ip"] = ""
+
+        # If custom theme, handle background image
+        if new_theme == "custom":
+            if "bg_image" in request.files:
+                f = request.files["bg_image"]
+                if f and f.filename:
+                    f.save(WEB_BG)
+
+        # Weather settings
+        w_api = request.form.get("weather_api_key", "").strip()
+        w_zip = request.form.get("weather_zip_code", "").strip()
+        w_country = request.form.get("weather_country_code", "").strip()
+        w_lat = request.form.get("weather_lat", "").strip()
+        w_lon = request.form.get("weather_lon", "").strip()
+
+        cfg["weather"]["api_key"] = w_api
+        cfg["weather"]["zip_code"] = w_zip
+        cfg["weather"]["country_code"] = w_country
+
+        try:
+            cfg["weather"]["lat"] = float(w_lat)
+        except:
+            cfg["weather"]["lat"] = None
+        try:
+            cfg["weather"]["lon"] = float(w_lon)
+        except:
+            cfg["weather"]["lon"] = None
+
+        # If zip/country but no lat/lon, do an auto-lookup
+        if w_api and w_zip and w_country and (not cfg["weather"]["lat"] or not cfg["weather"]["lon"]):
+            auto_lookup_latlon(cfg["weather"])
 
         save_config(cfg)
         return redirect(url_for("main.settings"))
@@ -172,71 +206,59 @@ def settings():
     )
 
 
+def auto_lookup_latlon(wdict):
+    """
+    Tries to fetch lat/lon from OWM GEO API given the zip/country.
+    """
+    apikey = wdict.get("api_key", "")
+    zip_c  = wdict.get("zip_code", "")
+    ctry   = wdict.get("country_code", "")
+    url = f"http://api.openweathermap.org/geo/1.0/zip?zip={zip_c},{ctry}&appid={apikey}"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            lat = data.get("lat")
+            lon = data.get("lon")
+            if lat is not None and lon is not None:
+                wdict["lat"] = lat
+                wdict["lon"] = lon
+                log_message(f"Weather lat/lon auto-updated: {lat}, {lon}")
+    except Exception as e:
+        log_message(f"Geo lookup error: {e}")
+
+
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
-    """
-    Manage settings for the clock & weather overlay in cfg["overlay"].
-    We add new fields for advanced user customization:
-      - monitor_selection
-      - overlay_width, overlay_height
-      - clock_font_size, weather_font_size
-      - layout_style ("stacked" or "inline")
-      - padding_x, padding_y
-    """
     cfg = load_config()
     if "overlay" not in cfg:
-        cfg["overlay"] = {
-            "weather_enabled": False,
-            "api_key": "",
-            "zip_code": "",
-            "country_code": "",
-            "lat": None,
-            "lon": None,
-            "bg_color": "#000000",
-            "bg_opacity": 0.4,
-            "offset_x": 20,
-            "offset_y": 20,
-            "monitor_selection": "All",
-            "overlay_width": 300,
-            "overlay_height": 150,
-            "clock_font_size": 26,
-            "weather_font_size": 22,
-            "layout_style": "stacked",   # or "inline"
-            "padding_x": 8,
-            "padding_y": 6
-        }
+        cfg["overlay"] = {}
 
     over = cfg["overlay"]
     monitors = detect_monitors()
 
-    # If no monitors, fallback
-    if len(monitors) == 0:
-        monitors = {"Display0": {"resolution": "1920x1080"}}
-
-    # Compute total width/height for the scaled preview
+    # Calculate total resolution for "All" or single monitor
     total_width = 0
     total_height = 0
-    chosen = over.get("monitor_selection", "All")
+    if not monitors:
+        monitors = {"Display0": {"resolution": "1920x1080", "offset_x":0, "offset_y":0}}
 
-    if chosen == "All":
-        # sum widths horizontally
-        for mname, minfo in monitors.items():
-            res_str = minfo.get("resolution", "1920x1080")
-            w, h = parse_resolution(res_str)
+    if over.get("monitor_selection", "All") == "All":
+        for _, minfo in monitors.items():
+            w, h = parse_resolution(minfo.get("resolution","1920x1080"))
             total_width += w
             if h > total_height:
                 total_height = h
     else:
+        chosen = over.get("monitor_selection", "All")
         if chosen in monitors:
-            res_str = monitors[chosen].get("resolution", "1920x1080")
-            w, h = parse_resolution(res_str)
+            w, h = parse_resolution(monitors[chosen].get("resolution","1920x1080"))
             total_width = w
             total_height = h
         else:
             total_width, total_height = (1920, 1080)
 
-    # scale factor for the preview
-    max_preview_w = 600.0
+    max_preview_w = 500.0
     scaleFactor = 1.0
     if total_width > 0:
         scaleFactor = max_preview_w / float(total_width)
@@ -245,90 +267,84 @@ def overlay_config():
     previewW = int(total_width * scaleFactor)
     previewH = int(total_height * scaleFactor)
 
-    # Scale the overlay box coords
-    boxLeft = int(over["offset_x"] * scaleFactor)
-    boxTop = int(over["offset_y"] * scaleFactor)
-    boxW = int(over["overlay_width"] * scaleFactor)
-    boxH = int(over["overlay_height"] * scaleFactor)
+    # scale the offset + width/height for the green box
+    boxLeft = int(over.get("offset_x", 20) * scaleFactor)
+    boxTop  = int(over.get("offset_y", 20) * scaleFactor)
+    bw = over.get("overlay_width", 300)
+    bh = over.get("overlay_height", 150)
+
+    boxW = int(bw * scaleFactor) if bw > 0 else int(150 * scaleFactor)
+    boxH = int(bh * scaleFactor) if bh > 0 else int(80 * scaleFactor)
 
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "select_monitor":
-            over["monitor_selection"] = request.form.get("monitor_selection", "All")
+            over["monitor_selection"] = request.form.get("monitor_selection","All")
             save_config(cfg)
             return redirect(url_for("main.overlay_config"))
 
         elif action == "save_overlay":
-            over["weather_enabled"] = (request.form.get("weather_enabled") == "on")
-            over["api_key"] = request.form.get("api_key", "").strip()
-            over["zip_code"] = request.form.get("zip_code", "").strip()
-            over["country_code"] = request.form.get("country_code", "").strip()
+            # read toggles
+            over["overlay_enabled"]     = ("overlay_enabled" in request.form)
+            over["clock_enabled"]       = ("clock_enabled" in request.form)
+            over["weather_enabled"]     = ("weather_enabled" in request.form)
+            over["background_enabled"]  = ("background_enabled" in request.form)
 
-            lat_str = request.form.get("lat", "").strip()
-            lon_str = request.form.get("lon", "").strip()
+            # fonts & layout
             try:
-                over["lat"] = float(lat_str)
-            except:
-                over["lat"] = None
-            try:
-                over["lon"] = float(lon_str)
-            except:
-                over["lon"] = None
-
-            over["bg_color"] = request.form.get("bg_color", "#000000").strip()
-            try:
-                over["bg_opacity"] = float(request.form.get("bg_opacity", "0.4"))
-            except:
-                over["bg_opacity"] = 0.4
-
-            try:
-                over["offset_x"] = int(request.form.get("offset_x", "20"))
-            except:
-                over["offset_x"] = 20
-            try:
-                over["offset_y"] = int(request.form.get("offset_y", "20"))
-            except:
-                over["offset_y"] = 20
-
-            # new advanced fields
-            try:
-                over["overlay_width"] = int(request.form.get("overlay_width", "300"))
-            except:
-                over["overlay_width"] = 300
-            try:
-                over["overlay_height"] = int(request.form.get("overlay_height", "150"))
-            except:
-                over["overlay_height"] = 150
-
-            try:
-                over["clock_font_size"] = int(request.form.get("clock_font_size", "26"))
+                over["clock_font_size"] = int(request.form.get("clock_font_size","26"))
             except:
                 over["clock_font_size"] = 26
             try:
-                over["weather_font_size"] = int(request.form.get("weather_font_size", "22"))
+                over["weather_font_size"] = int(request.form.get("weather_font_size","22"))
             except:
                 over["weather_font_size"] = 22
 
-            layout_val = request.form.get("layout_style", "stacked")
-            if layout_val not in ["stacked", "inline"]:
-                layout_val = "stacked"
-            over["layout_style"] = layout_val
-
+            over["font_color"]     = request.form.get("font_color", "#FFFFFF")
+            over["layout_style"]   = request.form.get("layout_style","stacked")
             try:
-                over["padding_x"] = int(request.form.get("padding_x", "8"))
+                over["padding_x"] = int(request.form.get("padding_x","8"))
             except:
                 over["padding_x"] = 8
             try:
-                over["padding_y"] = int(request.form.get("padding_y", "6"))
+                over["padding_y"] = int(request.form.get("padding_y","6"))
             except:
                 over["padding_y"] = 6
 
-            # auto-lookup lat/lon if possible
-            if over["api_key"] and over["zip_code"] and over["country_code"]:
-                if (over["lat"] is None) or (over["lon"] is None):
-                    _auto_lookup_latlon(over)
+            # weather details
+            over["show_desc"]       = ("show_desc" in request.form)
+            over["show_temp"]       = ("show_temp" in request.form)
+            over["show_feels_like"] = ("show_feels_like" in request.form)
+            over["show_humidity"]   = ("show_humidity" in request.form)
+
+            # position & size
+            try:
+                over["offset_x"] = int(request.form.get("offset_x","20"))
+            except:
+                over["offset_x"] = 20
+            try:
+                over["offset_y"] = int(request.form.get("offset_y","20"))
+            except:
+                over["offset_y"] = 20
+            try:
+                wval = int(request.form.get("overlay_width","300"))
+                over["overlay_width"] = wval
+            except:
+                over["overlay_width"] = 300
+            try:
+                hval = int(request.form.get("overlay_height","150"))
+                over["overlay_height"] = hval
+            except:
+                over["overlay_height"] = 150
+
+            over["bg_color"] = request.form.get("bg_color","#000000")
+            try:
+                over["bg_opacity"] = float(request.form.get("bg_opacity","0.4"))
+            except:
+                over["bg_opacity"] = 0.4
 
             save_config(cfg)
+
             # restart overlay service
             try:
                 subprocess.check_call(["sudo", "systemctl", "restart", "overlay.service"])
@@ -337,7 +353,6 @@ def overlay_config():
 
             return redirect(url_for("main.overlay_config"))
 
-    # Prepare data for the template
     preview_data = {
         "width": previewW,
         "height": previewH
@@ -357,27 +372,6 @@ def overlay_config():
         preview_size=preview_data,
         preview_overlay=preview_overlay
     )
-
-
-def _auto_lookup_latlon(over):
-    apikey = over["api_key"]
-    zip_c = over["zip_code"]
-    ctry = over["country_code"]
-    url = f"http://api.openweathermap.org/geo/1.0/zip?zip={zip_c},{ctry}&appid={apikey}"
-    try:
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            data = r.json()
-            lat = data.get("lat")
-            lon = data.get("lon")
-            if lat is not None and lon is not None:
-                over["lat"] = lat
-                over["lon"] = lon
-                log_message(f"Overlay lat/lon auto-updated: {lat}, {lon}")
-        else:
-            log_message(f"Geo lookup failed. Status code: {r.status_code}")
-    except Exception as e:
-        log_message(f"Geo lookup error: {e}")
 
 
 def parse_resolution(res_str):
@@ -404,7 +398,6 @@ def index():
                 "mixed_folders": [],
                 "rotate": 0
             }
-
     remove_list = [d for d in list(cfg["displays"].keys()) if d not in monitors]
     for r in remove_list:
         del cfg["displays"][r]
@@ -543,7 +536,6 @@ def index():
 
 @main_bp.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
 def remote_configure(dev_index):
-    """Main device can configure a sub-device's display settings (like a remote editor)."""
     cfg = load_config()
     if cfg.get("role") != "main":
         return "This device is not 'main'.", 403
@@ -611,7 +603,6 @@ def remote_configure(dev_index):
 
 
 def get_remote_subfolders(ip):
-    """List subfolders from remote or [] if fail."""
     url = f"http://{ip}:8080/list_folders"
     try:
         r = requests.get(url, timeout=5)
@@ -624,15 +615,11 @@ def get_remote_subfolders(ip):
 
 @main_bp.route("/sync_config", methods=["GET"])
 def sync_config():
-    """Return entire config as JSON for remote GET."""
     return load_config()
 
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
-    """
-    Another device can POST partial config. We merge allowed keys.
-    """
     incoming = request.get_json()
     if not incoming:
         return "No JSON received", 400
@@ -650,9 +637,6 @@ def update_config():
 
 @main_bp.route("/device_manager", methods=["GET", "POST"])
 def device_manager():
-    """
-    If role == 'main', manage sub devices.
-    """
     cfg = load_config()
     if cfg.get("role") != "main":
         return "This device is not 'main'.", 403
@@ -722,14 +706,7 @@ def device_manager():
 
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():
-    """
-    Pulls latest code from GitHub, using the UPDATE_BRANCH from config.py.
-    Forces local code to match remote (discarding local changes),
-    then if setup.sh changed, re-runs it in 'no-prompt' mode.
-    Finally, we'll show a confirmation page.
-    """
     cfg = load_config()
-
     old_hash = ""
     try:
         old_hash = subprocess.check_output(
