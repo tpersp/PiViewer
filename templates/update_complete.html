@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Update Complete</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>Update Complete</h1>
+    <p>Your application has been updated from GitHub. You can now restart the service.</p>
+    <!-- Option A: Automatic redirect after 5 seconds -->
+    <script>
+        setTimeout(function() {
+            window.location.href = "{{ url_for('main.restart_services') }}";
+        }, 5000);
+    </script>
+
+    <!-- Option B: A button to trigger the restart manually -->
+    <p>If not redirected automatically, click here:</p>
+    <form action="{{ url_for('main.restart_services') }}" method="POST">
+        <button type="submit">Restart Services Now</button>
+    </form>
+</body>
+</html>

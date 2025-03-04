@@ -65,15 +65,10 @@
 
   <br><hr><br>
 
-  <!-- Button to auto-lookup lat/lon from zip/country using the provided API key -->
-  <form method="POST">
-    <input type="hidden" name="action" value="lookup_latlon">
-    <p><strong>Auto-Lookup Lat/Lon from Zip Code:</strong></p>
-    <p>Enter your API key, zip code, and country code above, then press "Lookup".</p>
-    <button type="submit">Lookup Lat/Lon</button>
-  </form>
+  <!-- We removed the old "Lookup Lat/Lon" button form.
+       The code now automatically does it on Save,
+       if fields are present and lat/lon are empty. -->
 
-  <br><br>
   <a href="{{ url_for('main.index') }}">
     <button>Back to Main</button>
   </a>

@@ -114,6 +114,7 @@ def upload_media():
 
     return redirect(url_for("main.index"))
 
+
 def get_next_filename(subfolder_name, folder_path, desired_ext):
     prefix = get_folder_prefix(subfolder_name)
     existing = os.listdir(folder_path)
@@ -130,13 +131,19 @@ def get_next_filename(subfolder_name, folder_path, desired_ext):
                 pass
     return f"{prefix}{(max_num + 1):03d}{desired_ext}"
 
+
 @main_bp.route("/restart_viewer", methods=["POST"])
 def restart_viewer():
+    """
+    Restarts both viewer.service and overlay.service so that
+    any display or overlay changes take effect.
+    """
     try:
         subprocess.check_output(["sudo", "systemctl", "restart", "viewer.service"])
+        subprocess.check_output(["sudo", "systemctl", "restart", "overlay.service"])
         return redirect(url_for("main.index"))
     except subprocess.CalledProcessError as e:
-        return f"Failed to restart viewer.service: {e}", 500
+        return f"Failed to restart services: {e}", 500
 
 
 @main_bp.route("/settings", methods=["GET", "POST"])
@@ -164,11 +171,14 @@ def settings():
         update_branch=UPDATE_BRANCH
     )
 
+
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
     """
-    Manage settings for the clock & weather overlay.
-    We’ll store them in cfg["overlay"].
+    Manage settings for the clock & weather overlay in cfg["overlay"].
+    We'll automatically do geo-lookup (if possible) whenever the user
+    saves the overlay settings and has provided zip/country/api.
+    Then we restart the overlay service so changes take effect.
     """
     cfg = load_config()
     if "overlay" not in cfg:
@@ -178,7 +188,11 @@ def overlay_config():
             "zip_code": "",
             "country_code": "",
             "lat": None,
-            "lon": None
+            "lon": None,
+            "bg_color": "#000000",
+            "bg_opacity": 0.4,
+            "offset_x": 20,
+            "offset_y": 20
         }
 
     over = cfg["overlay"]
@@ -190,7 +204,7 @@ def overlay_config():
             over["api_key"] = request.form.get("api_key", "").strip()
             over["zip_code"] = request.form.get("zip_code", "").strip()
             over["country_code"] = request.form.get("country_code", "").strip()
-            # lat/lon might have been retrieved or manually entered:
+
             lat_str = request.form.get("lat", "").strip()
             lon_str = request.form.get("lon", "").strip()
             try:
@@ -202,41 +216,71 @@ def overlay_config():
             except:
                 over["lon"] = None
 
+            over["bg_color"] = request.form.get("bg_color", "#000000").strip()
+            try:
+                over["bg_opacity"] = float(request.form.get("bg_opacity", "0.4"))
+            except:
+                over["bg_opacity"] = 0.4
+            try:
+                over["offset_x"] = int(request.form.get("offset_x", "20"))
+            except:
+                over["offset_x"] = 20
+            try:
+                over["offset_y"] = int(request.form.get("offset_y", "20"))
+            except:
+                over["offset_y"] = 20
+
+            # Attempt to auto-lookup lat/lon if user typed zip+country+apikey
+            # (but only do it if we don't already have valid lat/lon)
+            if over["api_key"] and over["zip_code"] and over["country_code"]:
+                # If lat/lon are empty or None, try the geolookup automatically
+                if (over["lat"] is None) or (over["lon"] is None):
+                    _auto_lookup_latlon(over)
+
             save_config(cfg)
-            return redirect(url_for("main.overlay_config"))
 
-        elif action == "lookup_latlon":
-            # We'll call the OWM Geo endpoint:
-            # http://api.openweathermap.org/geo/1.0/zip?zip={zip code},{country code}&appid={API key}
-            apikey = request.form.get("api_key", "").strip()
-            zip_c = request.form.get("zip_code", "").strip()
-            ctry = request.form.get("country_code", "").strip()
-
-            if apikey and zip_c and ctry:
-                url = f"http://api.openweathermap.org/geo/1.0/zip?zip={zip_c},{ctry}&appid={apikey}"
-                try:
-                    r = requests.get(url, timeout=5)
-                    if r.status_code == 200:
-                        data = r.json()
-                        # data should have lat, lon
-                        lat = data.get("lat")
-                        lon = data.get("lon")
-                        if lat is not None and lon is not None:
-                            over["lat"] = lat
-                            over["lon"] = lon
-                            over["api_key"] = apikey
-                            over["zip_code"] = zip_c
-                            over["country_code"] = ctry
-                            log_message(f"Overlay lat/lon updated: {lat}, {lon}")
-                            save_config(cfg)
-                    else:
-                        log_message(f"Geo lookup failed. Status code: {r.status_code}")
-                except Exception as e:
-                    log_message(f"Geo lookup error: {e}")
+            # After saving changes, restart overlay.service to apply them
+            try:
+                subprocess.check_call(["sudo", "systemctl", "restart", "overlay.service"])
+            except subprocess.CalledProcessError as e:
+                log_message(f"Failed to restart overlay.service: {e}")
 
             return redirect(url_for("main.overlay_config"))
 
-    return render_template("overlay.html", theme=cfg.get("theme", "dark"), overlay=over)
+        # We remove the separate 'lookup_latlon' action
+        # as the logic is now handled automatically above
+
+    return render_template(
+        "overlay.html",
+        theme=cfg.get("theme", "dark"),
+        overlay=cfg["overlay"]
+    )
+
+
+def _auto_lookup_latlon(over):
+    """
+    Call the OWM Geo endpoint automatically if we have
+    apikey, zip, and country but lat/lon are not set.
+    """
+    apikey = over["api_key"]
+    zip_c = over["zip_code"]
+    ctry = over["country_code"]
+    url = f"http://api.openweathermap.org/geo/1.0/zip?zip={zip_c},{ctry}&appid={apikey}"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            lat = data.get("lat")
+            lon = data.get("lon")
+            if lat is not None and lon is not None:
+                over["lat"] = lat
+                over["lon"] = lon
+                log_message(f"Overlay lat/lon auto-updated: {lat}, {lon}")
+        else:
+            log_message(f"Geo lookup failed. Status code: {r.status_code}")
+    except Exception as e:
+        log_message(f"Geo lookup error: {e}")
+
 
 @main_bp.route("/", methods=["GET", "POST"])
 def index():
@@ -390,6 +434,7 @@ def index():
         remote_displays=remote_displays
     )
 
+
 @main_bp.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
 def remote_configure(dev_index):
     """Main device can configure a sub-device's display settings (like a remote editor)."""
@@ -458,6 +503,7 @@ def remote_configure(dev_index):
         remote_folders=remote_folders
     )
 
+
 def get_remote_subfolders(ip):
     """List subfolders from remote or [] if fail."""
     url = f"http://{ip}:8080/list_folders"
@@ -469,10 +515,12 @@ def get_remote_subfolders(ip):
         log_message(f"Error fetching remote folders from {ip}: {e}")
     return []
 
+
 @main_bp.route("/sync_config", methods=["GET"])
 def sync_config():
     """Return entire config as JSON for remote GET."""
     return load_config()
+
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
@@ -492,6 +540,7 @@ def update_config():
     save_config(cfg)
     log_message("Local config partially updated via /update_config")
     return "Config updated", 200
+
 
 @main_bp.route("/device_manager", methods=["GET", "POST"])
 def device_manager():
@@ -565,15 +614,14 @@ def device_manager():
     )
 
 
-# ------------------------------------------------
-#      NEW: Update from GitHub
-# ------------------------------------------------
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():
     """
     Pulls latest code from GitHub, using the UPDATE_BRANCH from config.py.
     Forces local code to match remote (discarding local changes),
     then if setup.sh changed, re-runs it in 'no-prompt' mode.
+    Finally, we'll show a confirmation page. The actual restart
+    will happen in a separate route so the user sees the message.
     """
     cfg = load_config()
 
@@ -592,7 +640,6 @@ def update_app():
         log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
         subprocess.check_call(["git", "fetch"], cwd=VIEWER_HOME)
         subprocess.check_call(["git", "checkout", UPDATE_BRANCH], cwd=VIEWER_HOME)
-        # Force local to match remote exactly:
         subprocess.check_call(["git", "reset", "--hard", f"origin/{UPDATE_BRANCH}"], cwd=VIEWER_HOME)
     except subprocess.CalledProcessError as e:
         log_message(f"Git update failed: {e}")
@@ -616,14 +663,29 @@ def update_app():
         except subprocess.CalledProcessError as e:
             log_message(f"Re-running setup.sh failed: {e}")
 
-    # 5) (Optional) Restart services if you like:
-    #"""
-    try:
-        subprocess.check_call(["sudo", "systemctl", "restart", "viewer.service"])
-        subprocess.check_call(["sudo", "systemctl", "restart", "controller.service"])
-    except subprocess.CalledProcessError as e:
-        log_message(f"Failed to restart services after update: {e}")
-    #"""
+    # 5) (DO NOT restart the service here!) 
+    # Instead, show a "Update complete" page with a button or auto-redirect
+    # to a separate route that restarts the service.
 
     log_message("Update completed successfully.")
-    return redirect(url_for("main.settings"))
+    return render_template("update_complete.html")
+
+@main_bp.route("/restart_services", methods=["POST", "GET"])
+def restart_services():
+    """
+    Restarts viewer, overlay, and controller services. 
+    This is called AFTER the user sees the 'Update Complete' page.
+    """
+    try:
+        subprocess.check_call(["sudo", "systemctl", "restart", "viewer.service"])
+        subprocess.check_call(["sudo", "systemctl", "restart", "overlay.service"])
+        subprocess.check_call(["sudo", "systemctl", "restart", "controller.service"])
+        log_message("Services restarted successfully.")
+    except subprocess.CalledProcessError as e:
+        log_message(f"Failed to restart services: {e}")
+        return "Failed to restart services. Check logs.", 500
+
+    # Optionally return a small message. The user may see it if the server 
+    # doesn't shut down immediately. If the server is truly killed, the user
+    # won't see this, but that's okay since they already saw the prior page.
+    return "Services are restarting now..."
