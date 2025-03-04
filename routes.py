@@ -107,6 +107,8 @@ def upload_media():
             log_message(f"Skipped file (unsupported): {original_name}")
             continue
 
+        new_filename = get_folder_prefix(subfolder)  # partial prefix
+        # We use a numeric approach in the original code:
         new_filename = get_next_filename(subfolder, target_dir, ext)
         final_path = os.path.join(IMAGE_DIR, subfolder, new_filename)
         file.save(final_path)
@@ -163,7 +165,6 @@ def settings():
         save_config(cfg)
         return redirect(url_for("main.settings"))
 
-    # Pass UPDATE_BRANCH into the template
     return render_template(
         "settings.html",
         theme=cfg.get("theme", "dark"),
@@ -176,9 +177,10 @@ def settings():
 def overlay_config():
     """
     Manage settings for the clock & weather overlay in cfg["overlay"].
-    We'll automatically do geo-lookup (if possible) whenever the user
-    saves the overlay settings and has provided zip/country/api.
-    Then we restart the overlay service so changes take effect.
+    We add new fields:
+      - monitor_selection
+      - overlay_width, overlay_height
+    Also, we create a scaled preview for the chosen monitor or all monitors.
     """
     cfg = load_config()
     if "overlay" not in cfg:
@@ -192,14 +194,71 @@ def overlay_config():
             "bg_color": "#000000",
             "bg_opacity": 0.4,
             "offset_x": 20,
-            "offset_y": 20
+            "offset_y": 20,
+            "monitor_selection": "All",
+            "overlay_width": 300,
+            "overlay_height": 150
         }
 
     over = cfg["overlay"]
+    monitors = detect_monitors()  # e.g. {"HDMI-1": {...}, "HDMI-2": {...}}
+
+    # By default let's pick "All" as a combined bounding resolution if there's more than one monitor.
+    # We'll parse the resolution to compute a scaled size for the preview.
+    # For simplicity, if "All" is chosen, we assume all monitors are side-by-side horizontally.
+    total_width = 0
+    total_height = 0
+
+    if len(monitors) == 0:
+        # No actual monitors detected, fallback
+        monitors = {"Display0": {"resolution": "1920x1080", "name": "Display0"}}
+
+    if over["monitor_selection"] == "All":
+        # sum widths and take max height
+        for mname, minfo in monitors.items():
+            res = minfo.get("resolution", "1920x1080")
+            w, h = parse_resolution(res)
+            total_width += w
+            if h > total_height:
+                total_height = h
+    else:
+        # Single monitor
+        chosen = over["monitor_selection"]
+        if chosen in monitors:
+            res = monitors[chosen].get("resolution", "1920x1080")
+            w, h = parse_resolution(res)
+            total_width = w
+            total_height = h
+        else:
+            # fallback
+            total_width, total_height = (1920, 1080)
+
+    # Decide on a scale factor so the preview is not too large
+    max_preview_w = 500.0  # or 600
+    scaleFactor = 1.0
+    if total_width > 0:
+        scaleFactor = max_preview_w / float(total_width)
+    if scaleFactor > 1.0:
+        scaleFactor = 1.0
+    previewW = int(total_width * scaleFactor)
+    previewH = int(total_height * scaleFactor)
+
+    # We'll position the draggable overlay box in the preview:
+    # scale the offset + width/height
+    boxLeft = int(over.get("offset_x", 20) * scaleFactor)
+    boxTop  = int(over.get("offset_y", 20) * scaleFactor)
+    boxW    = int(over.get("overlay_width", 300) * scaleFactor)
+    boxH    = int(over.get("overlay_height", 150) * scaleFactor)
 
     if request.method == "POST":
         action = request.form.get("action", "")
-        if action == "save_overlay":
+        if action == "select_monitor":
+            # user changed the monitor in the dropdown
+            over["monitor_selection"] = request.form.get("monitor_selection", "All")
+            save_config(cfg)
+            return redirect(url_for("main.overlay_config"))
+
+        elif action == "save_overlay":
             over["weather_enabled"] = (request.form.get("weather_enabled") == "on")
             over["api_key"] = request.form.get("api_key", "").strip()
             over["zip_code"] = request.form.get("zip_code", "").strip()
@@ -221,25 +280,37 @@ def overlay_config():
                 over["bg_opacity"] = float(request.form.get("bg_opacity", "0.4"))
             except:
                 over["bg_opacity"] = 0.4
+
             try:
                 over["offset_x"] = int(request.form.get("offset_x", "20"))
             except:
                 over["offset_x"] = 20
+
             try:
                 over["offset_y"] = int(request.form.get("offset_y", "20"))
             except:
                 over["offset_y"] = 20
 
-            # Attempt to auto-lookup lat/lon if user typed zip+country+apikey
-            # (but only do it if we don't already have valid lat/lon)
+            # new fields
+            monitor_sel = over.get("monitor_selection", "All")  # keep existing if not changed
+            # we do NOT forcibly update monitor_selection here because it is changed by 'select_monitor' action
+            try:
+                over["overlay_width"] = int(request.form.get("overlay_width", "300"))
+            except:
+                over["overlay_width"] = 300
+            try:
+                over["overlay_height"] = int(request.form.get("overlay_height", "150"))
+            except:
+                over["overlay_height"] = 150
+
+            # auto-lookup lat/lon if possible:
             if over["api_key"] and over["zip_code"] and over["country_code"]:
-                # If lat/lon are empty or None, try the geolookup automatically
                 if (over["lat"] is None) or (over["lon"] is None):
                     _auto_lookup_latlon(over)
 
             save_config(cfg)
 
-            # After saving changes, restart overlay.service to apply them
+            # restart overlay service
             try:
                 subprocess.check_call(["sudo", "systemctl", "restart", "overlay.service"])
             except subprocess.CalledProcessError as e:
@@ -247,13 +318,25 @@ def overlay_config():
 
             return redirect(url_for("main.overlay_config"))
 
-        # We remove the separate 'lookup_latlon' action
-        # as the logic is now handled automatically above
+    # Render
+    preview_data = {
+        "width": previewW,
+        "height": previewH
+    }
+    preview_overlay = {
+        "left": boxLeft,
+        "top": boxTop,
+        "width": boxW,
+        "height": boxH
+    }
 
     return render_template(
         "overlay.html",
         theme=cfg.get("theme", "dark"),
-        overlay=cfg["overlay"]
+        overlay=over,
+        monitors=monitors,
+        preview_size=preview_data,
+        preview_overlay=preview_overlay
     )
 
 
@@ -280,6 +363,18 @@ def _auto_lookup_latlon(over):
             log_message(f"Geo lookup failed. Status code: {r.status_code}")
     except Exception as e:
         log_message(f"Geo lookup error: {e}")
+
+
+def parse_resolution(res_str):
+    """
+    Given a string like "1920x1080", return (1920,1080).
+    If parse fails, return (1920,1080).
+    """
+    try:
+        w, h = res_str.lower().split("x")
+        return (int(w), int(h))
+    except:
+        return (1920, 1080)
 
 
 @main_bp.route("/", methods=["GET", "POST"])
@@ -620,12 +715,11 @@ def update_app():
     Pulls latest code from GitHub, using the UPDATE_BRANCH from config.py.
     Forces local code to match remote (discarding local changes),
     then if setup.sh changed, re-runs it in 'no-prompt' mode.
-    Finally, we'll show a confirmation page. The actual restart
-    will happen in a separate route so the user sees the message.
+    Finally, we'll show a confirmation page.
     """
     cfg = load_config()
 
-    # 1) Save old commit hash for setup.sh so we can compare
+    # 1) Save old commit hash for setup.sh
     old_hash = ""
     try:
         old_hash = subprocess.check_output(
@@ -635,7 +729,7 @@ def update_app():
     except Exception as e:
         log_message(f"update_app: Could not get old setup.sh hash: {e}")
 
-    # 2) Perform forced update (discard local changes):
+    # 2) Perform forced update
     try:
         log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
         subprocess.check_call(["git", "fetch"], cwd=VIEWER_HOME)
@@ -663,18 +757,15 @@ def update_app():
         except subprocess.CalledProcessError as e:
             log_message(f"Re-running setup.sh failed: {e}")
 
-    # 5) (DO NOT restart the service here!) 
-    # Instead, show a "Update complete" page with a button or auto-redirect
-    # to a separate route that restarts the service.
-
+    # 5) done
     log_message("Update completed successfully.")
     return render_template("update_complete.html")
+
 
 @main_bp.route("/restart_services", methods=["POST", "GET"])
 def restart_services():
     """
-    Restarts viewer, overlay, and controller services. 
-    This is called AFTER the user sees the 'Update Complete' page.
+    Restarts viewer, overlay, and controller services.
     """
     try:
         subprocess.check_call(["sudo", "systemctl", "restart", "viewer.service"])
@@ -685,7 +776,4 @@ def restart_services():
         log_message(f"Failed to restart services: {e}")
         return "Failed to restart services. Check logs.", 500
 
-    # Optionally return a small message. The user may see it if the server 
-    # doesn't shut down immediately. If the server is truly killed, the user
-    # won't see this, but that's okay since they already saw the prior page.
     return "Services are restarting now..."

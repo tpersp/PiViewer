@@ -8,9 +8,11 @@ A simple always-on-top overlay that shows the current time
 and (optionally) weather info. We now allow user adjustments
 (via 'overlay' dict in viewerconfig.json) for:
  - overlay position (offset_x, offset_y)
+ - overlay width/height
  - background color
  - alpha transparency
  - lat/lon & API key for weather
+ - chosen monitor or "All"
 Requires a compositing WM (e.g. picom) for real transparency.
 """
 
@@ -23,7 +25,7 @@ import threading
 import tkinter as tk
 from datetime import datetime
 
-from utils import load_config, log_message
+from utils import load_config, log_message, detect_monitors
 
 REFRESH_INTERVAL_SEC = 300   # how often to refresh weather data
 FONT_SIZE = 26
@@ -39,21 +41,30 @@ class OverlayApp:
         # Pull user settings
         self.bg_opacity = overlay_cfg.get("bg_opacity", 0.4)
         self.bg_color = overlay_cfg.get("bg_color", "#000000")
-        offset_x = overlay_cfg.get("offset_x", 20)
-        offset_y = overlay_cfg.get("offset_y", 20)
+        self.offset_x = overlay_cfg.get("offset_x", 20)
+        self.offset_y = overlay_cfg.get("offset_y", 20)
+        self.win_w = overlay_cfg.get("overlay_width", 300)
+        self.win_h = overlay_cfg.get("overlay_height", 150)
+        self.monitor_selection = overlay_cfg.get("monitor_selection", "All")
 
-        # Set geometry for offset
-        self.root.geometry(f"+{offset_x}+{offset_y}")
+        # figure out if we need to shift according to a specific monitor
+        # For now, we skip complex xrandr offset. We'll just place the window at offset_x+offset_y on screen 0.
+        # If the user chooses "All", it just draws at 0,0 plus offset. 
+        # A more advanced approach: parse xrandr to find the monitor's starting offset. 
+        # We'll keep it simple.
+        geometry_str = f"{self.win_w}x{self.win_h}+{self.offset_x}+{self.offset_y}"
+        self.root.geometry(geometry_str)
 
         # Set alpha transparency
+        # NOTE: This only becomes truly transparent with a running compositor like picom.
         self.root.attributes("-alpha", self.bg_opacity)
 
-        # Also set root window's background color, so no white border
+        # Also set root background color
         self.root.configure(bg=self.bg_color)
 
         # Create a frame (borderless)
         self.frame = tk.Frame(self.root, bg=self.bg_color, highlightthickness=0, bd=0)
-        self.frame.pack(padx=10, pady=10)
+        self.frame.pack(fill=tk.BOTH, expand=True)
 
         # Clock label
         self.time_label = tk.Label(
@@ -63,7 +74,7 @@ class OverlayApp:
             bg=self.bg_color,
             font=("Trebuchet MS", FONT_SIZE, "bold")
         )
-        self.time_label.pack(anchor="e")
+        self.time_label.pack(anchor="e", padx=10, pady=5)
 
         # Weather label
         self.weather_label = tk.Label(
@@ -73,9 +84,9 @@ class OverlayApp:
             bg=self.bg_color,
             font=("Trebuchet MS", FONT_SIZE - 4)
         )
-        self.weather_label.pack(anchor="e")
+        self.weather_label.pack(anchor="e", padx=10, pady=0)
 
-        # Always update clock
+        # Start updating clock
         self.update_time()
 
         # Check if weather is enabled
