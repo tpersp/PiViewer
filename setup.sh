@@ -338,14 +338,19 @@ echo "Creating $PICOM_SERVICE ..."
 cat <<EOF > "$PICOM_SERVICE"
 [Unit]
 Description=Picom Compositor
+After=lightdm.service
 
 [Service]
+User=$VIEWER_USER
+Group=$VIEWER_USER
 Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
 ExecStart=/usr/bin/picom -b
 Restart=always
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical.target
+
 EOF
 
 echo "Reloading systemd..."
