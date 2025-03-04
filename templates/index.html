@@ -181,6 +181,9 @@
     <a href="{{ url_for('main.settings') }}">
       <button style="font-size:14px;">Settings</button>
     </a>
+    <a href="{{ url_for('main.overlay_config') }}">
+      <button style="font-size:14px;">Configure Overlay</button>
+    </a>
     <form method="POST" action="{{ url_for('main.restart_viewer') }}">
       <button type="submit" style="font-size:14px;">Restart Viewer</button>
     </form>
