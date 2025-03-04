@@ -107,8 +107,7 @@ def upload_media():
             log_message(f"Skipped file (unsupported): {original_name}")
             continue
 
-        new_filename = get_folder_prefix(subfolder)  # partial prefix
-        # We use a numeric approach in the original code:
+        new_filename = get_folder_prefix(subfolder)
         new_filename = get_next_filename(subfolder, target_dir, ext)
         final_path = os.path.join(IMAGE_DIR, subfolder, new_filename)
         file.save(final_path)
@@ -177,10 +176,12 @@ def settings():
 def overlay_config():
     """
     Manage settings for the clock & weather overlay in cfg["overlay"].
-    We add new fields:
+    We add new fields for advanced user customization:
       - monitor_selection
       - overlay_width, overlay_height
-    Also, we create a scaled preview for the chosen monitor or all monitors.
+      - clock_font_size, weather_font_size
+      - layout_style ("stacked" or "inline")
+      - padding_x, padding_y
     """
     cfg = load_config()
     if "overlay" not in cfg:
@@ -197,44 +198,45 @@ def overlay_config():
             "offset_y": 20,
             "monitor_selection": "All",
             "overlay_width": 300,
-            "overlay_height": 150
+            "overlay_height": 150,
+            "clock_font_size": 26,
+            "weather_font_size": 22,
+            "layout_style": "stacked",   # or "inline"
+            "padding_x": 8,
+            "padding_y": 6
         }
 
     over = cfg["overlay"]
-    monitors = detect_monitors()  # e.g. {"HDMI-1": {...}, "HDMI-2": {...}}
+    monitors = detect_monitors()
 
-    # By default let's pick "All" as a combined bounding resolution if there's more than one monitor.
-    # We'll parse the resolution to compute a scaled size for the preview.
-    # For simplicity, if "All" is chosen, we assume all monitors are side-by-side horizontally.
+    # If no monitors, fallback
+    if len(monitors) == 0:
+        monitors = {"Display0": {"resolution": "1920x1080"}}
+
+    # Compute total width/height for the scaled preview
     total_width = 0
     total_height = 0
+    chosen = over.get("monitor_selection", "All")
 
-    if len(monitors) == 0:
-        # No actual monitors detected, fallback
-        monitors = {"Display0": {"resolution": "1920x1080", "name": "Display0"}}
-
-    if over["monitor_selection"] == "All":
-        # sum widths and take max height
+    if chosen == "All":
+        # sum widths horizontally
         for mname, minfo in monitors.items():
-            res = minfo.get("resolution", "1920x1080")
-            w, h = parse_resolution(res)
+            res_str = minfo.get("resolution", "1920x1080")
+            w, h = parse_resolution(res_str)
             total_width += w
             if h > total_height:
                 total_height = h
     else:
-        # Single monitor
-        chosen = over["monitor_selection"]
         if chosen in monitors:
-            res = monitors[chosen].get("resolution", "1920x1080")
-            w, h = parse_resolution(res)
+            res_str = monitors[chosen].get("resolution", "1920x1080")
+            w, h = parse_resolution(res_str)
             total_width = w
             total_height = h
         else:
-            # fallback
             total_width, total_height = (1920, 1080)
 
-    # Decide on a scale factor so the preview is not too large
-    max_preview_w = 500.0  # or 600
+    # scale factor for the preview
+    max_preview_w = 600.0
     scaleFactor = 1.0
     if total_width > 0:
         scaleFactor = max_preview_w / float(total_width)
@@ -243,17 +245,15 @@ def overlay_config():
     previewW = int(total_width * scaleFactor)
     previewH = int(total_height * scaleFactor)
 
-    # We'll position the draggable overlay box in the preview:
-    # scale the offset + width/height
-    boxLeft = int(over.get("offset_x", 20) * scaleFactor)
-    boxTop  = int(over.get("offset_y", 20) * scaleFactor)
-    boxW    = int(over.get("overlay_width", 300) * scaleFactor)
-    boxH    = int(over.get("overlay_height", 150) * scaleFactor)
+    # Scale the overlay box coords
+    boxLeft = int(over["offset_x"] * scaleFactor)
+    boxTop = int(over["offset_y"] * scaleFactor)
+    boxW = int(over["overlay_width"] * scaleFactor)
+    boxH = int(over["overlay_height"] * scaleFactor)
 
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "select_monitor":
-            # user changed the monitor in the dropdown
             over["monitor_selection"] = request.form.get("monitor_selection", "All")
             save_config(cfg)
             return redirect(url_for("main.overlay_config"))
@@ -285,15 +285,12 @@ def overlay_config():
                 over["offset_x"] = int(request.form.get("offset_x", "20"))
             except:
                 over["offset_x"] = 20
-
             try:
                 over["offset_y"] = int(request.form.get("offset_y", "20"))
             except:
                 over["offset_y"] = 20
 
-            # new fields
-            monitor_sel = over.get("monitor_selection", "All")  # keep existing if not changed
-            # we do NOT forcibly update monitor_selection here because it is changed by 'select_monitor' action
+            # new advanced fields
             try:
                 over["overlay_width"] = int(request.form.get("overlay_width", "300"))
             except:
@@ -303,13 +300,35 @@ def overlay_config():
             except:
                 over["overlay_height"] = 150
 
-            # auto-lookup lat/lon if possible:
+            try:
+                over["clock_font_size"] = int(request.form.get("clock_font_size", "26"))
+            except:
+                over["clock_font_size"] = 26
+            try:
+                over["weather_font_size"] = int(request.form.get("weather_font_size", "22"))
+            except:
+                over["weather_font_size"] = 22
+
+            layout_val = request.form.get("layout_style", "stacked")
+            if layout_val not in ["stacked", "inline"]:
+                layout_val = "stacked"
+            over["layout_style"] = layout_val
+
+            try:
+                over["padding_x"] = int(request.form.get("padding_x", "8"))
+            except:
+                over["padding_x"] = 8
+            try:
+                over["padding_y"] = int(request.form.get("padding_y", "6"))
+            except:
+                over["padding_y"] = 6
+
+            # auto-lookup lat/lon if possible
             if over["api_key"] and over["zip_code"] and over["country_code"]:
                 if (over["lat"] is None) or (over["lon"] is None):
                     _auto_lookup_latlon(over)
 
             save_config(cfg)
-
             # restart overlay service
             try:
                 subprocess.check_call(["sudo", "systemctl", "restart", "overlay.service"])
@@ -318,7 +337,7 @@ def overlay_config():
 
             return redirect(url_for("main.overlay_config"))
 
-    # Render
+    # Prepare data for the template
     preview_data = {
         "width": previewW,
         "height": previewH
@@ -341,10 +360,6 @@ def overlay_config():
 
 
 def _auto_lookup_latlon(over):
-    """
-    Call the OWM Geo endpoint automatically if we have
-    apikey, zip, and country but lat/lon are not set.
-    """
     apikey = over["api_key"]
     zip_c = over["zip_code"]
     ctry = over["country_code"]
@@ -366,10 +381,6 @@ def _auto_lookup_latlon(over):
 
 
 def parse_resolution(res_str):
-    """
-    Given a string like "1920x1080", return (1920,1080).
-    If parse fails, return (1920,1080).
-    """
     try:
         w, h = res_str.lower().split("x")
         return (int(w), int(h))
@@ -719,7 +730,6 @@ def update_app():
     """
     cfg = load_config()
 
-    # 1) Save old commit hash for setup.sh
     old_hash = ""
     try:
         old_hash = subprocess.check_output(
@@ -729,7 +739,6 @@ def update_app():
     except Exception as e:
         log_message(f"update_app: Could not get old setup.sh hash: {e}")
 
-    # 2) Perform forced update
     try:
         log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
         subprocess.check_call(["git", "fetch"], cwd=VIEWER_HOME)
@@ -739,7 +748,6 @@ def update_app():
         log_message(f"Git update failed: {e}")
         return "Git update failed. Check logs.", 500
 
-    # 3) Compare new commit hash for setup.sh
     new_hash = ""
     try:
         new_hash = subprocess.check_output(
@@ -749,7 +757,6 @@ def update_app():
     except Exception as e:
         log_message(f"update_app: Could not get new setup.sh hash: {e}")
 
-    # 4) If changed, run the updated setup.sh with --auto-update
     if old_hash and new_hash and old_hash != new_hash:
         log_message("setup.sh changed. Re-running setup.sh in --auto-update mode...")
         try:
@@ -757,16 +764,12 @@ def update_app():
         except subprocess.CalledProcessError as e:
             log_message(f"Re-running setup.sh failed: {e}")
 
-    # 5) done
     log_message("Update completed successfully.")
     return render_template("update_complete.html")
 
 
 @main_bp.route("/restart_services", methods=["POST", "GET"])
 def restart_services():
-    """
-    Restarts viewer, overlay, and controller services.
-    """
     try:
         subprocess.check_call(["sudo", "systemctl", "restart", "viewer.service"])
         subprocess.check_call(["sudo", "systemctl", "restart", "overlay.service"])

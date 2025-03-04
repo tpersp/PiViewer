@@ -31,7 +31,6 @@
         isDragging = true;
         startMouseX = e.clientX;
         startMouseY = e.clientY;
-        // parse current translate
         dragOffsetX = parseFloat(dragBox.style.left || "0");
         dragOffsetY = parseFloat(dragBox.style.top || "0");
       });
@@ -45,21 +44,18 @@
         let newLeft = dragOffsetX + dx;
         let newTop = dragOffsetY + dy;
 
-        // clamp to preview box
+        // clamp so the green box isn't lost entirely
         let maxLeft = previewBox.clientWidth - dragBox.clientWidth;
         let maxTop = previewBox.clientHeight - dragBox.clientHeight;
-        if(newLeft < 0) newLeft = 0;
-        if(newTop < 0) newTop = 0;
-        if(newLeft > maxLeft) newLeft = maxLeft;
-        if(newTop > maxTop) newTop = maxTop;
+        if(newLeft < -dragBox.clientWidth + 10) newLeft = -dragBox.clientWidth + 10; 
+        if(newTop < -dragBox.clientHeight + 10) newTop = -dragBox.clientHeight + 10;
+        if(newLeft > (maxLeft + dragBox.clientWidth) - 10) newLeft = (maxLeft + dragBox.clientWidth) - 10;
+        if(newTop > (maxTop + dragBox.clientHeight) - 10) newTop = (maxTop + dragBox.clientHeight) - 10;
 
-        // move dragBox
         dragBox.style.left = newLeft + "px";
         dragBox.style.top = newTop + "px";
 
         // update hidden offset (scaled back up)
-        // offset_x = newLeft / scaleFactor
-        // offset_y = newTop / scaleFactor
         xInput.value = Math.round(newLeft / scaleFactor);
         yInput.value = Math.round(newTop / scaleFactor);
       });
@@ -70,9 +66,7 @@
     }
 
     function onMonitorChange() {
-      // Possibly we could recalc scale or dimensions.
-      // For simplicity, we just submit the form to re-render the preview for the chosen monitor.
-      // We do a simpler approach: auto-submit the form so it reloads with the correct preview scaling.
+      // Submit the form so it reloads with correct preview scaling for that monitor
       let selForm = document.getElementById("monitorSelectForm");
       if(selForm) selForm.submit();
     }
@@ -84,9 +78,9 @@
 <div class="container">
   <h1>Overlay Settings</h1>
 
+  <!-- Form to handle changing the monitor selection -->
   <form method="POST" id="monitorSelectForm">
     <input type="hidden" name="action" value="select_monitor">
-
     <div class="overlay-monitor-select">
       <label>Monitor(s):</label><br>
       <select name="monitor_selection" onchange="onMonitorChange()">
@@ -100,6 +94,7 @@
     </div>
   </form>
 
+  <!-- Main settings form -->
   <form method="POST">
     <input type="hidden" name="action" value="save_overlay">
 
@@ -133,7 +128,7 @@
     <input type="text" name="lon" value="{{ overlay.lon|default('') }}">
     <br><br>
 
-    <!-- User controls for color and opacity -->
+    <!-- Overlay color and opacity -->
     <label>Overlay BG Color (#RRGGBB):</label><br>
     <input type="text" name="bg_color" value="{{ overlay.bg_color|default('#000000') }}">
     <br><br>
@@ -142,29 +137,57 @@
     <input type="text" name="bg_opacity" value="{{ overlay.bg_opacity|default(0.4) }}">
     <br><br>
 
+    <!-- Advanced layout controls -->
+    <fieldset style="border:1px dashed #666; padding:10px; margin:15px 0;">
+      <legend style="font-weight:bold;">Layout & Font Options</legend>
+
+      <label>Clock Font Size:</label><br>
+      <input type="number" name="clock_font_size" value="{{ overlay.clock_font_size|default(26) }}">
+      <br><br>
+
+      <label>Weather Font Size:</label><br>
+      <input type="number" name="weather_font_size" value="{{ overlay.weather_font_size|default(22) }}">
+      <br><br>
+
+      <label>Layout Style:</label><br>
+      <select name="layout_style">
+        <option value="stacked" {% if overlay.layout_style == "stacked" %}selected{% endif %}>Stacked</option>
+        <option value="inline" {% if overlay.layout_style == "inline" %}selected{% endif %}>Inline</option>
+      </select>
+      <br><br>
+
+      <label>Padding X (horizontal padding):</label><br>
+      <input type="number" name="padding_x" value="{{ overlay.padding_x|default(8) }}">
+      <br><br>
+
+      <label>Padding Y (vertical padding):</label><br>
+      <input type="number" name="padding_y" value="{{ overlay.padding_y|default(6) }}">
+      <br>
+    </fieldset>
+
     <!-- Hidden fields for X/Y + size from the drag UI -->
     <input type="hidden" name="offset_x" id="offset_x" value="{{ overlay.offset_x|default('20') }}">
     <input type="hidden" name="offset_y" id="offset_y" value="{{ overlay.offset_y|default('20') }}">
-    <input type="hidden" name="overlay_width" id="overlay_width" value="{{ overlay.overlay_width|default('300') }}">
+    <input type="hidden" name="overlay_width"  id="overlay_width"  value="{{ overlay.overlay_width|default('300') }}">
     <input type="hidden" name="overlay_height" id="overlay_height" value="{{ overlay.overlay_height|default('150') }}">
 
-    <!-- The draggable overlay preview area -->
+    <!-- Draggable overlay preview area -->
     <div class="overlay-preview-container">
       <div class="overlay-instructions">
         Drag the green box to place the overlay within the scaled monitor preview:
       </div>
-      <div 
-        class="overlay-preview-box" 
+      <div
+        class="overlay-preview-box"
         id="overlayPreviewBox"
         style="width: {{ preview_size.width }}px; height: {{ preview_size.height }}px;"
       >
-        <div 
-          class="overlay-draggable-box" 
+        <div
+          class="overlay-draggable-box"
           id="overlayDraggable"
           style="
-            width: {{ preview_overlay.width }}px; 
-            height: {{ preview_overlay.height }}px; 
-            left: {{ preview_overlay.left }}px; 
+            width: {{ preview_overlay.width }}px;
+            height: {{ preview_overlay.height }}px;
+            left: {{ preview_overlay.left }}px;
             top: {{ preview_overlay.top }}px;
           "
         ></div>
