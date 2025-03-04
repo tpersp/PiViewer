@@ -332,18 +332,36 @@ Type=simple
 WantedBy=graphical.target
 EOF
 
+# (D) picom.service
+PICOM_SERVICE="/etc/systemd/system/picom.service"
+echo "Creating $PICOM_SERVICE ..."
+cat <<EOF > "$PICOM_SERVICE"
+[Unit]
+Description=Picom Compositor
+
+[Service]
+Environment="DISPLAY=:0"
+ExecStart=/usr/bin/picom -b
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+
 echo "Reloading systemd..."
 systemctl daemon-reload
 
-echo "Enabling viewer.service & controller.service & overlay.service..."
+echo "Enabling viewer.service & controller.service & overlay.service & picom.service..."
 systemctl enable viewer.service
 systemctl enable controller.service
 systemctl enable overlay.service
+systemctl enable picom.service
 
 echo "Starting them now..."
 systemctl start viewer.service
 systemctl start controller.service
 systemctl start overlay.service
+systemctl start picom.service
 
 # -------------------------------------------------------
 # 8) Reboot (skip if AUTO_UPDATE)
