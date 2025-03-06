@@ -29,7 +29,7 @@ def init_config():
             "devices": [],
             # Default overlay config
             "overlay": {
-                "overlay_enabled": True,
+                "overlay_enabled": False,
                 "clock_enabled": True,
                 "weather_enabled": False,
                 "background_enabled": True,
