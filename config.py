@@ -7,7 +7,7 @@ import os
 # Application Version & Paths
 # ------------------------------------------------------------
 # Bumped from 1.1.1 to 1.1.2
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.2.0"
 
 VIEWER_HOME = os.environ.get("VIEWER_HOME", "/home/pi/PiViewer")
 IMAGE_DIR   = os.environ.get("IMAGE_DIR", "/mnt/PiViewers")
@@ -25,4 +25,4 @@ WEB_BG      = os.path.join(VIEWER_HOME, "web_bg.jpg")
 # main = stable
 # dev = experimental features
 #
-UPDATE_BRANCH = os.environ.get("UPDATE_BRANCH", "dev")
+UPDATE_BRANCH = os.environ.get("UPDATE_BRANCH", "main")
