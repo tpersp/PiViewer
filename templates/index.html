@@ -184,14 +184,17 @@
     <a href="{{ url_for('main.overlay_config') }}">
       <button style="font-size:14px;">Configure Overlay</button>
     </a>
+    <a href="{{ url_for('main.configure_spotify') }}">
+      <button style="font-size:14px;">Configure Spotify</button>
+    </a>
+    {% if cfg.role == "main" %}
+    <a href="{{ url_for('main.device_manager') }}">
+      <button style="font-size:14px;">Manage Devices</button>
+    </a>
+    {% endif %}
     <form method="POST" action="{{ url_for('main.restart_viewer') }}">
       <button type="submit" style="font-size:14px;">Restart Viewer</button>
     </form>
-    {% if cfg.role == "main" %}
-      <a href="{{ url_for('main.device_manager') }}">
-        <button style="font-size:14px;">Manage Devices</button>
-      </a>
-    {% endif %}
   </div>  
 
   <section>

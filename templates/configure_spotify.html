@@ -30,7 +30,7 @@
         Click <strong>Save Spotify Settings</strong> to store your configuration.
       </li>
       <li>
-        Once configured, the viewer will use Spotify's API to fetch and display the currently playing track's album art.
+        Once configured, the viewer will use Spotify’s API to fetch and display the currently playing track’s album art.
       </li>
     </ol>
   </section>
@@ -38,7 +38,7 @@
   <form method="POST">
     <div class="field-block">
       <label>Spotify Client ID:</label><br>
-      <!-- Optionally, you can change this to type="password" if you prefer to hide it -->
+      <!-- Using type="password" hides the text; you can change this back to text if you prefer -->
       <input type="password" name="client_id" value="{{ spotify.client_id|default('') }}" required>
     </div>
     <div class="field-block">

@@ -299,7 +299,6 @@ class DisplayThread(threading.Thread):
                 time.sleep(1)
 
     def load_spotify(self, disp_cfg):
-        from utils import load_config
         cfg = load_config()
         spotify_cfg = cfg.get("spotify", {})
         client_id = spotify_cfg.get("client_id", "").strip()
@@ -320,6 +319,8 @@ class DisplayThread(threading.Thread):
                 log_message(f"[{self.disp_name}] No Spotify token found. Please authorize at /configure_spotify.")
                 time.sleep(10)
                 return
+            if sp_oauth.is_token_expired(token_info):
+                token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
             sp = spotipy.Spotify(auth=token_info['access_token'])
             current = sp.current_playback()
             if current and current.get("item"):
