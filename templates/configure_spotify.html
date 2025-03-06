@@ -50,7 +50,7 @@
     </div>
     <div class="field-block">
       <label>Redirect URI:</label><br>
-      <input type="text" name="redirect_uri" value="{{ spotify.redirect_uri|default('http://localhost:8080/callback') }}" required>
+      <input type="text" name="redirect_uri" value="{{ spotify.redirect_uri|default('http://*device-IP*:8080/callback') }}" required>
     </div>
     <div class="field-block">
       <label>Scope:</label><br>
