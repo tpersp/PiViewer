@@ -20,7 +20,6 @@ from utils import (
 
 main_bp = Blueprint("main", __name__, static_folder="static")
 
-
 @main_bp.route("/stats")
 def stats_json():
     cpu, mem_mb, load1, temp = get_system_stats()
@@ -31,21 +30,17 @@ def stats_json():
         "temp": temp
     })
 
-
 @main_bp.route("/list_monitors")
 def list_monitors():
     return jsonify(detect_monitors())
-
 
 @main_bp.route("/list_folders")
 def list_folders():
     return jsonify(get_subfolders())
 
-
 @main_bp.route("/images/<path:filename>")
 def serve_image(filename):
     return send_from_directory(IMAGE_DIR, filename)
-
 
 @main_bp.route("/bg_image")
 def bg_image():
@@ -53,13 +48,11 @@ def bg_image():
         return send_file(WEB_BG)
     return "", 404
 
-
 @main_bp.route("/download_log")
 def download_log():
     if os.path.exists(LOG_PATH):
         return send_file(LOG_PATH, as_attachment=True)
     return "No log file found", 404
-
 
 @main_bp.route("/upload_bg", methods=["POST"])
 def upload_bg():
@@ -67,7 +60,6 @@ def upload_bg():
     if f:
         f.save(WEB_BG)
     return redirect(url_for("main.settings"))
-
 
 @main_bp.route("/upload_media", methods=["GET", "POST"])
 def upload_media():
@@ -113,7 +105,6 @@ def upload_media():
 
     return redirect(url_for("main.index"))
 
-
 def get_next_filename(subfolder_name, folder_path, desired_ext):
     prefix = get_folder_prefix(subfolder_name)
     existing = os.listdir(folder_path)
@@ -130,7 +121,6 @@ def get_next_filename(subfolder_name, folder_path, desired_ext):
                 pass
     return f"{prefix}{(max_num + 1):03d}{desired_ext}"
 
-
 @main_bp.route("/restart_viewer", methods=["POST"])
 def restart_viewer():
     try:
@@ -139,7 +129,6 @@ def restart_viewer():
         return redirect(url_for("main.index"))
     except subprocess.CalledProcessError as e:
         return f"Failed to restart services: {e}", 500
-
 
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
@@ -164,14 +153,12 @@ def settings():
         else:
             cfg["main_ip"] = ""
 
-        # If custom theme, handle background image
         if new_theme == "custom":
             if "bg_image" in request.files:
                 f = request.files["bg_image"]
                 if f and f.filename:
                     f.save(WEB_BG)
 
-        # Weather settings
         w_api = request.form.get("weather_api_key", "").strip()
         w_zip = request.form.get("weather_zip_code", "").strip()
         w_country = request.form.get("weather_country_code", "").strip()
@@ -191,7 +178,6 @@ def settings():
         except:
             cfg["weather"]["lon"] = None
 
-        # If zip/country but no lat/lon, do an auto-lookup
         if w_api and w_zip and w_country and (not cfg["weather"]["lat"] or not cfg["weather"]["lon"]):
             auto_lookup_latlon(cfg["weather"])
 
@@ -205,11 +191,7 @@ def settings():
         update_branch=UPDATE_BRANCH
     )
 
-
 def auto_lookup_latlon(wdict):
-    """
-    Tries to fetch lat/lon from OWM GEO API given the zip/country.
-    """
     apikey = wdict.get("api_key", "")
     zip_c  = wdict.get("zip_code", "")
     ctry   = wdict.get("country_code", "")
@@ -227,6 +209,30 @@ def auto_lookup_latlon(wdict):
     except Exception as e:
         log_message(f"Geo lookup error: {e}")
 
+@main_bp.route("/configure_spotify", methods=["GET", "POST"])
+def configure_spotify():
+    cfg = load_config()
+    if "spotify" not in cfg:
+        cfg["spotify"] = {
+            "client_id": "",
+            "client_secret": "",
+            "redirect_uri": "",
+            "scope": "user-read-currently-playing user-read-playback-state"
+        }
+    if request.method == "POST":
+        client_id = request.form.get("client_id", "").strip()
+        client_secret = request.form.get("client_secret", "").strip()
+        redirect_uri = request.form.get("redirect_uri", "").strip()
+        scope = request.form.get("scope", "user-read-currently-playing user-read-playback-state").strip()
+        cfg["spotify"] = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "scope": scope
+        }
+        save_config(cfg)
+        return redirect(url_for("main.configure_spotify"))
+    return render_template("configure_spotify.html", spotify=cfg.get("spotify", {}), theme=cfg.get("theme", "dark"))
 
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
@@ -237,7 +243,6 @@ def overlay_config():
     over = cfg["overlay"]
     monitors = detect_monitors()
 
-    # Calculate total resolution for "All" or single monitor
     total_width = 0
     total_height = 0
     if not monitors:
@@ -267,7 +272,6 @@ def overlay_config():
     previewW = int(total_width * scaleFactor)
     previewH = int(total_height * scaleFactor)
 
-    # scale the offset + width/height for the green box
     boxLeft = int(over.get("offset_x", 20) * scaleFactor)
     boxTop  = int(over.get("offset_y", 20) * scaleFactor)
     bw = over.get("overlay_width", 300)
@@ -282,15 +286,11 @@ def overlay_config():
             over["monitor_selection"] = request.form.get("monitor_selection","All")
             save_config(cfg)
             return redirect(url_for("main.overlay_config"))
-
         elif action == "save_overlay":
-            # read toggles
             over["overlay_enabled"]     = ("overlay_enabled" in request.form)
             over["clock_enabled"]       = ("clock_enabled" in request.form)
             over["weather_enabled"]     = ("weather_enabled" in request.form)
             over["background_enabled"]  = ("background_enabled" in request.form)
-
-            # fonts & layout
             try:
                 over["clock_font_size"] = int(request.form.get("clock_font_size","26"))
             except:
@@ -299,8 +299,7 @@ def overlay_config():
                 over["weather_font_size"] = int(request.form.get("weather_font_size","22"))
             except:
                 over["weather_font_size"] = 22
-
-            over["font_color"]     = request.form.get("font_color", "#FFFFFF")
+            over["font_color"]     = request.form.get("font_color","#FFFFFF")
             over["layout_style"]   = request.form.get("layout_style","stacked")
             try:
                 over["padding_x"] = int(request.form.get("padding_x","8"))
@@ -310,14 +309,10 @@ def overlay_config():
                 over["padding_y"] = int(request.form.get("padding_y","6"))
             except:
                 over["padding_y"] = 6
-
-            # weather details
             over["show_desc"]       = ("show_desc" in request.form)
             over["show_temp"]       = ("show_temp" in request.form)
             over["show_feels_like"] = ("show_feels_like" in request.form)
             over["show_humidity"]   = ("show_humidity" in request.form)
-
-            # position & size
             try:
                 over["offset_x"] = int(request.form.get("offset_x","20"))
             except:
@@ -336,21 +331,16 @@ def overlay_config():
                 over["overlay_height"] = hval
             except:
                 over["overlay_height"] = 150
-
             over["bg_color"] = request.form.get("bg_color","#000000")
             try:
                 over["bg_opacity"] = float(request.form.get("bg_opacity","0.4"))
             except:
                 over["bg_opacity"] = 0.4
-
             save_config(cfg)
-
-            # restart overlay service
             try:
                 subprocess.check_call(["sudo", "systemctl", "restart", "overlay.service"])
             except subprocess.CalledProcessError as e:
                 log_message(f"Failed to restart overlay.service: {e}")
-
             return redirect(url_for("main.overlay_config"))
 
     preview_data = {
@@ -373,14 +363,12 @@ def overlay_config():
         preview_overlay=preview_overlay
     )
 
-
 def parse_resolution(res_str):
     try:
         w, h = res_str.lower().split("x")
         return (int(w), int(h))
     except:
         return (1920, 1080)
-
 
 @main_bp.route("/", methods=["GET", "POST"])
 def index():
@@ -533,7 +521,6 @@ def index():
         remote_displays=remote_displays
     )
 
-
 @main_bp.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
 def remote_configure(dev_index):
     cfg = load_config()
@@ -601,7 +588,6 @@ def remote_configure(dev_index):
         remote_folders=remote_folders
     )
 
-
 def get_remote_subfolders(ip):
     url = f"http://{ip}:8080/list_folders"
     try:
@@ -612,11 +598,9 @@ def get_remote_subfolders(ip):
         log_message(f"Error fetching remote folders from {ip}: {e}")
     return []
 
-
 @main_bp.route("/sync_config", methods=["GET"])
 def sync_config():
     return load_config()
-
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
@@ -633,7 +617,6 @@ def update_config():
     save_config(cfg)
     log_message("Local config partially updated via /update_config")
     return "Config updated", 200
-
 
 @main_bp.route("/device_manager", methods=["GET", "POST"])
 def device_manager():
@@ -703,7 +686,6 @@ def device_manager():
         theme=cfg.get("theme", "dark")
     )
 
-
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():
     cfg = load_config()
@@ -743,7 +725,6 @@ def update_app():
 
     log_message("Update completed successfully.")
     return render_template("update_complete.html")
-
 
 @main_bp.route("/restart_services", methods=["POST", "GET"])
 def restart_services():
