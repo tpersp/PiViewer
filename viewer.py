@@ -45,10 +45,6 @@ def apply_loop_property(sock_path, fullpath):
     mpv_command(sock_path, {"command": ["set_property", "loop-file", "inf"]})
 
 def detect_monitors():
-    """
-    Use xrandr --listmonitors to detect connected monitors.
-    Returns a list of monitor names, e.g. ["HDMI-1", "HDMI-2"], or ["Display0"] as fallback.
-    """
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
         lines = out.split("\n")
@@ -80,10 +76,6 @@ def build_full_path(relpath):
     return os.path.join(IMAGE_DIR, relpath)
 
 def get_images_in_category(category):
-    """
-    Return list of image paths (relative to IMAGE_DIR) for the given category.
-    Only accept GIF, JPG, JPEG, PNG.
-    """
     if category:
         base = os.path.join(IMAGE_DIR, category)
         if not os.path.isdir(base):
@@ -108,7 +100,6 @@ def get_images_in_category(category):
         return results
 
 def get_mixed_images(folder_list):
-    """Combine images from multiple folders into one sorted list."""
     all_files = []
     for cat in folder_list:
         catlist = get_images_in_category(cat)
@@ -116,10 +107,6 @@ def get_mixed_images(folder_list):
     return sorted(all_files)
 
 def get_screen_index(monitor_name):
-    """
-    Attempts to find index of monitor_name from xrandr --listmonitors output
-    so mpv can use --screen=X.
-    """
     all_mons = []
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
@@ -311,12 +298,13 @@ class DisplayThread(threading.Thread):
             time.sleep(10)
             return
         try:
+            # Use a fixed cache file for Spotify (shared between web and viewer)
             sp_oauth = SpotifyOAuth(client_id=client_id, client_secret=client_secret,
                                     redirect_uri=redirect_uri, scope=scope,
-                                    cache_path=".spotify_cache_"+self.disp_name)
+                                    cache_path=".spotify_cache")
             token_info = sp_oauth.get_cached_token()
             if not token_info:
-                log_message(f"[{self.disp_name}] No Spotify token found. Please authorize at /configure_spotify.")
+                log_message(f"[{self.disp_name}] No Spotify token found. Please authorize at /spotify_auth.")
                 time.sleep(10)
                 return
             if sp_oauth.is_token_expired(token_info):

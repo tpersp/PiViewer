@@ -8,7 +8,6 @@ from flask import (
     Blueprint, request, redirect, url_for, render_template,
     send_from_directory, send_file, jsonify
 )
-
 from config import APP_VERSION, WEB_BG, IMAGE_DIR, LOG_PATH, UPDATE_BRANCH, VIEWER_HOME
 from utils import (
     load_config, save_config, init_config, log_message,
@@ -71,14 +70,11 @@ def upload_media():
             theme=cfg.get("theme", "dark"),
             subfolders=subfolders
         )
-
     files = request.files.getlist("mediafiles")
     if not files:
         return "No file(s) selected", 400
-
     subfolder = request.form.get("subfolder") or ""
     new_subfolder = request.form.get("new_subfolder", "").strip()
-
     if new_subfolder:
         subfolder = new_subfolder
         target_dir = os.path.join(IMAGE_DIR, subfolder)
@@ -88,7 +84,6 @@ def upload_media():
         target_dir = os.path.join(IMAGE_DIR, subfolder)
         if not os.path.exists(target_dir):
             return "Subfolder does not exist and no new folder was specified", 400
-
     for file in files:
         if not file.filename:
             continue
@@ -97,12 +92,10 @@ def upload_media():
         if ext not in [".gif", ".jpg", ".jpeg", ".png"]:
             log_message(f"Skipped file (unsupported): {original_name}")
             continue
-
         new_filename = get_next_filename(subfolder, target_dir, ext)
         final_path = os.path.join(IMAGE_DIR, subfolder, new_filename)
         file.save(final_path)
         log_message(f"Uploaded file saved to: {final_path}")
-
     return redirect(url_for("main.index"))
 
 def get_next_filename(subfolder_name, folder_path, desired_ext):
@@ -141,34 +134,28 @@ def settings():
             "lat": None,
             "lon": None
         }
-
     if request.method == "POST":
         new_theme = request.form.get("theme", "dark")
         new_role = request.form.get("role", "main")
         cfg["theme"] = new_theme
         cfg["role"] = new_role
-
         if new_role == "sub":
             cfg["main_ip"] = request.form.get("main_ip", "").strip()
         else:
             cfg["main_ip"] = ""
-
         if new_theme == "custom":
             if "bg_image" in request.files:
                 f = request.files["bg_image"]
                 if f and f.filename:
                     f.save(WEB_BG)
-
         w_api = request.form.get("weather_api_key", "").strip()
         w_zip = request.form.get("weather_zip_code", "").strip()
         w_country = request.form.get("weather_country_code", "").strip()
         w_lat = request.form.get("weather_lat", "").strip()
         w_lon = request.form.get("weather_lon", "").strip()
-
         cfg["weather"]["api_key"] = w_api
         cfg["weather"]["zip_code"] = w_zip
         cfg["weather"]["country_code"] = w_country
-
         try:
             cfg["weather"]["lat"] = float(w_lat)
         except:
@@ -177,13 +164,10 @@ def settings():
             cfg["weather"]["lon"] = float(w_lon)
         except:
             cfg["weather"]["lon"] = None
-
         if w_api and w_zip and w_country and (not cfg["weather"]["lat"] or not cfg["weather"]["lon"]):
             auto_lookup_latlon(cfg["weather"])
-
         save_config(cfg)
         return redirect(url_for("main.settings"))
-
     return render_template(
         "settings.html",
         theme=cfg.get("theme", "dark"),
@@ -234,20 +218,56 @@ def configure_spotify():
         return redirect(url_for("main.configure_spotify"))
     return render_template("configure_spotify.html", spotify=cfg.get("spotify", {}), theme=cfg.get("theme", "dark"))
 
+# New route to initiate Spotify OAuth flow
+@main_bp.route("/spotify_auth")
+def spotify_auth():
+    cfg = load_config()
+    spotify_cfg = cfg.get("spotify", {})
+    client_id = spotify_cfg.get("client_id", "").strip()
+    client_secret = spotify_cfg.get("client_secret", "").strip()
+    redirect_uri = spotify_cfg.get("redirect_uri", "").strip()
+    scope = spotify_cfg.get("scope", "user-read-currently-playing user-read-playback-state").strip()
+    if not client_id or not client_secret or not redirect_uri:
+        return "Spotify configuration incomplete. Please fill in the configuration first.", 400
+    sp_oauth = SpotifyOAuth(client_id=client_id, client_secret=client_secret,
+                            redirect_uri=redirect_uri, scope=scope,
+                            cache_path=".spotify_cache")
+    auth_url = sp_oauth.get_authorize_url()
+    return redirect(auth_url)
+
+# Callback route for Spotify OAuth
+@main_bp.route("/callback")
+def callback():
+    cfg = load_config()
+    spotify_cfg = cfg.get("spotify", {})
+    client_id = spotify_cfg.get("client_id", "").strip()
+    client_secret = spotify_cfg.get("client_secret", "").strip()
+    redirect_uri = spotify_cfg.get("redirect_uri", "").strip()
+    scope = spotify_cfg.get("scope", "user-read-currently-playing user-read-playback-state").strip()
+    sp_oauth = SpotifyOAuth(client_id=client_id, client_secret=client_secret,
+                            redirect_uri=redirect_uri, scope=scope,
+                            cache_path=".spotify_cache")
+    code = request.args.get("code")
+    if not code:
+        return "Authorization failed: no code provided", 400
+    try:
+        token_info = sp_oauth.get_access_token(code)
+    except Exception as e:
+        log_message(f"Spotify callback error: {e}")
+        return "Spotify callback error", 500
+    return redirect(url_for("main.configure_spotify"))
+
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
     cfg = load_config()
     if "overlay" not in cfg:
         cfg["overlay"] = {}
-
     over = cfg["overlay"]
     monitors = detect_monitors()
-
     total_width = 0
     total_height = 0
     if not monitors:
         monitors = {"Display0": {"resolution": "1920x1080", "offset_x":0, "offset_y":0}}
-
     if over.get("monitor_selection", "All") == "All":
         for _, minfo in monitors.items():
             w, h = parse_resolution(minfo.get("resolution","1920x1080"))
@@ -262,7 +282,6 @@ def overlay_config():
             total_height = h
         else:
             total_width, total_height = (1920, 1080)
-
     max_preview_w = 500.0
     scaleFactor = 1.0
     if total_width > 0:
@@ -271,15 +290,12 @@ def overlay_config():
         scaleFactor = 1.0
     previewW = int(total_width * scaleFactor)
     previewH = int(total_height * scaleFactor)
-
     boxLeft = int(over.get("offset_x", 20) * scaleFactor)
     boxTop  = int(over.get("offset_y", 20) * scaleFactor)
     bw = over.get("overlay_width", 300)
     bh = over.get("overlay_height", 150)
-
     boxW = int(bw * scaleFactor) if bw > 0 else int(150 * scaleFactor)
     boxH = int(bh * scaleFactor) if bh > 0 else int(80 * scaleFactor)
-
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "select_monitor":
@@ -342,7 +358,6 @@ def overlay_config():
             except subprocess.CalledProcessError as e:
                 log_message(f"Failed to restart overlay.service: {e}")
             return redirect(url_for("main.overlay_config"))
-
     preview_data = {
         "width": previewW,
         "height": previewH
@@ -353,7 +368,6 @@ def overlay_config():
         "width": boxW,
         "height": boxH
     }
-
     return render_template(
         "overlay.html",
         theme=cfg.get("theme", "dark"),
@@ -374,7 +388,6 @@ def parse_resolution(res_str):
 def index():
     cfg = load_config()
     monitors = detect_monitors()
-
     for m in monitors:
         if m not in cfg["displays"]:
             cfg["displays"][m] = {
@@ -389,9 +402,7 @@ def index():
     remove_list = [d for d in list(cfg["displays"].keys()) if d not in monitors]
     for r in remove_list:
         del cfg["displays"][r]
-
     save_config(cfg)
-
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_displays":
@@ -406,7 +417,6 @@ def index():
                 rotate_str = request.form.get(pre + "rotate", "0")
                 mixed_str = request.form.get(pre + "mixed_order", "")
                 mixed_list = [x for x in mixed_str.split(",") if x]
-
                 try:
                     new_interval = int(new_interval_s)
                 except:
@@ -415,26 +425,21 @@ def index():
                     new_rotate = int(rotate_str)
                 except:
                     new_rotate = 0
-
                 dcfg["mode"] = new_mode
                 dcfg["image_interval"] = new_interval
                 dcfg["image_category"] = new_cat
                 dcfg["shuffle_mode"] = (shuffle_val == "yes")
                 dcfg["specific_image"] = new_spec
                 dcfg["rotate"] = new_rotate
-
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list
                 else:
                     dcfg["mixed_folders"] = []
-
             save_config(cfg)
             return redirect(url_for("main.index"))
-
     folder_counts = {}
     for sf in get_subfolders():
         folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
-
     display_images = {}
     for dname, dcfg in cfg["displays"].items():
         if dcfg["mode"] == "specific_image":
@@ -449,19 +454,16 @@ def index():
                 display_images[dname] = []
         else:
             display_images[dname] = []
-
     cpu, mem_mb, load1, temp = get_system_stats()
     host = get_hostname()
     ipaddr = get_ip_address()
     model = get_pi_model()
     theme = cfg.get("theme", "dark")
-
     sub_info_line = ""
     if cfg.get("role") == "sub":
         sub_info_line = "This device is SUB"
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
-
     remote_displays = []
     if cfg.get("role") == "main":
         for dev in cfg.get("devices", []):
@@ -500,7 +502,6 @@ def index():
                 "displays": table_of_displays,
                 "index": cfg["devices"].index(dev)
             })
-
     return render_template(
         "index.html",
         cfg=cfg,
@@ -526,21 +527,16 @@ def remote_configure(dev_index):
     cfg = load_config()
     if cfg.get("role") != "main":
         return "This device is not 'main'.", 403
-
     if dev_index < 0 or dev_index >= len(cfg.get("devices", [])):
         return "Invalid device index", 404
-
     dev_info = cfg["devices"][dev_index]
     dev_ip = dev_info.get("ip")
     dev_name = dev_info.get("name")
-
     remote_cfg = get_remote_config(dev_ip)
     if not remote_cfg:
         return f"Could not fetch remote config from {dev_ip}", 500
-
     remote_mons = get_remote_monitors(dev_ip)
     remote_folders = get_remote_subfolders(dev_ip)
-
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_remote":
@@ -555,7 +551,6 @@ def remote_configure(dev_index):
                 new_rotate_s = request.form.get(pre + "rotate", str(dcfg.get("rotate", 0)))
                 mixed_str = request.form.get(pre + "mixed_order", "")
                 mixed_list = [x for x in mixed_str.split(",") if x]
-
                 try:
                     new_interval = int(new_interval_s)
                 except:
@@ -564,7 +559,6 @@ def remote_configure(dev_index):
                     new_rotate = int(new_rotate_s)
                 except:
                     new_rotate = 0
-
                 sub_dict = {
                     "mode": new_mode,
                     "image_interval": new_interval,
@@ -575,10 +569,8 @@ def remote_configure(dev_index):
                     "rotate": new_rotate
                 }
                 new_disp[dname] = sub_dict
-
             push_displays_to_remote(dev_ip, new_disp)
             return redirect(url_for("main.remote_configure", dev_index=dev_index))
-
     return render_template(
         "remote_configure.html",
         dev_name=dev_name,
@@ -607,13 +599,11 @@ def update_config():
     incoming = request.get_json()
     if not incoming:
         return "No JSON received", 400
-
     cfg = load_config()
     if "displays" in incoming:
         cfg["displays"] = incoming["displays"]
     if "theme" in incoming:
         cfg["theme"] = incoming["theme"]
-
     save_config(cfg)
     log_message("Local config partially updated via /update_config")
     return "Config updated", 200
@@ -623,14 +613,11 @@ def device_manager():
     cfg = load_config()
     if cfg.get("role") != "main":
         return "This device is not 'main'.", 403
-
     local_ip = get_ip_address()
-
     if request.method == "POST":
         action = request.form.get("action", "")
         dev_name = request.form.get("dev_name", "").strip()
         dev_ip = request.form.get("dev_ip", "").strip()
-
         if action == "add_device" and dev_name and dev_ip:
             if dev_ip == local_ip:
                 log_message(f"Skipping adding device {dev_name} - IP is ourself.")
@@ -679,7 +666,6 @@ def device_manager():
             except Exception as e:
                 log_message(f"Pull error: {e}")
         return redirect(url_for("main.device_manager"))
-
     return render_template(
         "device_manager.html",
         cfg=cfg,
@@ -697,7 +683,6 @@ def update_app():
         ).decode().strip()
     except Exception as e:
         log_message(f"update_app: Could not get old setup.sh hash: {e}")
-
     try:
         log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
         subprocess.check_call(["git", "fetch"], cwd=VIEWER_HOME)
@@ -706,7 +691,6 @@ def update_app():
     except subprocess.CalledProcessError as e:
         log_message(f"Git update failed: {e}")
         return "Git update failed. Check logs.", 500
-
     new_hash = ""
     try:
         new_hash = subprocess.check_output(
@@ -715,14 +699,12 @@ def update_app():
         ).decode().strip()
     except Exception as e:
         log_message(f"update_app: Could not get new setup.sh hash: {e}")
-
     if old_hash and new_hash and old_hash != new_hash:
         log_message("setup.sh changed. Re-running setup.sh in --auto-update mode...")
         try:
             subprocess.check_call(["sudo", "bash", "setup.sh", "--auto-update"], cwd=VIEWER_HOME)
         except subprocess.CalledProcessError as e:
             log_message(f"Re-running setup.sh failed: {e}")
-
     log_message("Update completed successfully.")
     return render_template("update_complete.html")
 
@@ -736,5 +718,4 @@ def restart_services():
     except subprocess.CalledProcessError as e:
         log_message(f"Failed to restart services: {e}")
         return "Failed to restart services. Check logs.", 500
-
     return "Services are restarting now..."
