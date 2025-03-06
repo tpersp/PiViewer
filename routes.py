@@ -102,7 +102,6 @@ def upload_media():
             continue
         original_name = file.filename
         ext = os.path.splitext(original_name.lower())[1]
-        # Only allow GIF, JPG, JPEG, PNG
         if ext not in [".gif", ".jpg", ".jpeg", ".png"]:
             log_message(f"Skipped file (unsupported): {original_name}")
             continue
@@ -113,6 +112,7 @@ def upload_media():
         log_message(f"Uploaded file saved to: {final_path}")
 
     return redirect(url_for("main.index"))
+
 
 def get_next_filename(subfolder_name, folder_path, desired_ext):
     prefix = get_folder_prefix(subfolder_name)
@@ -130,18 +130,29 @@ def get_next_filename(subfolder_name, folder_path, desired_ext):
                 pass
     return f"{prefix}{(max_num + 1):03d}{desired_ext}"
 
+
 @main_bp.route("/restart_viewer", methods=["POST"])
 def restart_viewer():
     try:
         subprocess.check_output(["sudo", "systemctl", "restart", "viewer.service"])
+        subprocess.check_output(["sudo", "systemctl", "restart", "overlay.service"])
         return redirect(url_for("main.index"))
     except subprocess.CalledProcessError as e:
-        return f"Failed to restart viewer.service: {e}", 500
+        return f"Failed to restart services: {e}", 500
 
 
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
     cfg = load_config()
+    if "weather" not in cfg:
+        cfg["weather"] = {
+            "api_key": "",
+            "zip_code": "",
+            "country_code": "",
+            "lat": None,
+            "lon": None
+        }
+
     if request.method == "POST":
         new_theme = request.form.get("theme", "dark")
         new_role = request.form.get("role", "main")
@@ -153,16 +164,222 @@ def settings():
         else:
             cfg["main_ip"] = ""
 
+        # If custom theme, handle background image
+        if new_theme == "custom":
+            if "bg_image" in request.files:
+                f = request.files["bg_image"]
+                if f and f.filename:
+                    f.save(WEB_BG)
+
+        # Weather settings
+        w_api = request.form.get("weather_api_key", "").strip()
+        w_zip = request.form.get("weather_zip_code", "").strip()
+        w_country = request.form.get("weather_country_code", "").strip()
+        w_lat = request.form.get("weather_lat", "").strip()
+        w_lon = request.form.get("weather_lon", "").strip()
+
+        cfg["weather"]["api_key"] = w_api
+        cfg["weather"]["zip_code"] = w_zip
+        cfg["weather"]["country_code"] = w_country
+
+        try:
+            cfg["weather"]["lat"] = float(w_lat)
+        except:
+            cfg["weather"]["lat"] = None
+        try:
+            cfg["weather"]["lon"] = float(w_lon)
+        except:
+            cfg["weather"]["lon"] = None
+
+        # If zip/country but no lat/lon, do an auto-lookup
+        if w_api and w_zip and w_country and (not cfg["weather"]["lat"] or not cfg["weather"]["lon"]):
+            auto_lookup_latlon(cfg["weather"])
+
         save_config(cfg)
         return redirect(url_for("main.settings"))
 
-    # Pass UPDATE_BRANCH into the template
     return render_template(
         "settings.html",
         theme=cfg.get("theme", "dark"),
         cfg=cfg,
         update_branch=UPDATE_BRANCH
     )
+
+
+def auto_lookup_latlon(wdict):
+    """
+    Tries to fetch lat/lon from OWM GEO API given the zip/country.
+    """
+    apikey = wdict.get("api_key", "")
+    zip_c  = wdict.get("zip_code", "")
+    ctry   = wdict.get("country_code", "")
+    url = f"http://api.openweathermap.org/geo/1.0/zip?zip={zip_c},{ctry}&appid={apikey}"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            lat = data.get("lat")
+            lon = data.get("lon")
+            if lat is not None and lon is not None:
+                wdict["lat"] = lat
+                wdict["lon"] = lon
+                log_message(f"Weather lat/lon auto-updated: {lat}, {lon}")
+    except Exception as e:
+        log_message(f"Geo lookup error: {e}")
+
+
+@main_bp.route("/overlay_config", methods=["GET", "POST"])
+def overlay_config():
+    cfg = load_config()
+    if "overlay" not in cfg:
+        cfg["overlay"] = {}
+
+    over = cfg["overlay"]
+    monitors = detect_monitors()
+
+    # Calculate total resolution for "All" or single monitor
+    total_width = 0
+    total_height = 0
+    if not monitors:
+        monitors = {"Display0": {"resolution": "1920x1080", "offset_x":0, "offset_y":0}}
+
+    if over.get("monitor_selection", "All") == "All":
+        for _, minfo in monitors.items():
+            w, h = parse_resolution(minfo.get("resolution","1920x1080"))
+            total_width += w
+            if h > total_height:
+                total_height = h
+    else:
+        chosen = over.get("monitor_selection", "All")
+        if chosen in monitors:
+            w, h = parse_resolution(monitors[chosen].get("resolution","1920x1080"))
+            total_width = w
+            total_height = h
+        else:
+            total_width, total_height = (1920, 1080)
+
+    max_preview_w = 500.0
+    scaleFactor = 1.0
+    if total_width > 0:
+        scaleFactor = max_preview_w / float(total_width)
+    if scaleFactor > 1.0:
+        scaleFactor = 1.0
+    previewW = int(total_width * scaleFactor)
+    previewH = int(total_height * scaleFactor)
+
+    # scale the offset + width/height for the green box
+    boxLeft = int(over.get("offset_x", 20) * scaleFactor)
+    boxTop  = int(over.get("offset_y", 20) * scaleFactor)
+    bw = over.get("overlay_width", 300)
+    bh = over.get("overlay_height", 150)
+
+    boxW = int(bw * scaleFactor) if bw > 0 else int(150 * scaleFactor)
+    boxH = int(bh * scaleFactor) if bh > 0 else int(80 * scaleFactor)
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "select_monitor":
+            over["monitor_selection"] = request.form.get("monitor_selection","All")
+            save_config(cfg)
+            return redirect(url_for("main.overlay_config"))
+
+        elif action == "save_overlay":
+            # read toggles
+            over["overlay_enabled"]     = ("overlay_enabled" in request.form)
+            over["clock_enabled"]       = ("clock_enabled" in request.form)
+            over["weather_enabled"]     = ("weather_enabled" in request.form)
+            over["background_enabled"]  = ("background_enabled" in request.form)
+
+            # fonts & layout
+            try:
+                over["clock_font_size"] = int(request.form.get("clock_font_size","26"))
+            except:
+                over["clock_font_size"] = 26
+            try:
+                over["weather_font_size"] = int(request.form.get("weather_font_size","22"))
+            except:
+                over["weather_font_size"] = 22
+
+            over["font_color"]     = request.form.get("font_color", "#FFFFFF")
+            over["layout_style"]   = request.form.get("layout_style","stacked")
+            try:
+                over["padding_x"] = int(request.form.get("padding_x","8"))
+            except:
+                over["padding_x"] = 8
+            try:
+                over["padding_y"] = int(request.form.get("padding_y","6"))
+            except:
+                over["padding_y"] = 6
+
+            # weather details
+            over["show_desc"]       = ("show_desc" in request.form)
+            over["show_temp"]       = ("show_temp" in request.form)
+            over["show_feels_like"] = ("show_feels_like" in request.form)
+            over["show_humidity"]   = ("show_humidity" in request.form)
+
+            # position & size
+            try:
+                over["offset_x"] = int(request.form.get("offset_x","20"))
+            except:
+                over["offset_x"] = 20
+            try:
+                over["offset_y"] = int(request.form.get("offset_y","20"))
+            except:
+                over["offset_y"] = 20
+            try:
+                wval = int(request.form.get("overlay_width","300"))
+                over["overlay_width"] = wval
+            except:
+                over["overlay_width"] = 300
+            try:
+                hval = int(request.form.get("overlay_height","150"))
+                over["overlay_height"] = hval
+            except:
+                over["overlay_height"] = 150
+
+            over["bg_color"] = request.form.get("bg_color","#000000")
+            try:
+                over["bg_opacity"] = float(request.form.get("bg_opacity","0.4"))
+            except:
+                over["bg_opacity"] = 0.4
+
+            save_config(cfg)
+
+            # restart overlay service
+            try:
+                subprocess.check_call(["sudo", "systemctl", "restart", "overlay.service"])
+            except subprocess.CalledProcessError as e:
+                log_message(f"Failed to restart overlay.service: {e}")
+
+            return redirect(url_for("main.overlay_config"))
+
+    preview_data = {
+        "width": previewW,
+        "height": previewH
+    }
+    preview_overlay = {
+        "left": boxLeft,
+        "top": boxTop,
+        "width": boxW,
+        "height": boxH
+    }
+
+    return render_template(
+        "overlay.html",
+        theme=cfg.get("theme", "dark"),
+        overlay=over,
+        monitors=monitors,
+        preview_size=preview_data,
+        preview_overlay=preview_overlay
+    )
+
+
+def parse_resolution(res_str):
+    try:
+        w, h = res_str.lower().split("x")
+        return (int(w), int(h))
+    except:
+        return (1920, 1080)
 
 
 @main_bp.route("/", methods=["GET", "POST"])
@@ -181,7 +398,6 @@ def index():
                 "mixed_folders": [],
                 "rotate": 0
             }
-
     remove_list = [d for d in list(cfg["displays"].keys()) if d not in monitors]
     for r in remove_list:
         del cfg["displays"][r]
@@ -317,9 +533,9 @@ def index():
         remote_displays=remote_displays
     )
 
+
 @main_bp.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
 def remote_configure(dev_index):
-    """Main device can configure a sub-device's display settings (like a remote editor)."""
     cfg = load_config()
     if cfg.get("role") != "main":
         return "This device is not 'main'.", 403
@@ -385,8 +601,8 @@ def remote_configure(dev_index):
         remote_folders=remote_folders
     )
 
+
 def get_remote_subfolders(ip):
-    """List subfolders from remote or [] if fail."""
     url = f"http://{ip}:8080/list_folders"
     try:
         r = requests.get(url, timeout=5)
@@ -396,16 +612,14 @@ def get_remote_subfolders(ip):
         log_message(f"Error fetching remote folders from {ip}: {e}")
     return []
 
+
 @main_bp.route("/sync_config", methods=["GET"])
 def sync_config():
-    """Return entire config as JSON for remote GET."""
     return load_config()
+
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
-    """
-    Another device can POST partial config. We merge allowed keys.
-    """
     incoming = request.get_json()
     if not incoming:
         return "No JSON received", 400
@@ -420,11 +634,9 @@ def update_config():
     log_message("Local config partially updated via /update_config")
     return "Config updated", 200
 
+
 @main_bp.route("/device_manager", methods=["GET", "POST"])
 def device_manager():
-    """
-    If role == 'main', manage sub devices.
-    """
     cfg = load_config()
     if cfg.get("role") != "main":
         return "This device is not 'main'.", 403
@@ -492,19 +704,9 @@ def device_manager():
     )
 
 
-# ------------------------------------------------
-#      NEW: Update from GitHub
-# ------------------------------------------------
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():
-    """
-    Pulls latest code from GitHub, using the UPDATE_BRANCH from config.py.
-    Forces local code to match remote (discarding local changes),
-    then if setup.sh changed, re-runs it in 'no-prompt' mode.
-    """
     cfg = load_config()
-
-    # 1) Save old commit hash for setup.sh so we can compare
     old_hash = ""
     try:
         old_hash = subprocess.check_output(
@@ -514,18 +716,15 @@ def update_app():
     except Exception as e:
         log_message(f"update_app: Could not get old setup.sh hash: {e}")
 
-    # 2) Perform forced update (discard local changes):
     try:
         log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
         subprocess.check_call(["git", "fetch"], cwd=VIEWER_HOME)
         subprocess.check_call(["git", "checkout", UPDATE_BRANCH], cwd=VIEWER_HOME)
-        # Force local to match remote exactly:
         subprocess.check_call(["git", "reset", "--hard", f"origin/{UPDATE_BRANCH}"], cwd=VIEWER_HOME)
     except subprocess.CalledProcessError as e:
         log_message(f"Git update failed: {e}")
         return "Git update failed. Check logs.", 500
 
-    # 3) Compare new commit hash for setup.sh
     new_hash = ""
     try:
         new_hash = subprocess.check_output(
@@ -535,7 +734,6 @@ def update_app():
     except Exception as e:
         log_message(f"update_app: Could not get new setup.sh hash: {e}")
 
-    # 4) If changed, run the updated setup.sh with --auto-update
     if old_hash and new_hash and old_hash != new_hash:
         log_message("setup.sh changed. Re-running setup.sh in --auto-update mode...")
         try:
@@ -543,14 +741,19 @@ def update_app():
         except subprocess.CalledProcessError as e:
             log_message(f"Re-running setup.sh failed: {e}")
 
-    # 5) (Optional) Restart services if you like:
-    #"""
+    log_message("Update completed successfully.")
+    return render_template("update_complete.html")
+
+
+@main_bp.route("/restart_services", methods=["POST", "GET"])
+def restart_services():
     try:
         subprocess.check_call(["sudo", "systemctl", "restart", "viewer.service"])
+        subprocess.check_call(["sudo", "systemctl", "restart", "overlay.service"])
         subprocess.check_call(["sudo", "systemctl", "restart", "controller.service"])
+        log_message("Services restarted successfully.")
     except subprocess.CalledProcessError as e:
-        log_message(f"Failed to restart services after update: {e}")
-    #"""
+        log_message(f"Failed to restart services: {e}")
+        return "Failed to restart services. Check logs.", 500
 
-    log_message("Update completed successfully.")
-    return redirect(url_for("main.settings"))
+    return "Services are restarting now..."

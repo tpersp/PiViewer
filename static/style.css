@@ -263,3 +263,69 @@ body.custom button {
     background: #444;
     color: #ECECEC;
 }
+
+/* ----------------------------------------------------
+   Overlay Dragging UI 
+   ---------------------------------------------------- */
+.overlay-preview-container {
+    margin: 20px auto;
+    max-width: 700px;
+    border: 2px solid #555;
+    border-radius: 6px;
+    padding: 10px;
+    text-align: center;
+    background: rgba(255,255,255,0.1);
+}
+
+.overlay-instructions {
+    font-size: 14px;
+    color: #ccc;
+    margin-bottom: 10px;
+}
+
+.overlay-monitor-select {
+    margin-bottom: 15px;
+}
+
+.overlay-preview-box {
+    margin: 0 auto;
+    position: relative;
+    background: rgba(0,0,0,0.2);
+    border: 1px dashed #666;
+    overflow: hidden;
+}
+
+.overlay-draggable-box {
+    position: absolute;
+    border: 2px solid #77ff77;
+    box-sizing: border-box;
+    cursor: move;
+    background: transparent; /* so we see the dashed boundary below it */
+}
+
+/* Additional overlay config layout */
+.overlay-section {
+    margin-bottom: 20px;
+}
+.overlay-section fieldset {
+    border: 1px solid #aaa;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+.overlay-section legend {
+    font-weight: bold;
+    padding: 0 5px;
+}
+.overlay-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    align-items: center;
+}
+.overlay-form-grid label {
+    justify-self: end;
+}
+.overlay-form-grid input,
+.overlay-form-grid select {
+    justify-self: start;
+}

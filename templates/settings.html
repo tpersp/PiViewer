@@ -46,16 +46,49 @@
     <input type="file" name="bg_image" accept="image/*"><br><br>
     {% endif %}
 
+    <!-- Weather Settings Moved Here -->
+    <fieldset style="border:1px solid #444; padding:10px; margin:20px 0;">
+      <legend style="font-weight:bold;">Weather Settings</legend>
+
+      <label>OpenWeatherMap API Key:</label><br>
+      <input type="text" name="weather_api_key"
+             value="{{ cfg.weather.api_key|default('') }}"
+             style="width:300px;">
+      <br><br>
+
+      <label>Zip Code:</label><br>
+      <input type="text" name="weather_zip_code"
+             value="{{ cfg.weather.zip_code|default('') }}">
+      <br><br>
+
+      <label>Country Code (2-letter, e.g. US):</label><br>
+      <input type="text" name="weather_country_code"
+             value="{{ cfg.weather.country_code|default('') }}">
+      <br><br>
+
+      <label>Latitude:</label><br>
+      <input type="text" name="weather_lat"
+             value="{{ cfg.weather.lat|default('') }}">
+      <br><br>
+
+      <label>Longitude:</label><br>
+      <input type="text" name="weather_lon"
+             value="{{ cfg.weather.lon|default('') }}">
+      <br>
+    </fieldset>
+
     <button type="submit">Save Settings</button>
   </form>
 
   <br>
   <hr>
+
   <!-- Update Section -->
   <form method="POST" action="{{ url_for('main.update_app') }}">
     <p><strong>Update from GitHub:</strong></p>
     <p>
-      Branch: <em>{{ update_branch }}</em>
+      Branch: <em>{{ update_branch }}</em>  
+      (Configured in <code>config.py</code>)
     </p>
     <button type="submit">Update Now</button>
   </form>

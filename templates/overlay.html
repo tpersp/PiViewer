@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Overlay Settings</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>
+    // We'll generate a scaled-down preview for the chosen monitor(s) so the user can drag the overlay box.
+    // We store final X/Y in hidden fields offset_x / offset_y, and W/H in overlay_width / overlay_height.
+
+    let scaleFactor = 1.0;
+    let isDragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+    let startMouseX = 0;
+    let startMouseY = 0;
+
+    function initOverlayDragUI() {
+      let previewBox = document.getElementById("overlayPreviewBox");
+      let dragBox = document.getElementById("overlayDraggable");
+      if(!previewBox || !dragBox) return;
+
+      let xInput = document.getElementById("offset_x");
+      let yInput = document.getElementById("offset_y");
+
+      dragBox.addEventListener("mousedown", function(e){
+        e.preventDefault();
+        isDragging = true;
+        startMouseX = e.clientX;
+        startMouseY = e.clientY;
+        dragOffsetX = parseFloat(dragBox.style.left || "0");
+        dragOffsetY = parseFloat(dragBox.style.top || "0");
+      });
+
+      document.addEventListener("mousemove", function(e){
+        if(!isDragging) return;
+        e.preventDefault();
+        let dx = (e.clientX - startMouseX);
+        let dy = (e.clientY - startMouseY);
+        let newLeft = dragOffsetX + dx;
+        let newTop = dragOffsetY + dy;
+
+        // clamp so the green box isn't lost entirely
+        let maxLeft = previewBox.clientWidth - dragBox.clientWidth;
+        let maxTop = previewBox.clientHeight - dragBox.clientHeight;
+        if(newLeft < -dragBox.clientWidth + 10) newLeft = -dragBox.clientWidth + 10; 
+        if(newTop < -dragBox.clientHeight + 10) newTop = -dragBox.clientHeight + 10;
+        if(newLeft > (maxLeft + dragBox.clientWidth) - 10) newLeft = (maxLeft + dragBox.clientWidth) - 10;
+        if(newTop > (maxTop + dragBox.clientHeight) - 10) newTop = (maxTop + dragBox.clientHeight) - 10;
+
+        dragBox.style.left = newLeft + "px";
+        dragBox.style.top = newTop + "px";
+
+        // update hidden offset (scaled back up)
+        xInput.value = Math.round(newLeft / scaleFactor);
+        yInput.value = Math.round(newTop / scaleFactor);
+      });
+
+      document.addEventListener("mouseup", function(e){
+        isDragging = false;
+      });
+    }
+
+    function onMonitorChange() {
+      // Submit the form so it reloads with correct preview scaling for that monitor
+      let selForm = document.getElementById("monitorSelectForm");
+      if(selForm) selForm.submit();
+    }
+
+    window.addEventListener("load", initOverlayDragUI);
+  </script>
+</head>
+<body class="{{ theme }}">
+<div class="container">
+  <h1>Overlay Settings</h1>
+
+  <!-- Form to handle changing the monitor selection -->
+  <form method="POST" id="monitorSelectForm">
+    <input type="hidden" name="action" value="select_monitor">
+    <div class="overlay-monitor-select">
+      <label>Monitor(s):</label><br>
+      <select name="monitor_selection" onchange="onMonitorChange()">
+        <option value="All" {% if overlay.monitor_selection == "All" %}selected{% endif %}>All (combined)</option>
+        {% for mname, minfo in monitors.items() %}
+          <option value="{{mname}}" {% if overlay.monitor_selection == mname %}selected{% endif %}>
+            {{mname}} ({{minfo.resolution}})
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+
+  <!-- Main settings form -->
+  <form method="POST">
+    <input type="hidden" name="action" value="save_overlay">
+
+    <div class="overlay-section">
+      <fieldset>
+        <legend>Overlay Toggles</legend>
+        <div class="overlay-form-grid">
+          <label for="overlay_enabled">Enable Overlay:</label>
+          <input type="checkbox" name="overlay_enabled" id="overlay_enabled"
+                 {% if overlay.overlay_enabled %}checked{% endif %}>
+          
+          <label for="clock_enabled">Show Clock:</label>
+          <input type="checkbox" name="clock_enabled" id="clock_enabled"
+                 {% if overlay.clock_enabled %}checked{% endif %}>
+
+          <label for="weather_enabled">Show Weather:</label>
+          <input type="checkbox" name="weather_enabled" id="weather_enabled"
+                 {% if overlay.weather_enabled %}checked{% endif %}>
+
+          <label for="background_enabled">Show Background Box:</label>
+          <input type="checkbox" name="background_enabled" id="background_enabled"
+                 {% if overlay.background_enabled %}checked{% endif %}>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Layout & Fonts</legend>
+        <div class="overlay-form-grid">
+          <label>Clock Font Size:</label>
+          <input type="number" name="clock_font_size"
+                 value="{{ overlay.clock_font_size|default(26) }}">
+
+          <label>Weather Font Size:</label>
+          <input type="number" name="weather_font_size"
+                 value="{{ overlay.weather_font_size|default(22) }}">
+
+          <label>Font Color:</label>
+          <input type="color" name="font_color"
+                 value="{{ overlay.font_color|default('#FFFFFF') }}">
+
+          <label>Layout Style:</label>
+          <select name="layout_style">
+            <option value="stacked" {% if overlay.layout_style == "stacked" %}selected{% endif %}>Stacked</option>
+            <option value="inline" {% if overlay.layout_style == "inline" %}selected{% endif %}>Inline</option>
+          </select>
+
+          <label>Padding X:</label>
+          <input type="number" name="padding_x"
+                 value="{{ overlay.padding_x|default(8) }}">
+
+          <label>Padding Y:</label>
+          <input type="number" name="padding_y"
+                 value="{{ overlay.padding_y|default(6) }}">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Weather Details</legend>
+        <p style="font-size:14px; color:#999;">(Select which info to display if weather is enabled)</p>
+        <div class="overlay-form-grid">
+          <label for="show_desc">Description (e.g. "Cloudy")</label>
+          <input type="checkbox" name="show_desc" id="show_desc"
+                 {% if overlay.show_desc %}checked{% endif %}>
+
+          <label for="show_temp">Temperature</label>
+          <input type="checkbox" name="show_temp" id="show_temp"
+                 {% if overlay.show_temp %}checked{% endif %}>
+
+          <label for="show_feels_like">Feels Like</label>
+          <input type="checkbox" name="show_feels_like" id="show_feels_like"
+                 {% if overlay.show_feels_like %}checked{% endif %}>
+
+          <label for="show_humidity">Humidity</label>
+          <input type="checkbox" name="show_humidity" id="show_humidity"
+                 {% if overlay.show_humidity %}checked{% endif %}>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Box Position & Size</legend>
+        <p style="font-size:14px; color:#999;">
+          Use 0 width/height for dynamic sizing based on content.
+        </p>
+        <div class="overlay-form-grid">
+          <label>Offset X:</label>
+          <input type="number" name="offset_x" id="offset_x"
+                 value="{{ overlay.offset_x|default('20') }}">
+
+          <label>Offset Y:</label>
+          <input type="number" name="offset_y" id="offset_y"
+                 value="{{ overlay.offset_y|default('20') }}">
+
+          <label>Overlay Width:</label>
+          <input type="number" name="overlay_width" id="overlay_width"
+                 value="{{ overlay.overlay_width|default('300') }}">
+
+          <label>Overlay Height:</label>
+          <input type="number" name="overlay_height" id="overlay_height"
+                 value="{{ overlay.overlay_height|default('150') }}">
+
+          <label>Background Color:</label>
+          <input type="color" name="bg_color"
+                 value="{{ overlay.bg_color|default('#000000') }}">
+
+          <label>Background Opacity (0-1):</label>
+          <input type="text" name="bg_opacity"
+                 value="{{ overlay.bg_opacity|default(0.4) }}">
+        </div>
+      </fieldset>
+    </div>
+
+    <!-- Hidden fields for the scaled preview offsets -->
+    <input type="hidden" name="offset_x"  id="offset_x"  value="{{ overlay.offset_x|default('20') }}">
+    <input type="hidden" name="offset_y"  id="offset_y"  value="{{ overlay.offset_y|default('20') }}">
+
+    <!-- Draggable overlay preview area -->
+    <div class="overlay-preview-container">
+      <div class="overlay-instructions">
+        Drag the green box to place the overlay within the scaled monitor preview:
+      </div>
+      <div
+        class="overlay-preview-box"
+        id="overlayPreviewBox"
+        style="width: {{ preview_size.width }}px; height: {{ preview_size.height }}px;"
+      >
+        <div
+          class="overlay-draggable-box"
+          id="overlayDraggable"
+          style="
+            width: {{ preview_overlay.width }}px;
+            height: {{ preview_overlay.height }}px;
+            left: {{ preview_overlay.left }}px;
+            top: {{ preview_overlay.top }}px;
+          "
+        ></div>
+      </div>
+    </div>
+
+    <br>
+    <button type="submit">Save Overlay Settings</button>
+  </form>
+
+  <br><hr><br>
+
+  <p style="font-size:14px; color:#999;">
+    Note: For actual transparency, you must run a compositing manager like <strong>picom</strong>.<br>
+    This overlay window uses <code>-alpha</code> in Tkinter, which only becomes see-through if a compositor is active.
+  </p>
+
+  <a href="{{ url_for('main.index') }}">
+    <button>Back to Main</button>
+  </a>
+</div>
+</body>
+</html>
