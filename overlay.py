@@ -19,7 +19,7 @@ from datetime import datetime
 
 from utils import load_config, log_message, detect_monitors
 
-REFRESH_INTERVAL_SEC = 300
+REFRESH_INTERVAL_SEC = 60
 
 class OverlayApp:
     def __init__(self, root, overlay_cfg, weather_cfg):
