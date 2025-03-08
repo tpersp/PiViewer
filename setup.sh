@@ -9,7 +9,7 @@
 #   3) Disables screen blanking (via raspi-config)
 #   4) Prompts for user + paths (unless in --auto-update mode)
 #   5) Creates .env in VIEWER_HOME
-#   6) (Optional) mounts a CIFS network share
+#   6) (Optional) mounts a network share
 #   7) Creates systemd services:
 #        - viewer.service (runs viewer.py slideshow on X:0)
 #        - controller.service (Flask web interface)
@@ -232,6 +232,13 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
         echo "Share mounted at $IMAGE_DIR."
       fi
     fi
+  else
+    echo "Not mounting a network share. Using local uploads folder."
+    LOCAL_UPLOADS="$VIEWER_HOME/uploads"
+    mkdir -p "$LOCAL_UPLOADS"
+    IMAGE_DIR="$LOCAL_UPLOADS"
+    echo "Updating .env with IMAGE_DIR=$IMAGE_DIR"
+    sed -i "s#^IMAGE_DIR=.*#IMAGE_DIR=$IMAGE_DIR#" "$ENV_FILE"
   fi
 else
   echo
