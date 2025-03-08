@@ -6,12 +6,11 @@ import os
 # ------------------------------------------------------------
 # Application Version & Paths
 # ------------------------------------------------------------
-
+# Bumped from 1.2.0 to 1.2.1
 APP_VERSION = "1.2.1"
 
 VIEWER_HOME = os.environ.get("VIEWER_HOME", "/home/pi/PiViewer")
-# Default IMAGE_DIR is set to a local 'uploads' folder within VIEWER_HOME if not provided by the environment.
-IMAGE_DIR   = os.environ.get("IMAGE_DIR", os.path.join(VIEWER_HOME, "uploads"))
+IMAGE_DIR   = os.environ.get("IMAGE_DIR", "/mnt/PiViewers")
 
 CONFIG_PATH = os.path.join(VIEWER_HOME, "viewerconfig.json")
 LOG_PATH    = os.path.join(VIEWER_HOME, "viewer.log")
