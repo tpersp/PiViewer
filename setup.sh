@@ -236,6 +236,7 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
     echo "No network share chosen. Setting up local uploads folder."
     IMAGE_DIR="$VIEWER_HOME/Uploads"
     mkdir -p "$IMAGE_DIR"
+    chown $VIEWER_USER:$VIEWER_USER "$IMAGE_DIR"
     echo "Local uploads folder created at $IMAGE_DIR."
     echo "Updating .env file with new IMAGE_DIR..."
     cat <<EOF > "$ENV_FILE"
