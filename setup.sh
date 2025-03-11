@@ -2,66 +2,260 @@
 #
 # setup.sh - "It Just Works" for the new PySide6 + Flask PiViewer
 #
+#   1) Installs LightDM (with Xorg), python3, PySide6, etc.
+#   2) Installs pip dependencies (with --break-system-packages)
+#   3) Disables screen blanking (via raspi-config)
+#   4) Prompts for user + paths (unless in --auto-update mode)
+#   5) Creates .env in VIEWER_HOME
+#   6) (Optional) mounts a CIFS network share or fallback to local "Uploads"
+#   7) Creates systemd services:
+#        - piviewer.service (runs piviewer.py single GUI)
+#        - controller.service (Flask web interface)
+#   8) Reboots (unless in --auto-update mode)
+#
+# Usage:  sudo ./setup.sh  [--auto-update]
+#   If you run with --auto-update, it will skip user prompts and final reboot.
 
+# -------------------------------------------------------
+# Must be run as root
+# -------------------------------------------------------
 if [[ $EUID -ne 0 ]]; then
-  echo "Please run as root (sudo)."
+  echo "Please run this script as root (e.g. sudo ./setup.sh)."
   exit 1
 fi
 
-echo "=== Installing apt packages ==="
+# -------------------------------------------------------
+# Check if we're in "auto-update" mode
+# -------------------------------------------------------
+AUTO_UPDATE="false"
+if [[ "$1" == "--auto-update" ]]; then
+  AUTO_UPDATE="true"
+fi
+
+if [[ "$AUTO_UPDATE" == "false" ]]; then
+  echo "================================================================="
+  echo "  Simple 'It Just Works' Setup with LightDM + PiViewer (PySide6) "
+  echo "================================================================="
+  echo
+  echo "This script will:"
+  echo " 1) Install lightdm (Xorg), python3, PySide6, etc."
+  echo " 2) pip-install your Python dependencies (with --break-system-packages)"
+  echo " 3) Disable screen blanking"
+  echo " 4) Prompt for user & paths"
+  echo " 5) Create .env in VIEWER_HOME"
+  echo " 6) (Optional) mount a network share or fallback to local uploads folder"
+  echo " 7) Create systemd services for piviewer.py + controller"
+  echo " 8) Reboot"
+  echo
+  read -p "Press [Enter] to continue or Ctrl+C to abort..."
+fi
+
+# -------------------------------------------------------
+# 1) Install apt packages
+# -------------------------------------------------------
+echo
+echo "== Step 1: Installing packages (lightdm, Xorg, python3, etc.) =="
 apt-get update
-apt-get install -y python3 python3-pip python3-requests python3-tk git \
-                   openbox picom conky lightdm xorg x11-xserver-utils cifs-utils \
-                   ffmpeg raspi-config
+apt-get install -y lightdm xorg x11-xserver-utils python3 python3-pip cifs-utils ffmpeg raspi-config \
+                   openbox picom conky python3-tk git
 
-echo "== Setting LightDM to auto-login =="
+if [ $? -ne 0 ]; then
+  echo "Error installing packages via apt. Exiting."
+  exit 1
+fi
+
+# Let raspi-config handle auto-login in desktop:
 raspi-config nonint do_boot_behaviour B4
+# B4 => Auto login to Desktop.
 
-echo "== Disabling screen blanking =="
-raspi-config nonint do_blanking 1
-
-# Hide mouse cursor from X sessions
-sed -i -- "s/#xserver-command=X/xserver-command=X -nocursor/" /etc/lightdm/lightdm.conf
-
-echo "== Installing Python deps =="
+# -------------------------------------------------------
+# 2) pip install from dependencies.txt
+# -------------------------------------------------------
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 if [ -f "$SCRIPT_DIR/dependencies.txt" ]; then
+  echo
+  echo "== Step 2: Installing Python dependencies (with --break-system-packages) =="
   pip3 install --break-system-packages -r "$SCRIPT_DIR/dependencies.txt"
+  if [ $? -ne 0 ]; then
+    echo "Error installing pip packages. Exiting."
+    exit 1
+  fi
 else
+  echo "== Step 2: No dependencies.txt found, installing core packages by pip =="
   pip3 install --break-system-packages flask psutil requests spotipy PySide6
 fi
 
-VIEWER_USER="pi"
-read -p "Which user should run PiViewer? [default: pi]: " user_inp
-if [ ! -z "$user_inp" ]; then
-  VIEWER_USER="$user_inp"
+# -------------------------------------------------------
+# 3) Disable screen blanking and hide mouse cursor
+# -------------------------------------------------------
+echo
+echo "== Step 3: Disabling screen blanking via raspi-config =="
+raspi-config nonint do_blanking 1
+if [ $? -eq 0 ]; then
+  echo "Screen blanking disabled."
+else
+  echo "Warning: raspi-config do_blanking failed. You may need to disable blanking manually."
 fi
 
-if ! id "$VIEWER_USER" &>/dev/null; then
-  echo "User $VIEWER_USER not found. Creating..."
-  adduser --gecos "" --disabled-password "$VIEWER_USER"
+# Remove mouse cursor from X sessions
+sed -i -- "s/#xserver-command=X/xserver-command=X -nocursor/" /etc/lightdm/lightdm.conf
+
+# -------------------------------------------------------
+# 3a) Update boot firmware configuration
+#     (Optional: ensures hardware accel on some Pi setups)
+# -------------------------------------------------------
+echo
+echo "== Step 3a: Updating boot firmware configuration in /boot/firmware/config.txt =="
+if [ -f /boot/firmware/config.txt ]; then
+  cp /boot/firmware/config.txt /boot/firmware/config.txt.backup
+
+  # Insert dtoverlay if missing
+  grep -q '^dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt" || \
+    sed -i '/^# Enable DRM VC4 V3D driver/ a dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt"
+
+  # Insert max_framebuffers if missing
+  grep -q '^max_framebuffers=2' "/boot/firmware/config.txt" || \
+    sed -i '/^dtoverlay=vc4-kms-v3d/ a max_framebuffers=2' "/boot/firmware/config.txt"
+
+  # Insert hdmi_force_hotplug if missing
+  grep -q '^hdmi_force_hotplug=1' "/boot/firmware/config.txt" || \
+    sed -i '/^max_framebuffers=2/ a hdmi_force_hotplug=1' "/boot/firmware/config.txt"
 fi
 
-VIEWER_HOME="/home/$VIEWER_USER/PiViewer"
-IMAGE_DIR="/mnt/PiViewers"
+# -------------------------------------------------------
+# 4) Prompt user for config (skip if AUTO_UPDATE)
+# -------------------------------------------------------
+if [[ "$AUTO_UPDATE" == "false" ]]; then
+  echo
+  echo "== Step 4: Configuration =="
+  read -p "Enter the Linux username to run PiViewer (default: pi): " VIEWER_USER
+  VIEWER_USER=${VIEWER_USER:-pi}
 
-echo "VIEWER_HOME=$VIEWER_HOME"
-echo "IMAGE_DIR=$IMAGE_DIR"
+  USER_ID="$(id -u "$VIEWER_USER" 2>/dev/null)"
+  if [ -z "$USER_ID" ]; then
+    echo "User '$VIEWER_USER' not found. Create user? (y/n)"
+    read create_user
+    if [[ "$create_user" =~ ^[Yy]$ ]]; then
+      adduser --gecos "" --disabled-password "$VIEWER_USER"
+      USER_ID="$(id -u "$VIEWER_USER")"
+      echo "User '$VIEWER_USER' created with no password."
+    else
+      echo "Cannot proceed without a valid user. Exiting."
+      exit 1
+    fi
+  fi
 
+  read -p "Enter the path for VIEWER_HOME (default: /home/$VIEWER_USER/PiViewer): " input_home
+  if [ -z "$input_home" ]; then
+    VIEWER_HOME="/home/$VIEWER_USER/PiViewer"
+  else
+    VIEWER_HOME="$input_home"
+  fi
+
+  read -p "Enter the path for IMAGE_DIR (default: /mnt/PiViewers): " input_dir
+  IMAGE_DIR=${input_dir:-/mnt/PiViewers}
+
+else
+  echo
+  echo "== Auto-Update Mode: skipping interactive user/path prompts. Using defaults =="
+  VIEWER_USER="pi"
+  USER_ID="$(id -u "$VIEWER_USER")"
+  if [ -z "$USER_ID" ]; then
+    echo "User 'pi' not found. Exiting auto-update."
+    exit 1
+  fi
+  VIEWER_HOME="/home/$VIEWER_USER/PiViewer"
+  IMAGE_DIR="/mnt/PiViewers"
+fi
+
+echo
+echo "Creating $VIEWER_HOME if it doesn't exist..."
 mkdir -p "$VIEWER_HOME"
 chown "$VIEWER_USER:$VIEWER_USER" "$VIEWER_HOME"
 
+# -------------------------------------------------------
+# 5) Create .env
+# -------------------------------------------------------
 ENV_FILE="$VIEWER_HOME/.env"
+echo "Creating $ENV_FILE with VIEWER_HOME + IMAGE_DIR..."
 cat <<EOF > "$ENV_FILE"
 VIEWER_HOME=$VIEWER_HOME
 IMAGE_DIR=$IMAGE_DIR
 EOF
 chown "$VIEWER_USER:$VIEWER_USER" "$ENV_FILE"
 
-# (Optional) mount network share at $IMAGE_DIR or so, if you want.
+echo
+echo "Contents of $ENV_FILE:"
+cat "$ENV_FILE"
+echo
 
-echo "=== Creating systemd service for PySide6 GUI (piviewer.service) ==="
+# -------------------------------------------------------
+# 6) (Optional) Configure CIFS/SMB share
+# -------------------------------------------------------
+if [[ "$AUTO_UPDATE" == "false" ]]; then
+  echo
+  echo "== Step 6: (Optional) Network Share at $IMAGE_DIR =="
+  read -p "Mount a network share at $IMAGE_DIR via CIFS? (y/n): " mount_answer
+  if [[ "$mount_answer" =~ ^[Yy]$ ]]; then
+    read -p "Enter server share path (e.g. //192.168.1.100/MyShare): " SERVER_SHARE
+    if [ -z "$SERVER_SHARE" ]; then
+      echo "No share path entered. Skipping."
+    else
+      # We might need the user ID from above
+      USER_ID="$(id -u "$VIEWER_USER")"
+      read -p "Mount options (e.g. guest,uid=$USER_ID,gid=$USER_ID,vers=3.0) [ENTER for default]: " MOUNT_OPTS
+      if [ -z "$MOUNT_OPTS" ]; then
+        MOUNT_OPTS="guest,uid=$USER_ID,gid=$USER_ID,vers=3.0"
+      fi
+
+      echo "Creating mount dir: $IMAGE_DIR"
+      mkdir -p "$IMAGE_DIR"
+
+      FSTAB_LINE="$SERVER_SHARE  $IMAGE_DIR  cifs  $MOUNT_OPTS  0  0"
+      if grep -qs "$SERVER_SHARE" /etc/fstab; then
+        echo "Share already in /etc/fstab; skipping append."
+      else
+        echo "Appending to /etc/fstab: $FSTAB_LINE"
+        echo "$FSTAB_LINE" >> /etc/fstab
+      fi
+
+      echo "Mounting all..."
+      mount -a
+      if [ $? -ne 0 ]; then
+        echo "WARNING: mount -a failed. Check credentials/options."
+      else
+        echo "Share mounted at $IMAGE_DIR."
+      fi
+    fi
+  else
+    echo "No network share chosen. Setting up local uploads folder."
+    IMAGE_DIR="$VIEWER_HOME/Uploads"
+    mkdir -p "$IMAGE_DIR"
+    chown $VIEWER_USER:$VIEWER_USER "$IMAGE_DIR"
+    echo "Local uploads folder created at $IMAGE_DIR."
+    echo "Updating .env file with new IMAGE_DIR..."
+    cat <<EOF > "$ENV_FILE"
+VIEWER_HOME=$VIEWER_HOME
+IMAGE_DIR=$IMAGE_DIR
+EOF
+    chown "$VIEWER_USER:$VIEWER_USER" "$ENV_FILE"
+    echo "Updated .env file:"
+    cat "$ENV_FILE"
+  fi
+else
+  echo
+  echo "== Auto-Update Mode: skipping CIFS prompt. =="
+fi
+
+# -------------------------------------------------------
+# 7) Create systemd services
+# -------------------------------------------------------
+echo
+echo "== Step 7: Creating systemd service files =="
+
+# (A) piviewer.service
 PIVIEWER_SERVICE="/etc/systemd/system/piviewer.service"
+echo "Creating $PIVIEWER_SERVICE ..."
 cat <<EOF > "$PIVIEWER_SERVICE"
 [Unit]
 Description=PiViewer PySide6 Slideshow + Overlay
@@ -86,8 +280,9 @@ Type=simple
 WantedBy=graphical.target
 EOF
 
-echo "=== Creating systemd service for Flask web controller (controller.service) ==="
+# (B) controller.service
 CONTROLLER_SERVICE="/etc/systemd/system/controller.service"
+echo "Creating $CONTROLLER_SERVICE ..."
 cat <<EOF > "$CONTROLLER_SERVICE"
 [Unit]
 Description=PiViewer Flask Web Controller
@@ -108,11 +303,52 @@ Type=simple
 WantedBy=multi-user.target
 EOF
 
+# Optional: if you want picom for real alpha transparency:
+PICOM_SERVICE="/etc/systemd/system/picom.service"
+echo "Creating $PICOM_SERVICE ..."
+cat <<EOF > "$PICOM_SERVICE"
+[Unit]
+Description=Picom Compositor
+After=lightdm.service
+
+[Service]
+User=$VIEWER_USER
+Group=$VIEWER_USER
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
+ExecStart=/usr/bin/picom
+Restart=always
+
+[Install]
+WantedBy=graphical.target
+EOF
+
 echo "Reloading systemd..."
 systemctl daemon-reload
 systemctl enable piviewer.service
 systemctl enable controller.service
+systemctl enable picom.service
 systemctl start piviewer.service
 systemctl start controller.service
+systemctl start picom.service
 
-echo "Setup complete. You may want to reboot now."
+# -------------------------------------------------------
+# 8) Reboot (skip if AUTO_UPDATE)
+# -------------------------------------------------------
+if [[ "$AUTO_UPDATE" == "false" ]]; then
+  echo
+  echo "========================================================"
+  echo "Setup is complete. The Pi will now reboot."
+  echo "Upon reboot:"
+  echo " - LightDM auto-logs into X (DISPLAY=:0)."
+  echo " - piviewer.service starts piviewer.py (PySide6 GUI)"
+  echo " - controller.service runs Flask at http://<Pi-IP>:8080"
+  echo " - picom.service for compositing transparency"
+  echo
+  echo "Rebooting in 5 seconds..."
+  sleep 5
+  reboot
+else
+  echo
+  echo "== Auto-Update Mode: skipping final reboot. =="
+fi

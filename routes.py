@@ -31,7 +31,8 @@ def stats_json():
 
 @main_bp.route("/list_monitors")
 def list_monitors():
-    # For compatibility, we can just return a fake dictionary
+    # For new approach, we can just return a simple dict
+    # so remote_config logic won't break
     return jsonify({"Display0": {"resolution":"1920x1080","offset_x":0,"offset_y":0}})
 
 @main_bp.route("/list_folders")
@@ -89,7 +90,6 @@ def upload_media():
 @main_bp.route("/restart_viewer", methods=["POST"])
 def restart_viewer():
     try:
-        # Now we have a single service "piviewer.service"
         subprocess.check_output(["sudo","systemctl","restart","piviewer.service"])
         return redirect(url_for("main.index"))
     except subprocess.CalledProcessError as e:
@@ -123,20 +123,17 @@ def settings():
         w_lat = request.form.get("weather_lat","").strip()
         w_lon = request.form.get("weather_lon","").strip()
 
-        if "weather" not in cfg:
-            cfg["weather"]={}
         cfg["weather"]["api_key"] = w_api
         cfg["weather"]["zip_code"] = w_zip
         cfg["weather"]["country_code"] = w_cc
-
         try:
             cfg["weather"]["lat"] = float(w_lat)
         except:
-            cfg["weather"]["lat"]=None
+            cfg["weather"]["lat"] = None
         try:
             cfg["weather"]["lon"] = float(w_lon)
         except:
-            cfg["weather"]["lon"]=None
+            cfg["weather"]["lon"] = None
 
         save_config(cfg)
         return redirect(url_for("main.settings"))
@@ -151,7 +148,7 @@ def settings():
 def configure_spotify():
     cfg = load_config()
     if "spotify" not in cfg:
-        cfg["spotify"]={}
+        cfg["spotify"] = {}
     if request.method=="POST":
         cid = request.form.get("client_id","").strip()
         csec = request.form.get("client_secret","").strip()
@@ -166,7 +163,7 @@ def configure_spotify():
         save_config(cfg)
         return redirect(url_for("main.configure_spotify"))
     else:
-        return render_template("configure_spotify.html", 
+        return render_template("configure_spotify.html",
             spotify=cfg["spotify"],
             theme=cfg.get("theme","dark")
         )
@@ -214,7 +211,7 @@ def callback():
 def overlay_config():
     cfg = load_config()
     if "overlay" not in cfg:
-        cfg["overlay"]={}
+        cfg["overlay"] = {}
     over = cfg["overlay"]
     if request.method=="POST":
         action = request.form.get("action","")
@@ -223,10 +220,10 @@ def overlay_config():
             save_config(cfg)
             return redirect(url_for("main.overlay_config"))
         elif action=="save_overlay":
-            over["overlay_enabled"] = ("overlay_enabled" in request.form)
-            over["clock_enabled"] = ("clock_enabled" in request.form)
-            over["weather_enabled"] = ("weather_enabled" in request.form)
-            over["background_enabled"] = ("background_enabled" in request.form)
+            over["overlay_enabled"]     = ("overlay_enabled" in request.form)
+            over["clock_enabled"]       = ("clock_enabled" in request.form)
+            over["weather_enabled"]     = ("weather_enabled" in request.form)
+            over["background_enabled"]  = ("background_enabled" in request.form)
             try:
                 over["clock_font_size"] = int(request.form.get("clock_font_size","26"))
             except:
@@ -238,23 +235,23 @@ def overlay_config():
             over["font_color"] = request.form.get("font_color","#FFFFFF")
             over["layout_style"] = request.form.get("layout_style","stacked")
             try:
-                over["padding_x"]=int(request.form.get("padding_x","8"))
+                over["padding_x"] = int(request.form.get("padding_x","8"))
             except:
                 over["padding_x"]=8
             try:
-                over["padding_y"]=int(request.form.get("padding_y","6"))
+                over["padding_y"] = int(request.form.get("padding_y","6"))
             except:
                 over["padding_y"]=6
-            over["show_desc"] = ("show_desc" in request.form)
-            over["show_temp"] = ("show_temp" in request.form)
+            over["show_desc"]       = ("show_desc" in request.form)
+            over["show_temp"]       = ("show_temp" in request.form)
             over["show_feels_like"] = ("show_feels_like" in request.form)
-            over["show_humidity"] = ("show_humidity" in request.form)
+            over["show_humidity"]   = ("show_humidity" in request.form)
             try:
-                over["offset_x"]=int(request.form.get("offset_x","20"))
+                over["offset_x"] = int(request.form.get("offset_x","20"))
             except:
                 over["offset_x"]=20
             try:
-                over["offset_y"]=int(request.form.get("offset_y","20"))
+                over["offset_y"] = int(request.form.get("offset_y","20"))
             except:
                 over["offset_y"]=20
             try:
@@ -269,11 +266,10 @@ def overlay_config():
                 over["overlay_height"]=150
             over["bg_color"] = request.form.get("bg_color","#000000")
             try:
-                over["bg_opacity"] = float(request.form.get("bg_opacity","0.4"))
+                over["bg_opacity"]=float(request.form.get("bg_opacity","0.4"))
             except:
                 over["bg_opacity"]=0.4
             save_config(cfg)
-            # previously we restarted overlay.service, now we just restart piviewer
             try:
                 subprocess.check_call(["sudo","systemctl","restart","piviewer.service"])
             except subprocess.CalledProcessError as e:
@@ -287,10 +283,8 @@ def overlay_config():
 @main_bp.route("/", methods=["GET","POST"])
 def index():
     cfg = load_config()
-    # we no longer detect monitors with xrandr; just assume "Display0" etc.
     if "displays" not in cfg:
         cfg["displays"]={}
-    # ensure at least 1 display
     if not cfg["displays"]:
         cfg["displays"]["Display0"]={
             "mode":"random_image",
@@ -340,7 +334,6 @@ def index():
                     dcfg["mixed_folders"]=[]
 
             save_config(cfg)
-            # we can optionally restart piviewer
             try:
                 subprocess.check_call(["sudo","systemctl","restart","piviewer.service"])
             except:
@@ -351,9 +344,7 @@ def index():
     for sf in get_subfolders():
         folder_counts[sf]=count_files_in_folder(os.path.join(IMAGE_DIR,sf))
 
-    # we won't gather display_images like old approach, because the new GUI loads them itself
-    # but let's keep the code for partial backward compatibility:
-    display_images = {}
+    display_images={}
     for dname,dcfg in cfg["displays"].items():
         display_images[dname]=[]
 
@@ -399,7 +390,6 @@ def remote_configure(dev_index):
     dev_ip = dev_info.get("ip")
     dev_name = dev_info.get("name")
 
-    # in the old approach, we tried to fetch remote config
     remote_cfg = get_remote_config(dev_ip) or {"displays":{}}
     remote_mons = get_remote_monitors(dev_ip)
     remote_folders=[]
@@ -453,7 +443,6 @@ def remote_configure(dev_index):
         remote_mons=remote_mons,
         remote_folders=remote_folders
     )
-
 
 @main_bp.route("/sync_config", methods=["GET"])
 def sync_config():
@@ -540,15 +529,43 @@ def device_manager():
 
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():
+    """
+    Called by the "Update from GitHub" button in the Settings page.
+    1) git fetch/checkout/reset to the chosen branch
+    2) If setup.sh changed, re-run it in --auto-update mode
+    3) Return "Update Complete" page
+    """
     cfg = load_config()
     log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
+
+    old_hash=""
+    try:
+        old_hash = subprocess.check_output(["git","rev-parse","HEAD:setup.sh"],cwd=VIEWER_HOME).decode().strip()
+    except Exception as e:
+        log_message(f"Could not get old setup.sh hash: {e}")
+
     try:
         subprocess.check_call(["git","fetch"], cwd=VIEWER_HOME)
         subprocess.check_call(["git","checkout", UPDATE_BRANCH], cwd=VIEWER_HOME)
-        subprocess.check_call(["git","reset","--hard",f"origin/{UPDATE_BRANCH}"],cwd=VIEWER_HOME)
+        subprocess.check_call(["git","reset","--hard", f"origin/{UPDATE_BRANCH}"], cwd=VIEWER_HOME)
     except subprocess.CalledProcessError as e:
         log_message(f"Git update failed: {e}")
         return "Git update failed. Check logs.",500
+
+    new_hash=""
+    try:
+        new_hash = subprocess.check_output(["git","rev-parse","HEAD:setup.sh"],cwd=VIEWER_HOME).decode().strip()
+    except Exception as e:
+        log_message(f"Could not get new setup.sh hash: {e}")
+
+    # If setup.sh changed, re-run it in --auto-update mode
+    if old_hash and new_hash and (old_hash != new_hash):
+        log_message("setup.sh changed. Re-running it in --auto-update mode...")
+        try:
+            subprocess.check_call(["sudo","bash","setup.sh","--auto-update"], cwd=VIEWER_HOME)
+        except subprocess.CalledProcessError as e:
+            log_message(f"Re-running setup.sh failed: {e}")
+
     log_message("Update completed successfully.")
     return render_template("update_complete.html")
 
