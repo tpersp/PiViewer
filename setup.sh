@@ -56,8 +56,24 @@ fi
 echo
 echo "== Step 1: Installing packages (lightdm, Xorg, python3, etc.) =="
 apt-get update
-apt-get install -y lightdm xorg x11-xserver-utils python3 python3-pip cifs-utils ffmpeg raspi-config \
-                   openbox picom conky python3-tk git
+apt-get install -y \
+  lightdm \
+  xorg \
+  x11-xserver-utils \
+  python3 \
+  python3-pip \
+  cifs-utils \
+  ffmpeg \
+  raspi-config \
+  openbox \
+  picom \
+  conky \
+  python3-tk \
+  git \
+  libxcb-cursor0 \
+  libxcb-randr0 \
+  libxcb-shape0 \
+  libxcb-xfixes0
 
 if [ $? -ne 0 ]; then
   echo "Error installing packages via apt. Exiting."
