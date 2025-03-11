@@ -1,167 +1,158 @@
----
-
-# **OUTDATED**
-
----
 # PiViewer
 
-PiViewer is a lightweight, easy-to-configure slideshow viewer and controller designed for Raspberry Pi OS. It leverages [mpv](https://mpv.io/) for fullscreen image display and uses a Flask web interface to manage settings and media—now with automatic multi-monitor support.
+PiViewer is a modern, easy-to-configure slideshow + overlay viewer written in **Python/PySide6** along with a companion **Flask**-based web interface. It seamlessly supports multiple monitors on a Raspberry Pi and can optionally display a live overlay (e.g. clock, weather) on top of your images or GIFs.
 
-> **Note:** This project was developed and tested on Pi 4 and Pi Zero2W running Raspberry Pi OS Lite (both 32-bit and 64-bit).
+## Key Features
 
----
-
-## Features
-
-- **Multi-Monitor Support**  
-  Automatically detects connected monitors using `xrandr` and launches an mpv instance per screen. The viewer dynamically assigns mpv’s `--screen` parameter based on the order reported by xrandr. Whether you have two, three, or more monitors, each will be handled automatically.
-
-- **Web Interface**  
-  Manage your slideshow settings (display mode, image intervals, folder selection, theming) via a simple web interface on **port 8080**.
-
-- **Systemd Integration**  
-  The included setup script creates systemd services for both the viewer (slideshow) and the controller (web interface), so PiViewer starts automatically at boot.
-
-- **Custom Themes**  
-  Choose between dark, light, or custom themes via the settings page. For a custom theme, you can upload your own background image.
-
-- **Easy Installation**  
-  A single `setup.sh` script installs all necessary packages and Python dependencies, performs basic system configuration (e.g., disabling screen blanking), and sets up systemd services.
-
----
+- **Multiple Monitors**: Launches a PySide6 window per detected monitor, each with its own display mode (Random, Mixed, Spotify, etc.).
+- **Web Controller**: A Flask web interface (on port **8080**) lets you manage sub-devices, change the slideshow folder, set intervals, shuffle, or pick a single image.
+- **Systemd Integration**: The `setup.sh` script creates two systemd services:
+  - `piviewer.service` - runs the PySide6 slideshow windows
+  - `controller.service` - runs the Flask app
+- **Overlay**: Optionally display time, weather, or custom text overlay in a semi-transparent box.
+- **Remote Device Management**: If you set the Pi’s role to **main**, it can push or pull display configs from sub-devices.
+- **Spotify Integration**: Show currently playing track’s album art on a display.
 
 ## Installation
 
-### Prerequisites
+These instructions assume you have a clean Raspberry Pi OS image (Lite or Desktop) with **X11**.
 
-- **Raspberry Pi OS**  
-  Ensure you have Raspberry Pi OS (Lite or Desktop) installed.
-- **X11 instead of Wayland**  
-  PiViewer currently uses `xrandr` and X11; it does *not* support Wayland.  
-  (You may need to disable Wayland manually in your Pi’s configuration.)
-
-### Manual X11 Configuration (If Needed)
-
-1. **`/boot/config.txt`** or `/boot/firmware/config.txt` (depending on your Pi OS version):  
-   - You *should not* have `dtoverlay=vc4-fkms-v3d`.  
-   - Instead, ensure something like:
-     ```ini
-     dtoverlay=vc4-kms-v3d
-     max_framebuffers=2
-     hdmi_force_hotplug=1
-     ```
-2. **Disable Wayland**  
-   In Raspberry Pi OS, run:
-sudo raspi-config
-
-Then navigate to advanced/X11 options, and ensure Wayland is disabled.
-
-3. **Reboot** to apply changes.
-
----
-
-## Automated Setup
-
-### Clone the Repository
+1. **Clone the Repository**:
 
 ```bash
 sudo apt update
-sudo apt install git -y
-git clone https://github.com/tpersp/PiViewer.git
+sudo apt install -y git
+cd ~
+git clone --branch qtdev https://github.com/tpersp/PiViewer.git
 cd PiViewer
 ```
 
-Run the Setup Script
+2. **Run Setup**:
+
 ```bash
 chmod +x setup.sh
 sudo ./setup.sh
 ```
-The script will:
 
-- **Update apt** and install necessary packages (LightDM, Xorg, mpv, Python3, etc.)
-- **Install Python dependencies** from `dependencies.txt`
-- **Disable screen blanking** via `raspi-config`
-- **Prompt you for the Linux username** to use and the paths for `VIEWER_HOME` and `IMAGE_DIR`
-- **Create a `.env` file** containing those paths
-- **Optionally configure a CIFS network share**
-- **Create systemd services** for `viewer.py` and `app.py` (the slideshow and the web controller)
-- **Reboot the system** when finished
+During the setup:
 
-## After Reboot
+- **Apt packages** are installed (LightDM, Xorg, Python3, etc.)
+- **pip packages** from `dependencies.txt` are installed
+- **Screen blanking** is disabled
+- You’ll be prompted for the user that will auto-login into X, the path for `VIEWER_HOME` and `IMAGE_DIR`.
+- **Optionally** mount a CIFS share at `IMAGE_DIR`, or skip to use a local uploads folder.
+- Systemd services are created and enabled.
+- The system is **rebooted** (unless you run `--auto-update`).
 
-Once the Pi reboots:
-- **LightDM** will auto-login into an X session on `:0`.
-- **viewer.service** will launch `viewer.py`, which automatically detects all connected monitors and assigns an mpv instance to each.
-- **controller.service** will launch `app.py`, which runs the Flask web interface on port `8080`.
+3. **Post-Reboot**:
+   - LightDM auto-logs into the specified user’s X session.
+   - `piviewer.service` runs, launching a PySide6 slideshow window on each detected screen.
+   - `controller.service` hosts the web UI on **port 8080**.
 
-### Access the Web Interface
+## Usage
 
-Open a browser and navigate to:
+Once the Pi is up and running:
 
-```lua
-http://<Your-Raspberry-Pi-IP>:8080
+### Web Interface
+
+Browse to `http://<PI-IP>:8080` to access the interface. You’ll see:
+
+- **Main Screen** (`index.html`)
+  - Displays system stats (CPU, memory, temp)
+  - Lets you configure each local display’s mode (Random, Specific, Mixed, or Spotify)
+  - For Specific mode, choose exactly one image. For Mixed, drag-drop multiple folders.
+  - **Manage** how often images rotate, shuffle, etc.
+
+- **Settings** Page
+  - Choose your Pi’s role (main or sub)
+  - If sub, specify the IP of your main Pi
+  - Set the web theme (Dark, Light, or Custom) and optionally upload a background image
+  - Configure weather (API key, location) used by the overlay
+
+- **Device Manager** (only if role=main)
+  - Add sub-devices by name + IP
+  - Push or pull display configs from each sub device
+  - Remotely configure them
+
+- **Overlay Settings**
+  - Enable or disable the overlay box
+  - Position, size, and color of the overlay
+  - Font sizes, weather toggles, clock toggles, etc.
+
+### Spotify Integration
+
+In `Configure Spotify`, provide your **Client ID**, **Client Secret**, and **Redirect URI** from the Spotify Developer Dashboard. Then click **Authorize Spotify** to store the OAuth token. You can set one or more displays to `spotify` mode.
+
+### Media Upload
+
+Use the **Upload Media** page to add images/GIFs. You can place them in existing subfolders or create a new one. If you have a CIFS share, it will appear under your `IMAGE_DIR`.
+
+## Multi-Device Setup
+
+- **Main Device**: in the Settings page, set Role to `main`. It can manage sub-devices.
+- **Sub Device**: set role to `sub` and specify the main Pi’s IP address.
+
+Then, from the main Pi’s **Device Manager**, add the sub’s IP and name. You can push/pull config or go into remote configure for that sub.
+
+## Directory Structure
+
+Below is a simplified layout:
+
 ```
-Use this interface to configure display settings, choose themes, and manage media.
-
-### Project Structure
-A simplified layout:
-
-```php
 PiViewer/
-├── app.py                # Main Flask entry point
-├── config.py             # Holds app version & path constants
-├── utils.py              # Shared utility functions (config load/save, logging, etc.)
-├── routes.py             # Flask routes (blueprint)
-├── viewer.py             # Slideshow: spawns mpv per detected monitor
+├── app.py               # Flask entry point
+├── config.py            # Paths, version info
+├── piviewer.py          # PySide6 main script creating slideshow windows
+├── routes.py            # All Flask routes
+├── utils.py             # Shared functions (config I/O, logging, etc.)
+├── setup.sh             # Automated setup script
+├── dependencies.txt     # Required pip packages
 ├── static/
-│    ├── style.css        # Consolidated CSS
-│    ├── favicon.png
-│    └── icon.png
+│   ├── style.css
+│   ├── favicon.png
+│   └── icon.png
 ├── templates/
-│    ├── index.html
-│    ├── settings.html
-│    ├── device_manager.html
-│    ├── remote_configure.html
-│    └── upload_media.html
-├── setup.sh              # Installation script
-├── dependencies.txt      # Python dependencies
-└── README.md             # This file
+│   ├── index.html
+│   ├── settings.html
+│   ├── overlay.html
+│   ├── device_manager.html
+│   ├── remote_configure.html
+│   ├── configure_spotify.html
+│   ├── upload_media.html
+│   ...
+└── README.md            # This README
 ```
 
-## Usage & Customization
+## Systemd Services
 
-### Local Displays
-Using the web interface (on port 8080), you can select:
+Two services are created:
 
-- Mode: Random, Specific, or Mixed
-- Interval: How many seconds between image changes
-- Rotate: How many degrees to rotate each image
-- Shuffle: Whether images should display in random order
-- For specific_image mode, you can pick the exact file.
-- For mixed mode, you can select multiple folders, drag to reorder them, etc.
+- **piviewer.service**
+  - Runs `piviewer.py` at boot, so the slideshows start automatically on every connected screen.
+- **controller.service**
+  - Runs `app.py`, the Flask server on port 8080.
 
-### Remote (Sub) Devices
-If you configure one Pi as the main, you can add sub devices in the Device Manager page. The main device can push/pull configurations to/from each sub device and even remotely configure their displays.
+You can check their status or logs:
 
-### Themes
-In Settings, choose between dark, light, or custom.
-For a custom theme, upload a background image; the rest of the UI overlays on top.
+```bash
+sudo systemctl status piviewer.service
+sudo systemctl status controller.service
+
+sudo journalctl -u piviewer.service
+sudo journalctl -u controller.service
+```
 
 ## Troubleshooting
-#### No Image or Wrong Monitor
-Check that the environment variables (DISPLAY, XAUTHORITY, XDG_RUNTIME_DIR) are being set correctly in viewer.service.
-Confirm with 
-```bash
-xrandr --listmonitors that X11 sees all monitors.
-```
-#### Logs
 
-View systemd logs:
-```bash
-sudo systemctl status viewer.service
-sudo journalctl -u viewer.service
-```
-Check the PiViewer log (written to viewer.log by default).
-#### Wayland Conflicts
+- **No images?** Ensure images exist in the `IMAGE_DIR` (or subfolders). By default, check `/mnt/PiViewers` or wherever you mounted.
+- **Wrong screen**? Confirm you have multiple monitors recognized by X. PiViewer uses PySide6’s screen geometry, so make sure your environment is not on Wayland.
+- **Spotify issues**? Check `.spotify_cache` for the saved token. Re-authorize if needed.
+- **Overlay not transparent?** You need a compositor (like **picom**) running for real transparency.
+- **Check logs**: Look at `piviewer.log` (in your `VIEWER_HOME`) or `journalctl -u piviewer.service`.
 
-If you see warnings about xrandr or DISPLAY, ensure you’re not on Wayland.
+## Contributing
+
+Feel free to open pull requests or issues. Any improvements to multi-monitor detection, new overlay features, or theming are welcome.
+
+**Enjoy PiViewer!**
+
