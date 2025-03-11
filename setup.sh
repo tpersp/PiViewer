@@ -58,6 +58,7 @@ echo "== Step 1: Installing packages (lightdm, Xorg, python3, etc.) =="
 apt-get update
 apt-get install -y \
   lightdm \
+  accountsservice \
   xorg \
   x11-xserver-utils \
   python3 \
