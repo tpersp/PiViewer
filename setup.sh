@@ -51,14 +51,18 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
 fi
 
 # -------------------------------------------------------
-# 1) Install apt packages
+# 1) Install apt packages (including extras for LightDM)
 # -------------------------------------------------------
 echo
 echo "== Step 1: Installing packages (lightdm, Xorg, python3, etc.) =="
 apt-get update
+
 apt-get install -y \
   lightdm \
+  lightdm-gtk-greeter \
   accountsservice \
+  dbus-x11 \
+  policykit-1 \
   xorg \
   x11-xserver-utils \
   python3 \
@@ -81,9 +85,21 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
+# Create /var/lib/lightdm/data so LightDM can store user-data:
+mkdir -p /var/lib/lightdm/data
+chown lightdm:lightdm /var/lib/lightdm/data
+
+# Make sure accounts-daemon is enabled and running:
+systemctl enable accounts-daemon
+systemctl start accounts-daemon
+
 # Let raspi-config handle auto-login in desktop:
-raspi-config nonint do_boot_behaviour B4
-# B4 => Auto login to Desktop.
+# B4 => Auto login to Desktop
+if command -v raspi-config &>/dev/null; then
+  raspi-config nonint do_boot_behaviour B4
+else
+  echo "Warning: raspi-config not found; skipping auto-login configuration."
+fi
 
 # -------------------------------------------------------
 # 2) pip install from dependencies.txt
@@ -107,11 +123,15 @@ fi
 # -------------------------------------------------------
 echo
 echo "== Step 3: Disabling screen blanking via raspi-config =="
-raspi-config nonint do_blanking 1
-if [ $? -eq 0 ]; then
-  echo "Screen blanking disabled."
+if command -v raspi-config &>/dev/null; then
+  raspi-config nonint do_blanking 1
+  if [ $? -eq 0 ]; then
+    echo "Screen blanking disabled."
+  else
+    echo "Warning: raspi-config do_blanking failed. You may need to disable blanking manually."
+  fi
 else
-  echo "Warning: raspi-config do_blanking failed. You may need to disable blanking manually."
+  echo "Warning: raspi-config not found; skipping screen-blanking changes."
 fi
 
 # Remove mouse cursor from X sessions
