@@ -19,7 +19,7 @@ from config import (
 )
 
 def init_config():
-    """Initialize config file if missing, including default displays & multi-device placeholders, plus weather/overlay defaults."""
+    """Initialize config file if missing, including default displays, multi-device placeholders, plus weather/overlay/spotify defaults."""
     if not os.path.exists(CONFIG_PATH):
         default_cfg = {
             "theme": "dark",
@@ -29,7 +29,7 @@ def init_config():
             "devices": [],
             # Default overlay config
             "overlay": {
-                "overlay_enabled": True,
+                "overlay_enabled": False,
                 "clock_enabled": True,
                 "weather_enabled": False,
                 "background_enabled": True,
@@ -58,6 +58,13 @@ def init_config():
                 "country_code": "",
                 "lat": None,
                 "lon": None
+            },
+            # Default Spotify config
+            "spotify": {
+                "client_id": "",
+                "client_secret": "",
+                "redirect_uri": "",
+                "scope": "user-read-currently-playing user-read-playback-state"
             }
         }
 

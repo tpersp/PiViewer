@@ -8,7 +8,6 @@ from flask import (
     Blueprint, request, redirect, url_for, render_template,
     send_from_directory, send_file, jsonify
 )
-
 from config import APP_VERSION, WEB_BG, IMAGE_DIR, LOG_PATH, UPDATE_BRANCH, VIEWER_HOME
 from utils import (
     load_config, save_config, init_config, log_message,
@@ -164,14 +163,12 @@ def settings():
         else:
             cfg["main_ip"] = ""
 
-        # If custom theme, handle background image
         if new_theme == "custom":
             if "bg_image" in request.files:
                 f = request.files["bg_image"]
                 if f and f.filename:
                     f.save(WEB_BG)
 
-        # Weather settings
         w_api = request.form.get("weather_api_key", "").strip()
         w_zip = request.form.get("weather_zip_code", "").strip()
         w_country = request.form.get("weather_country_code", "").strip()
@@ -191,7 +188,6 @@ def settings():
         except:
             cfg["weather"]["lon"] = None
 
-        # If zip/country but no lat/lon, do an auto-lookup
         if w_api and w_zip and w_country and (not cfg["weather"]["lat"] or not cfg["weather"]["lon"]):
             auto_lookup_latlon(cfg["weather"])
 
@@ -207,9 +203,6 @@ def settings():
 
 
 def auto_lookup_latlon(wdict):
-    """
-    Tries to fetch lat/lon from OWM GEO API given the zip/country.
-    """
     apikey = wdict.get("api_key", "")
     zip_c  = wdict.get("zip_code", "")
     ctry   = wdict.get("country_code", "")
@@ -228,21 +221,90 @@ def auto_lookup_latlon(wdict):
         log_message(f"Geo lookup error: {e}")
 
 
+@main_bp.route("/configure_spotify", methods=["GET", "POST"])
+def configure_spotify():
+    cfg = load_config()
+    if "spotify" not in cfg:
+        cfg["spotify"] = {
+            "client_id": "",
+            "client_secret": "",
+            "redirect_uri": "",
+            "scope": "user-read-currently-playing user-read-playback-state"
+        }
+    if request.method == "POST":
+        client_id = request.form.get("client_id", "").strip()
+        client_secret = request.form.get("client_secret", "").strip()
+        redirect_uri = request.form.get("redirect_uri", "").strip()
+        scope = request.form.get("scope", "user-read-currently-playing user-read-playback-state").strip()
+        cfg["spotify"] = {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "scope": scope
+        }
+        save_config(cfg)
+        return redirect(url_for("main.configure_spotify"))
+    return render_template("configure_spotify.html", spotify=cfg.get("spotify", {}), theme=cfg.get("theme", "dark"))
+
+
+# New route to initiate Spotify OAuth flow
+@main_bp.route("/spotify_auth")
+def spotify_auth():
+    try:
+        cfg = load_config()
+        spotify_cfg = cfg.get("spotify", {})
+        client_id = spotify_cfg.get("client_id", "").strip()
+        client_secret = spotify_cfg.get("client_secret", "").strip()
+        redirect_uri = spotify_cfg.get("redirect_uri", "").strip()
+        scope = spotify_cfg.get("scope", "user-read-currently-playing user-read-playback-state").strip()
+        if not client_id or not client_secret or not redirect_uri:
+            return "Spotify configuration incomplete. Please fill in the configuration first.", 400
+        from spotipy.oauth2 import SpotifyOAuth
+        sp_oauth = SpotifyOAuth(client_id=client_id, client_secret=client_secret,
+                                redirect_uri=redirect_uri, scope=scope,
+                                cache_path=".spotify_cache")
+        auth_url = sp_oauth.get_authorize_url()
+        return redirect(auth_url)
+    except Exception as e:
+        log_message(f"Error in /spotify_auth: {e}")
+        return "Spotify authorization error. Check server logs for details.", 500
+
+
+# Callback route for Spotify OAuth
+@main_bp.route("/callback")
+def callback():
+    cfg = load_config()
+    spotify_cfg = cfg.get("spotify", {})
+    client_id = spotify_cfg.get("client_id", "").strip()
+    client_secret = spotify_cfg.get("client_secret", "").strip()
+    redirect_uri = spotify_cfg.get("redirect_uri", "").strip()
+    scope = spotify_cfg.get("scope", "user-read-currently-playing user-read-playback-state").strip()
+    from spotipy.oauth2 import SpotifyOAuth
+    sp_oauth = SpotifyOAuth(client_id=client_id, client_secret=client_secret,
+                            redirect_uri=redirect_uri, scope=scope,
+                            cache_path=".spotify_cache")
+    code = request.args.get("code")
+    if not code:
+        return "Authorization failed: no code provided", 400
+    try:
+        token_info = sp_oauth.get_access_token(code)
+    except Exception as e:
+        log_message(f"Spotify callback error: {e}")
+        return "Spotify callback error", 500
+    return redirect(url_for("main.configure_spotify"))
+
+
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
     cfg = load_config()
     if "overlay" not in cfg:
         cfg["overlay"] = {}
-
     over = cfg["overlay"]
     monitors = detect_monitors()
-
-    # Calculate total resolution for "All" or single monitor
     total_width = 0
     total_height = 0
     if not monitors:
         monitors = {"Display0": {"resolution": "1920x1080", "offset_x":0, "offset_y":0}}
-
     if over.get("monitor_selection", "All") == "All":
         for _, minfo in monitors.items():
             w, h = parse_resolution(minfo.get("resolution","1920x1080"))
@@ -257,7 +319,6 @@ def overlay_config():
             total_height = h
         else:
             total_width, total_height = (1920, 1080)
-
     max_preview_w = 500.0
     scaleFactor = 1.0
     if total_width > 0:
@@ -266,31 +327,23 @@ def overlay_config():
         scaleFactor = 1.0
     previewW = int(total_width * scaleFactor)
     previewH = int(total_height * scaleFactor)
-
-    # scale the offset + width/height for the green box
     boxLeft = int(over.get("offset_x", 20) * scaleFactor)
     boxTop  = int(over.get("offset_y", 20) * scaleFactor)
     bw = over.get("overlay_width", 300)
     bh = over.get("overlay_height", 150)
-
     boxW = int(bw * scaleFactor) if bw > 0 else int(150 * scaleFactor)
     boxH = int(bh * scaleFactor) if bh > 0 else int(80 * scaleFactor)
-
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "select_monitor":
             over["monitor_selection"] = request.form.get("monitor_selection","All")
             save_config(cfg)
             return redirect(url_for("main.overlay_config"))
-
         elif action == "save_overlay":
-            # read toggles
             over["overlay_enabled"]     = ("overlay_enabled" in request.form)
             over["clock_enabled"]       = ("clock_enabled" in request.form)
             over["weather_enabled"]     = ("weather_enabled" in request.form)
             over["background_enabled"]  = ("background_enabled" in request.form)
-
-            # fonts & layout
             try:
                 over["clock_font_size"] = int(request.form.get("clock_font_size","26"))
             except:
@@ -299,8 +352,7 @@ def overlay_config():
                 over["weather_font_size"] = int(request.form.get("weather_font_size","22"))
             except:
                 over["weather_font_size"] = 22
-
-            over["font_color"]     = request.form.get("font_color", "#FFFFFF")
+            over["font_color"]     = request.form.get("font_color","#FFFFFF")
             over["layout_style"]   = request.form.get("layout_style","stacked")
             try:
                 over["padding_x"] = int(request.form.get("padding_x","8"))
@@ -310,14 +362,10 @@ def overlay_config():
                 over["padding_y"] = int(request.form.get("padding_y","6"))
             except:
                 over["padding_y"] = 6
-
-            # weather details
             over["show_desc"]       = ("show_desc" in request.form)
             over["show_temp"]       = ("show_temp" in request.form)
             over["show_feels_like"] = ("show_feels_like" in request.form)
             over["show_humidity"]   = ("show_humidity" in request.form)
-
-            # position & size
             try:
                 over["offset_x"] = int(request.form.get("offset_x","20"))
             except:
@@ -336,23 +384,17 @@ def overlay_config():
                 over["overlay_height"] = hval
             except:
                 over["overlay_height"] = 150
-
             over["bg_color"] = request.form.get("bg_color","#000000")
             try:
                 over["bg_opacity"] = float(request.form.get("bg_opacity","0.4"))
             except:
                 over["bg_opacity"] = 0.4
-
             save_config(cfg)
-
-            # restart overlay service
             try:
                 subprocess.check_call(["sudo", "systemctl", "restart", "overlay.service"])
             except subprocess.CalledProcessError as e:
                 log_message(f"Failed to restart overlay.service: {e}")
-
             return redirect(url_for("main.overlay_config"))
-
     preview_data = {
         "width": previewW,
         "height": previewH
@@ -363,7 +405,6 @@ def overlay_config():
         "width": boxW,
         "height": boxH
     }
-
     return render_template(
         "overlay.html",
         theme=cfg.get("theme", "dark"),
@@ -715,7 +756,6 @@ def update_app():
         ).decode().strip()
     except Exception as e:
         log_message(f"update_app: Could not get old setup.sh hash: {e}")
-
     try:
         log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
         subprocess.check_call(["git", "fetch"], cwd=VIEWER_HOME)
@@ -724,7 +764,6 @@ def update_app():
     except subprocess.CalledProcessError as e:
         log_message(f"Git update failed: {e}")
         return "Git update failed. Check logs.", 500
-
     new_hash = ""
     try:
         new_hash = subprocess.check_output(
@@ -733,14 +772,12 @@ def update_app():
         ).decode().strip()
     except Exception as e:
         log_message(f"update_app: Could not get new setup.sh hash: {e}")
-
     if old_hash and new_hash and old_hash != new_hash:
         log_message("setup.sh changed. Re-running setup.sh in --auto-update mode...")
         try:
             subprocess.check_call(["sudo", "bash", "setup.sh", "--auto-update"], cwd=VIEWER_HOME)
         except subprocess.CalledProcessError as e:
             log_message(f"Re-running setup.sh failed: {e}")
-
     log_message("Update completed successfully.")
     return render_template("update_complete.html")
 
@@ -755,5 +792,4 @@ def restart_services():
     except subprocess.CalledProcessError as e:
         log_message(f"Failed to restart services: {e}")
         return "Failed to restart services. Check logs.", 500
-
     return "Services are restarting now..."

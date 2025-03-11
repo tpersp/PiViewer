@@ -39,7 +39,7 @@
         items.forEach(li => availList.appendChild(li));
       }
       if(searchBox){
-        searchBox.addEventListener("input", ()=>{
+        searchBox.addEventListener("input", ()=> {
           let txt = searchBox.value.toLowerCase();
           let items = availList.querySelectorAll("li");
           items.forEach(li => {
@@ -184,14 +184,17 @@
     <a href="{{ url_for('main.overlay_config') }}">
       <button style="font-size:14px;">Configure Overlay</button>
     </a>
+    <a href="{{ url_for('main.configure_spotify') }}">
+      <button style="font-size:14px;">Configure Spotify</button>
+    </a>
+    {% if cfg.role == "main" %}
+    <a href="{{ url_for('main.device_manager') }}">
+      <button style="font-size:14px;">Manage Devices</button>
+    </a>
+    {% endif %}
     <form method="POST" action="{{ url_for('main.restart_viewer') }}">
       <button type="submit" style="font-size:14px;">Restart Viewer</button>
     </form>
-    {% if cfg.role == "main" %}
-      <a href="{{ url_for('main.device_manager') }}">
-        <button style="font-size:14px;">Manage Devices</button>
-      </a>
-    {% endif %}
   </div>  
 
   <section>
@@ -205,11 +208,12 @@
           <div class="help-icon" onclick="toggleHelpBox('help_{{dname}}')">?</div>
           <div class="help-box" id="help_{{dname}}">
             <p><strong>Display Info</strong></p>
-            <p>- Mode: random, specific, or mixed</p>
+            <p>- Mode: random, specific, mixed or Spotify Now Playing</p>
             <p>- Interval: how often new images load</p>
             <p>- Shuffle: randomizes order (Yes/No)</p>
             <p>- Mixed: pick multiple folders, drag to reorder</p>
             <p>- Specific: pick exactly 1 file</p>
+            <p>- Spotify: show album art of currently playing track</p>
           </div>
           <h3>{{ dname }} ({{ resolution }})</h3>
           <div class="field-block">
@@ -218,6 +222,7 @@
               <option value="random_image"   {% if dcfg.mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
               <option value="specific_image" {% if dcfg.mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
               <option value="mixed"          {% if dcfg.mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
+              <option value="spotify"        {% if dcfg.mode=="spotify" %}selected{% endif %}>Spotify Now Playing</option>
             </select>
           </div>
           <div class="field-block">
@@ -228,7 +233,7 @@
             <label>Rotate (degrees):</label><br>
             <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
           </div>
-          {% if dcfg.mode != "mixed" %}
+          {% if dcfg.mode != "mixed" and dcfg.mode != "specific_image" and dcfg.mode != "spotify" %}
             <div class="field-block">
               <label>Category (subfolder):</label><br>
               <select name="{{ dname }}_image_category">

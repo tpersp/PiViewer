@@ -10,6 +10,12 @@ import socket
 import threading
 from datetime import datetime
 
+# New imports for Spotify integration:
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+import tempfile
+import requests
+
 from config import APP_VERSION, VIEWER_HOME, IMAGE_DIR, CONFIG_PATH, LOG_PATH
 
 def log_message(msg):
@@ -39,10 +45,6 @@ def apply_loop_property(sock_path, fullpath):
     mpv_command(sock_path, {"command": ["set_property", "loop-file", "inf"]})
 
 def detect_monitors():
-    """
-    Use xrandr --listmonitors to detect connected monitors.
-    Returns a list of monitor names, e.g. ["HDMI-1", "HDMI-2"], or ["Display0"] as fallback.
-    """
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
         lines = out.split("\n")
@@ -74,10 +76,6 @@ def build_full_path(relpath):
     return os.path.join(IMAGE_DIR, relpath)
 
 def get_images_in_category(category):
-    """
-    Return list of image paths (relative to IMAGE_DIR) for the given category.
-    Only accept GIF, JPG, JPEG, PNG.
-    """
     if category:
         base = os.path.join(IMAGE_DIR, category)
         if not os.path.isdir(base):
@@ -102,7 +100,6 @@ def get_images_in_category(category):
         return results
 
 def get_mixed_images(folder_list):
-    """Combine images from multiple folders into one sorted list."""
     all_files = []
     for cat in folder_list:
         catlist = get_images_in_category(cat)
@@ -110,10 +107,6 @@ def get_mixed_images(folder_list):
     return sorted(all_files)
 
 def get_screen_index(monitor_name):
-    """
-    Attempts to find index of monitor_name from xrandr --listmonitors output
-    so mpv can use --screen=X.
-    """
     all_mons = []
     try:
         out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
@@ -167,6 +160,8 @@ class DisplayThread(threading.Thread):
                 self.load_specific(disp_cfg)
             elif mode == "mixed":
                 self.load_mixed(disp_cfg)
+            elif mode == "spotify":
+                self.load_spotify(disp_cfg)
             else:
                 log_message(f"[{self.disp_name}] Unknown mode '{mode}', sleeping 5s.")
                 time.sleep(5)
@@ -194,7 +189,6 @@ class DisplayThread(threading.Thread):
         idx = 0
 
         while True:
-            # Check if the mode changed mid-loop:
             c2 = load_config().get("displays", {}).get(self.disp_name, {})
             if c2.get("mode") != "random_image":
                 break
@@ -202,7 +196,6 @@ class DisplayThread(threading.Thread):
                 break
 
             fullpath = build_full_path(images[idx])
-            # (Previously we logged every loadfile, now we skip it to reduce spam)
             mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
             apply_loop_property(self.sock_path, fullpath)
             self.apply_rotation(disp_cfg)
@@ -213,7 +206,6 @@ class DisplayThread(threading.Thread):
                 if shuffle:
                     random.shuffle(images)
 
-            # Wait interval seconds, checking stop_flag or mode changes
             for _ in range(interval):
                 if self.stop_flag:
                     return
@@ -236,7 +228,6 @@ class DisplayThread(threading.Thread):
             time.sleep(10)
             return
 
-        # (We skip logging "loadfile" to reduce spam)
         mpv_command(self.sock_path, {"command": ["loadfile", fullpath, "replace"]})
         apply_loop_property(self.sock_path, fullpath)
         self.apply_rotation(disp_cfg)
@@ -293,6 +284,62 @@ class DisplayThread(threading.Thread):
                 if m != "mixed":
                     return
                 time.sleep(1)
+
+    def load_spotify(self, disp_cfg):
+        cfg = load_config()
+        spotify_cfg = cfg.get("spotify", {})
+        client_id = spotify_cfg.get("client_id", "").strip()
+        client_secret = spotify_cfg.get("client_secret", "").strip()
+        redirect_uri = spotify_cfg.get("redirect_uri", "").strip()
+        scope = spotify_cfg.get("scope", "user-read-currently-playing user-read-playback-state").strip()
+
+        if not client_id or not client_secret or not redirect_uri:
+            log_message(f"[{self.disp_name}] Spotify configuration incomplete. Please configure at /configure_spotify.")
+            time.sleep(10)
+            return
+        try:
+            # Use a fixed cache file for Spotify (shared between web and viewer)
+            sp_oauth = SpotifyOAuth(client_id=client_id, client_secret=client_secret,
+                                    redirect_uri=redirect_uri, scope=scope,
+                                    cache_path=".spotify_cache")
+            token_info = sp_oauth.get_cached_token()
+            if not token_info:
+                log_message(f"[{self.disp_name}] No Spotify token found. Please authorize at /spotify_auth.")
+                time.sleep(10)
+                return
+            if sp_oauth.is_token_expired(token_info):
+                token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
+            sp = spotipy.Spotify(auth=token_info['access_token'])
+            current = sp.current_playback()
+            if current and current.get("item"):
+                album_images = current["item"].get("album", {}).get("images", [])
+                if album_images:
+                    image_url = album_images[0].get("url")
+                    response = requests.get(image_url, stream=True, timeout=5)
+                    if response.status_code == 200:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                            for chunk in response.iter_content(1024):
+                                tmp.write(chunk)
+                            tmp_path = tmp.name
+                        mpv_command(self.sock_path, {"command": ["loadfile", tmp_path, "replace"]})
+                        apply_loop_property(self.sock_path, tmp_path)
+                        self.apply_rotation(disp_cfg)
+                    else:
+                        log_message(f"[{self.disp_name}] Failed to download Spotify image.")
+                else:
+                    log_message(f"[{self.disp_name}] No album art available.")
+            else:
+                log_message(f"[{self.disp_name}] No track currently playing.")
+            for _ in range(10):
+                if self.stop_flag:
+                    return
+                m = load_config().get("displays", {}).get(self.disp_name, {}).get("mode")
+                if m != "spotify":
+                    return
+                time.sleep(1)
+        except Exception as e:
+            log_message(f"[{self.disp_name}] Spotify error: {e}")
+            time.sleep(10)
 
     def stop(self):
         self.stop_flag = True
