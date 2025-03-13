@@ -109,7 +109,7 @@ def settings():
         if new_role=="sub":
             cfg["main_ip"] = request.form.get("main_ip","").strip()
         else:
-            cfg["main_ip"]=""
+            cfg["main_ip"] = ""
 
         if new_theme=="custom":
             if "bg_image" in request.files:
@@ -446,7 +446,7 @@ def remote_configure(dev_index):
 
 @main_bp.route("/sync_config", methods=["GET"])
 def sync_config():
-    return load_config()
+    return jsonify(load_config())
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
