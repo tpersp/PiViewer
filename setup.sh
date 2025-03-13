@@ -306,6 +306,7 @@ WorkingDirectory=$VIEWER_HOME
 EnvironmentFile=$ENV_FILE
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
+Environment="QT_QPA_PLATFORM_PLUGIN_PATH=/usr/local/lib/python3.11/dist-packages/PySide6/Qt/plugins/platforms"
 ExecStartPre=/bin/sleep 5
 ExecStart=/usr/bin/python3 $VIEWER_HOME/piviewer.py
 

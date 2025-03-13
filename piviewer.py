@@ -16,135 +16,155 @@ import requests
 import spotipy
 import tempfile
 import threading
+import subprocess
 from datetime import datetime
 
-from PySide6.QtCore import (
-    Qt, QTimer, QRect, QSize, QThread, Signal
-)
-from PySide6.QtGui import (
-    QPixmap, QMovie, QFont, QGraphicsBlurEffect, QGuiApplication
-)
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QLabel, QWidget,
-    QVBoxLayout
-)
+from PySide6.QtCore import Qt, QTimer, Slot, QMetaObject
+from PySide6.QtGui import QPixmap, QMovie, QFont
+from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QWidget, QGraphicsBlurEffect
 
 from spotipy.oauth2 import SpotifyOAuth
 
 from config import APP_VERSION, IMAGE_DIR, LOG_PATH
-from utils import (
-    init_config, load_config, save_config, log_message,
-    get_subfolders, get_system_stats
-)
+from utils import load_config, save_config, log_message, get_subfolders, get_system_stats
+
+def detect_monitors():
+    """
+    Use xrandr to detect connected monitors.
+    Returns a dict where keys are monitor names and values are dicts with details.
+    Example return:
+      {
+         "HDMI-1": { "screen_name": "HDMI-1: 1920x1080", "width": 1920, "height": 1080 },
+         ...
+      }
+    """
+    monitors = {}
+    try:
+        output = subprocess.check_output(["xrandr", "--query"]).decode("utf-8")
+        for line in output.splitlines():
+            if " connected " in line:
+                parts = line.split()
+                name = parts[0]
+                # Look for a part like 1920x1080+0+0
+                for part in parts:
+                    if "x" in part and "+" in part:
+                        res = part.split("+")[0]  # e.g., "1920x1080"
+                        try:
+                            width, height = res.split("x")
+                            width = int(width)
+                            height = int(height)
+                        except Exception as e:
+                            width, height = 0, 0
+                        monitors[name] = {
+                            "screen_name": f"{name}: {width}x{height}",
+                            "width": width,
+                            "height": height
+                        }
+                        break
+    except Exception as e:
+        log_message(f"Monitor detection error: {e}")
+    return monitors
 
 ##################################
-# A separate "display window" class
+# DisplayWindow class using absolute positioning
 ##################################
 class DisplayWindow(QMainWindow):
-    def __init__(self, disp_name, disp_cfg, target_screen=None):
+    def __init__(self, disp_name, disp_cfg):
         super().__init__()
         self.disp_name = disp_name
         self.disp_cfg = disp_cfg
-        self.target_screen = target_screen
         self.running = True
 
-        # Set up a frameless window, then move/size it to the chosen screen:
+        # Remove window frame and go fullscreen.
         self.setWindowFlag(Qt.FramelessWindowHint)
-        if self.target_screen is not None:
-            geo = self.target_screen.geometry()
-            self.setGeometry(geo)
         self.showFullScreen()
 
-        # Container
-        self.central_widget = QWidget()
+        # Create central widget early so resizeEvent can access it.
+        self.central_widget = QWidget(self)
         self.setCentralWidget(self.central_widget)
-        self.layout = QVBoxLayout(self.central_widget)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.central_widget.setStyleSheet("background-color: black;")
 
-        # A background label to show a blurred "cover" version of the image
-        self.bg_label = QLabel()
+        # Background label (for blurred cover image)
+        self.bg_label = QLabel(self.central_widget)
         self.bg_label.setScaledContents(True)
-        self.bg_label.setAlignment(Qt.AlignCenter)
-        self.layout.addWidget(self.bg_label, stretch=1)
+        self.bg_label.setStyleSheet("background-color: black;")
 
-        # Optional blur effect
+        # Foreground label (for main image or GIF)
+        self.foreground_label = QLabel(self.central_widget)
+        self.foreground_label.setScaledContents(True)
+        self.foreground_label.setStyleSheet("background-color: black;")
+
+        # Overlay labels for clock and weather.
+        self.clock_label = QLabel(self.central_widget)
+        self.clock_label.setStyleSheet("color: white; font-size: 24px; background: transparent;")
+        self.clock_label.setAttribute(Qt.WA_TranslucentBackground)
+        self.weather_label = QLabel(self.central_widget)
+        self.weather_label.setStyleSheet("color: white; font-size: 18px; background: transparent;")
+        self.weather_label.setAttribute(Qt.WA_TranslucentBackground)
+
+        # Setup a blur effect for the background image.
         self.blur_effect = QGraphicsBlurEffect()
-        self.blur_effect.setBlurRadius(0)  # can adjust via config if desired
+        self.blur_effect.setBlurRadius(0)
         self.bg_label.setGraphicsEffect(self.blur_effect)
 
-        # A foreground label for the unblurred image
-        self.foreground_label = QLabel()
-        self.foreground_label.setScaledContents(True)
-        self.foreground_label.setAlignment(Qt.AlignCenter)
-        self.layout.addWidget(self.foreground_label, stretch=1)
-
-        # Overlay text labels (clock, weather) - you can extend if needed
-        self.clock_label = QLabel()
-        self.clock_label.setStyleSheet("color: white; font-size: 24px;")
-        self.layout.addWidget(self.clock_label, 0, Qt.AlignTop)
-
-        self.weather_label = QLabel()
-        self.weather_label.setStyleSheet("color: white; font-size: 18px;")
-        self.layout.addWidget(self.weather_label, 0, Qt.AlignTop)
-
-        # Timers
-        self.slideshow_timer = QTimer()
+        # Setup timers for slideshow and clock.
+        self.slideshow_timer = QTimer(self)
         self.slideshow_timer.timeout.connect(self.next_image)
-
-        self.clock_timer = QTimer()
+        self.clock_timer = QTimer(self)
         self.clock_timer.timeout.connect(self.update_clock)
         self.clock_timer.start(1000)
 
-        # Load config, set up everything, and start slideshow
-        self.cfg = load_config()  # just in case
+        self.cfg = load_config()
         self.reload_settings()
-        self.next_image()  # initial image
+
+        # Start the slideshow.
+        self.next_image(force=True)
+
+    def resizeEvent(self, event):
+        if not hasattr(self, "central_widget"):
+            return super().resizeEvent(event)
+        rect = self.central_widget.rect()
+        self.bg_label.setGeometry(rect)
+        self.foreground_label.setGeometry(rect)
+        self.clock_label.adjustSize()
+        self.clock_label.move(20, 20)
+        self.weather_label.adjustSize()
+        self.weather_label.move(20, self.clock_label.y() + self.clock_label.height() + 10)
+        super().resizeEvent(event)
 
     def closeEvent(self, event):
         self.running = False
         super().closeEvent(event)
 
+    @Slot()
     def reload_settings(self):
         """
-        Re-read config from disk, adjust intervals, gather image list, etc.
+        Reload configuration from disk and update display settings.
+        (Note: The call to setWindowOpacity was removed to avoid plugin warnings.)
         """
         self.cfg = load_config()
-        # apply overlay config
         over = self.cfg.get("overlay", {})
-        if "bg_opacity" in over:
-            try:
-                alpha_val = float(over["bg_opacity"])
-                if alpha_val < 0:
-                    alpha_val = 0
-                if alpha_val > 1:
-                    alpha_val = 1
-                self.setWindowOpacity(alpha_val)
-            except:
-                pass
-
         if "clock_font_size" in over:
             sz = over["clock_font_size"]
-            fc = over.get("font_color", "#ffffff")
-            self.clock_label.setStyleSheet(f"color: {fc}; font-size: {sz}px;")
-
+            self.clock_label.setStyleSheet(
+                f"color: {over.get('font_color','#ffffff')}; font-size: {sz}px; background: transparent;"
+            )
         if "weather_font_size" in over:
             sz2 = over["weather_font_size"]
-            fc2 = over.get("font_color", "#ffffff")
-            self.weather_label.setStyleSheet(f"color: {fc2}; font-size: {sz2}px;")
-
-        # Optionally read a blur radius from config["gui"] or similar
+            self.weather_label.setStyleSheet(
+                f"color: {over.get('font_color','#ffffff')}; font-size: {sz2}px; background: transparent;"
+            )
+        # Set blur radius from config.
         user_blur = self.cfg.get("gui", {}).get("background_blur_radius", 0)
         self.blur_effect.setBlurRadius(user_blur)
-
-        # Re-check the display config for interval
+        # Update slideshow interval.
         interval_ms = self.disp_cfg.get("image_interval", 60) * 1000
         self.slideshow_timer.setInterval(interval_ms)
         self.slideshow_timer.start()
 
-        # Decide mode and build image list
         self.current_mode = self.disp_cfg.get("mode", "random_image")
         self.image_list = []
-        self.index = -1
+        self.index = 0
         if self.current_mode in ("random_image", "mixed", "specific_image"):
             self.build_local_image_list()
 
@@ -156,7 +176,6 @@ class DisplayWindow(QMainWindow):
             if self.disp_cfg.get("shuffle_mode", False):
                 random.shuffle(images)
             self.image_list = images
-
         elif mode == "mixed":
             folder_list = self.disp_cfg.get("mixed_folders", [])
             images = []
@@ -165,7 +184,6 @@ class DisplayWindow(QMainWindow):
             if self.disp_cfg.get("shuffle_mode", False):
                 random.shuffle(images)
             self.image_list = images
-
         elif mode == "specific_image":
             cat = self.disp_cfg.get("image_category", "")
             spec = self.disp_cfg.get("specific_image", "")
@@ -188,18 +206,17 @@ class DisplayWindow(QMainWindow):
         results.sort()
         return results
 
-    def next_image(self):
+    def next_image(self, force=False):
         if not self.running:
             return
-        mode = self.current_mode
-        if mode == "spotify":
+        if self.current_mode == "spotify":
             path = self.fetch_spotify_album_art()
             if path:
                 self.load_image(path)
             return
-
-        # For local images (random/mixed/specific)
         if not self.image_list:
+            self.foreground_label.setText("No images found")
+            self.foreground_label.setAlignment(Qt.AlignCenter)
             return
         self.index += 1
         if self.index >= len(self.image_list):
@@ -220,32 +237,23 @@ class DisplayWindow(QMainWindow):
             pm = QPixmap(fullpath)
             self.foreground_label.setMovie(None)
             self.foreground_label.setPixmap(pm)
-            # produce a 'cover' scaled background
             scaled_bg = self.make_background_cover(pm)
             self.bg_label.setPixmap(scaled_bg)
 
     def make_background_cover(self, pixmap):
-        # Use this window's screen geometry to fill background
-        if self.target_screen:
-            scr_geo = self.target_screen.geometry()
-            sw, sh = scr_geo.width(), scr_geo.height()
-        else:
-            # fallback to primary if no target_screen
-            s = QApplication.primaryScreen().size()
-            sw, sh = s.width(), s.height()
-
+        rect = self.central_widget.rect()
+        sw, sh = rect.width(), rect.height()
+        if sw == 0 or sh == 0:
+            return pixmap
         pw, ph = pixmap.width(), pixmap.height()
-        screen_ratio = sw / float(sh) if sh else 1
-        img_ratio = pw / float(ph) if ph else 1
-
+        screen_ratio = sw / float(sh)
+        img_ratio = pw / float(ph)
         if img_ratio > screen_ratio:
-            # scale by height
             new_h = sh
             new_w = int(img_ratio * new_h)
         else:
             new_w = sw
             new_h = int(new_w / img_ratio)
-
         scaled = pixmap.scaled(new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         xoff = (scaled.width() - sw) // 2
         yoff = (scaled.height() - sh) // 2
@@ -266,29 +274,21 @@ class DisplayWindow(QMainWindow):
             scope = sp_cfg.get("scope", "user-read-currently-playing user-read-playback-state")
             if not (c_id and c_sec and r_uri):
                 return None
-
-            auth = SpotifyOAuth(
-                client_id=c_id,
-                client_secret=c_sec,
-                redirect_uri=r_uri,
-                scope=scope,
-                cache_path=".spotify_cache"
-            )
+            auth = SpotifyOAuth(client_id=c_id, client_secret=c_sec,
+                                redirect_uri=r_uri, scope=scope,
+                                cache_path=".spotify_cache")
             token_info = auth.get_cached_token()
             if not token_info:
                 return None
             if auth.is_token_expired(token_info):
                 token_info = auth.refresh_access_token(token_info['refresh_token'])
-
             sp = spotipy.Spotify(auth=token_info['access_token'])
             current = sp.current_playback()
             if not current or not current.get("item"):
                 return None
-
             album_imgs = current["item"]["album"]["images"]
             if not album_imgs:
                 return None
-
             url = album_imgs[0]["url"]
             resp = requests.get(url, stream=True, timeout=5)
             if resp.status_code == 200:
@@ -302,58 +302,82 @@ class DisplayWindow(QMainWindow):
             return None
         return None
 
-
 #########################################
-# The main manager that spawns a window per monitor
+# PiViewerGUI: Manages one window per display
 #########################################
 class PiViewerGUI:
     def __init__(self):
-        # Ensure config is initialized
-        init_config()
         self.cfg = load_config()
-
         self.app = QApplication(sys.argv)
+        # Use xrandr to detect monitors.
+        monitors = detect_monitors()
+        if monitors:
+            self.cfg["displays"] = {}
+            for name, info in monitors.items():
+                display_info = {
+                    "mode": "random_image",
+                    "image_interval": 60,
+                    "image_category": "",
+                    "specific_image": "",
+                    "shuffle_mode": False,
+                    "mixed_folders": [],
+                    "rotate": 0,
+                    "screen_name": info["screen_name"]
+                }
+                self.cfg["displays"][name] = display_info
+                log_message(f"Detected monitor: {info['screen_name']}")
+        else:
+            # Fallback: use QScreen detection.
+            self.cfg["displays"] = {}
+            for screen in self.app.screens():
+                name = screen.name()
+                geom = screen.geometry()
+                display_info = {
+                    "mode": "random_image",
+                    "image_interval": 60,
+                    "image_category": "",
+                    "specific_image": "",
+                    "shuffle_mode": False,
+                    "mixed_folders": [],
+                    "rotate": 0,
+                    "screen_name": f"{name}: {geom.width()}x{geom.height()}"
+                }
+                self.cfg["displays"][name] = display_info
+                log_message(f"Detected monitor (fallback): {display_info['screen_name']}")
+        save_config(self.cfg)
+
         self.windows = []
-
-        # Grab all available screens from QGuiApplication
-        screens = QGuiApplication.screens()
-
-        # For each display in config, create a window on the corresponding screen
-        for index, (dname, dcfg) in enumerate(self.cfg.get("displays", {}).items()):
-            if index < len(screens):
-                target_screen = screens[index]
+        for dname, dcfg in self.cfg.get("displays", {}).items():
+            w = DisplayWindow(dname, dcfg)
+            if "screen_name" in dcfg:
+                w.setWindowTitle(dcfg["screen_name"])
             else:
-                # fallback if there's more "displays" than physical screens
-                target_screen = QGuiApplication.primaryScreen()
-
-            w = DisplayWindow(dname, dcfg, target_screen=target_screen)
+                w.setWindowTitle(dname)
             w.show()
             self.windows.append(w)
-
-        # Start a background thread to periodically reload config
         self.reload_thread = threading.Thread(target=self.reload_loop, daemon=True)
         self.reload_thread.start()
 
     def reload_loop(self):
         while True:
-            time.sleep(10)  # check every 10s
+            time.sleep(10)
             new_cfg = load_config()
-            # If anything changed, reassign the relevant display config
-            new_displays = new_cfg.get("displays", {})
-            for w in self.windows:
-                if w.disp_name in new_displays:
-                    w.disp_cfg = new_displays[w.disp_name]
-                    w.reload_settings()
+            for dname, dcfg in new_cfg.get("displays", {}).items():
+                for w in self.windows:
+                    if w.disp_name == dname:
+                        QMetaObject.invokeMethod(w, "reload_settings", Qt.QueuedConnection)
 
     def run(self):
         sys.exit(self.app.exec())
 
-
 def main():
-    log_message(f"Starting PiViewer GUI (v{APP_VERSION}).")
-    gui = PiViewerGUI()
-    gui.run()
-
+    try:
+        log_message(f"Starting PiViewer GUI (v{APP_VERSION}).")
+        gui = PiViewerGUI()
+        gui.run()
+    except Exception as e:
+        log_message(f"Exception in main: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
