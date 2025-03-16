@@ -67,7 +67,6 @@ apt-get install -y \
   x11-xserver-utils \
   python3 \
   python3-pip \
-  python3-pyside6 \
   cifs-utils \
   ffmpeg \
   raspi-config \
@@ -105,23 +104,20 @@ else
 fi
 
 # -------------------------------------------------------
-# 2) pip install from dependencies.txt (but remove PySide6 from pip)
+# 2) pip install from dependencies.txt
 # -------------------------------------------------------
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-echo
-echo "== Step 2: Handling Python dependencies =="
-# In case user had PySide6 via pip, remove it to avoid conflict
-pip3 uninstall -y PySide6
-
 if [ -f "$SCRIPT_DIR/dependencies.txt" ]; then
-  # Create a temporary filtered file that excludes "PySide6"
-  grep -v -i "^PySide6" "$SCRIPT_DIR/dependencies.txt" > /tmp/deps_no_pyside6.txt
-  echo "Installing from /tmp/deps_no_pyside6.txt..."
-  pip3 install --break-system-packages -r /tmp/deps_no_pyside6.txt
-  rm /tmp/deps_no_pyside6.txt
+  echo
+  echo "== Step 2: Installing Python dependencies (with --break-system-packages) =="
+  pip3 install --break-system-packages -r "$SCRIPT_DIR/dependencies.txt"
+  if [ $? -ne 0 ]; then
+    echo "Error installing pip packages. Exiting."
+    exit 1
+  fi
 else
-  echo "No dependencies.txt found. Installing minimal set by pip..."
-  pip3 install --break-system-packages flask psutil requests spotipy
+  echo "== Step 2: No dependencies.txt found, installing core packages by pip =="
+  pip3 install --break-system-packages flask psutil requests spotipy PySide6
 fi
 
 # -------------------------------------------------------
