@@ -80,7 +80,9 @@ apt-get install -y \
   libxcb-shape0 \
   libxcb-xfixes0 \
   libxcb-xinerama0 \
-  libxkbcommon-x11-0
+  libxkbcommon-x11-0\
+  libxcb-icccm4\
+  libxcb-keysyms1
 
 if [ $? -ne 0 ]; then
   echo "Error installing packages via apt. Exiting."
@@ -314,7 +316,7 @@ WorkingDirectory=$VIEWER_HOME
 EnvironmentFile=$ENV_FILE
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
-# Removed explicit QT_QPA_PLATFORM_PLUGIN_PATH to allow Qt to use the default plugin path
+Environment="QT_QPA_PLATFORM_PLUGIN_PATH=/usr/local/lib/python3.11/dist-packages/PySide6/Qt/plugins/platforms"
 ExecStartPre=/bin/sleep 5
 ExecStart=/usr/bin/python3 $VIEWER_HOME/piviewer.py
 
