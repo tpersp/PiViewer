@@ -23,7 +23,7 @@ These instructions assume you have a clean Raspberry Pi OS image (Lite or Deskto
 sudo apt update
 sudo apt install -y git
 cd ~
-git clone --branch qtdev https://github.com/tpersp/PiViewer.git
+git clone https://github.com/tpersp/PiViewer.git
 cd PiViewer
 ```
 
