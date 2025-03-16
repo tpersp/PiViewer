@@ -218,8 +218,25 @@ def settings():
         w_api = request.form.get("weather_api_key", "").strip()
         w_zip = request.form.get("weather_zip_code", "").strip()
         w_cc = request.form.get("weather_country_code", "").strip()
-        w_lat = request.form.get("weather_lat", "").strip()
-        w_lon = request.form.get("weather_lon", "").strip()
+        # Automatically fetch latitude and longitude if API key, zip code, and country code are provided
+        if w_api and w_zip and w_cc:
+            try:
+                weather_url = f"http://api.openweathermap.org/data/2.5/weather?zip={w_zip},{w_cc}&appid={w_api}"
+                r = requests.get(weather_url, timeout=5)
+                if r.status_code == 200:
+                    data = r.json()
+                    coord = data.get("coord", {})
+                    w_lat = str(coord.get("lat", ""))
+                    w_lon = str(coord.get("lon", ""))
+                else:
+                    w_lat = request.form.get("weather_lat", "").strip()
+                    w_lon = request.form.get("weather_lon", "").strip()
+            except Exception as e:
+                w_lat = request.form.get("weather_lat", "").strip()
+                w_lon = request.form.get("weather_lon", "").strip()
+        else:
+            w_lat = request.form.get("weather_lat", "").strip()
+            w_lon = request.form.get("weather_lon", "").strip()
 
         cfg["weather"]["api_key"] = w_api
         cfg["weather"]["zip_code"] = w_zip
@@ -612,6 +629,7 @@ def remote_configure(dev_index):
 @main_bp.route("/sync_config", methods=["GET"])
 def sync_config():
     return jsonify(load_config())
+
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
