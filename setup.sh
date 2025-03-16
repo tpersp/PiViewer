@@ -1,32 +1,23 @@
 #!/usr/bin/env bash
 #
-# setup.sh - Simple "It Just Works" viewer + controller installation
+# setup.sh - "It Just Works" for the new PySide6 + Flask PiViewer
 #
-# NOTE: This setup.sh is designed for PiViewer version 1.1.1
-#
-#   1) Installs LightDM (with Xorg), mpv, python3, etc.
+#   1) Installs LightDM (with Xorg), python3, PySide6, etc.
 #   2) Installs pip dependencies (with --break-system-packages)
 #   3) Disables screen blanking (via raspi-config)
 #   4) Prompts for user + paths (unless in --auto-update mode)
 #   5) Creates .env in VIEWER_HOME
-#   6) (Optional) mounts a CIFS network share
+#   6) (Optional) mounts a CIFS network share or fallback to local "Uploads"
 #   7) Creates systemd services:
-#        - viewer.service (runs viewer.py slideshow on X:0)
+#        - piviewer.service (runs piviewer.py single GUI)
 #        - controller.service (Flask web interface)
-#        - overlay.service (optional clock+weather overlay)
 #   8) Reboots (unless in --auto-update mode)
 #
-# After reboot, LightDM will auto-login to an X session on :0.
-# viewer.service will run viewer.py (which dynamically assigns mpv
-# to monitors based on xrandr).
-# controller.service will run app.py on port 8080:  http://<Pi-IP>:8080
-# overlay.service (if installed) will draw a transparent overlay window.
-#
 # Usage:  sudo ./setup.sh  [--auto-update]
-#   If you run with --auto-update, we skip interactive prompts and the final reboot.
+#   If you run with --auto-update, it will skip user prompts and final reboot.
 
 # -------------------------------------------------------
-# Must be run as root (sudo):
+# Must be run as root
 # -------------------------------------------------------
 if [[ $EUID -ne 0 ]]; then
   echo "Please run this script as root (e.g. sudo ./setup.sh)."
@@ -43,39 +34,72 @@ fi
 
 if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo "================================================================="
-  echo "  Simple 'It Just Works' Setup with LightDM + viewer + controller"
+  echo "  Simple 'It Just Works' Setup with LightDM + PiViewer (PySide6) "
   echo "================================================================="
   echo
   echo "This script will:"
-  echo " 1) Install lightdm (Xorg), mpv, python3, etc."
+  echo " 1) Install lightdm (Xorg), python3, PySide6, etc."
   echo " 2) pip-install your Python dependencies (with --break-system-packages)"
   echo " 3) Disable screen blanking"
   echo " 4) Prompt for user & paths"
   echo " 5) Create .env in VIEWER_HOME"
-  echo " 6) (Optional) mount a network share"
-  echo " 7) Create systemd services for viewer.py, app.py, and overlay"
+  echo " 6) (Optional) mount a network share or fallback to local uploads folder"
+  echo " 7) Create systemd services for piviewer.py + controller"
   echo " 8) Reboot"
   echo
   read -p "Press [Enter] to continue or Ctrl+C to abort..."
 fi
 
 # -------------------------------------------------------
-# 1) Install apt packages
+# 1) Install apt packages (including extras for LightDM)
 # -------------------------------------------------------
 echo
-echo "== Step 1: Installing packages (lightdm, Xorg, mpv, python3, etc.) =="
+echo "== Step 1: Installing packages (lightdm, Xorg, python3, etc.) =="
 apt-get update
-apt-get install -y lightdm xorg x11-xserver-utils mpv python3 python3-pip cifs-utils ffmpeg raspi-config \
-                   openbox picom conky python3-tk
+
+apt-get install -y \
+  lightdm \
+  lightdm-gtk-greeter \
+  accountsservice \
+  dbus-x11 \
+  policykit-1 \
+  xorg \
+  x11-xserver-utils \
+  python3 \
+  python3-pip \
+  cifs-utils \
+  ffmpeg \
+  raspi-config \
+  openbox \
+  picom \
+  conky \
+  python3-tk \
+  git \
+  libxcb-cursor0 \
+  libxcb-randr0 \
+  libxcb-shape0 \
+  libxcb-xfixes0
 
 if [ $? -ne 0 ]; then
   echo "Error installing packages via apt. Exiting."
   exit 1
 fi
 
+# Create /var/lib/lightdm/data so LightDM can store user-data:
+mkdir -p /var/lib/lightdm/data
+chown lightdm:lightdm /var/lib/lightdm/data
+
+# Make sure accounts-daemon is enabled and running:
+systemctl enable accounts-daemon
+systemctl start accounts-daemon
+
 # Let raspi-config handle auto-login in desktop:
-raspi-config nonint do_boot_behaviour B4
-# B4 => Auto login to Desktop (on RPi OS).
+# B4 => Auto login to Desktop
+if command -v raspi-config &>/dev/null; then
+  raspi-config nonint do_boot_behaviour B4
+else
+  echo "Warning: raspi-config not found; skipping auto-login configuration."
+fi
 
 # -------------------------------------------------------
 # 2) pip install from dependencies.txt
@@ -90,7 +114,8 @@ if [ -f "$SCRIPT_DIR/dependencies.txt" ]; then
     exit 1
   fi
 else
-  echo "== Step 2: No dependencies.txt found, skipping pip install."
+  echo "== Step 2: No dependencies.txt found, installing core packages by pip =="
+  pip3 install --break-system-packages flask psutil requests spotipy PySide6
 fi
 
 # -------------------------------------------------------
@@ -98,34 +123,41 @@ fi
 # -------------------------------------------------------
 echo
 echo "== Step 3: Disabling screen blanking via raspi-config =="
-raspi-config nonint do_blanking 1
-if [ $? -eq 0 ]; then
-  echo "Screen blanking disabled."
+if command -v raspi-config &>/dev/null; then
+  raspi-config nonint do_blanking 1
+  if [ $? -eq 0 ]; then
+    echo "Screen blanking disabled."
+  else
+    echo "Warning: raspi-config do_blanking failed. You may need to disable blanking manually."
+  fi
 else
-  echo "Warning: raspi-config do_blanking failed. You may need to disable blanking manually."
+  echo "Warning: raspi-config not found; skipping screen-blanking changes."
 fi
 
-# Remove mouse cursor from X sessions:
+# Remove mouse cursor from X sessions
 sed -i -- "s/#xserver-command=X/xserver-command=X -nocursor/" /etc/lightdm/lightdm.conf
 
 # -------------------------------------------------------
 # 3a) Update boot firmware configuration
+#     (Optional: ensures hardware accel on some Pi setups)
 # -------------------------------------------------------
 echo
 echo "== Step 3a: Updating boot firmware configuration in /boot/firmware/config.txt =="
-cp /boot/firmware/config.txt /boot/firmware/config.txt.backup
+if [ -f /boot/firmware/config.txt ]; then
+  cp /boot/firmware/config.txt /boot/firmware/config.txt.backup
 
-# Insert dtoverlay if missing, right after the comment line.
-grep -q '^dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt" || \
-  sed -i '/^# Enable DRM VC4 V3D driver/ a dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt"
+  # Insert dtoverlay if missing
+  grep -q '^dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt" || \
+    sed -i '/^# Enable DRM VC4 V3D driver/ a dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt"
 
-# Insert max_framebuffers if missing
-grep -q '^max_framebuffers=2' "/boot/firmware/config.txt" || \
-  sed -i '/^dtoverlay=vc4-kms-v3d/ a max_framebuffers=2' "/boot/firmware/config.txt"
+  # Insert max_framebuffers if missing
+  grep -q '^max_framebuffers=2' "/boot/firmware/config.txt" || \
+    sed -i '/^dtoverlay=vc4-kms-v3d/ a max_framebuffers=2' "/boot/firmware/config.txt"
 
-# Insert hdmi_force_hotplug if missing
-grep -q '^hdmi_force_hotplug=1' "/boot/firmware/config.txt" || \
-  sed -i '/^max_framebuffers=2/ a hdmi_force_hotplug=1' "/boot/firmware/config.txt"
+  # Insert hdmi_force_hotplug if missing
+  grep -q '^hdmi_force_hotplug=1' "/boot/firmware/config.txt" || \
+    sed -i '/^max_framebuffers=2/ a hdmi_force_hotplug=1' "/boot/firmware/config.txt"
+fi
 
 # -------------------------------------------------------
 # 4) Prompt user for config (skip if AUTO_UPDATE)
@@ -133,7 +165,7 @@ grep -q '^hdmi_force_hotplug=1' "/boot/firmware/config.txt" || \
 if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo
   echo "== Step 4: Configuration =="
-  read -p "Enter the Linux username to run the viewer & controller (default: pi): " VIEWER_USER
+  read -p "Enter the Linux username to run PiViewer (default: pi): " VIEWER_USER
   VIEWER_USER=${VIEWER_USER:-pi}
 
   USER_ID="$(id -u "$VIEWER_USER" 2>/dev/null)"
@@ -143,7 +175,7 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
     if [[ "$create_user" =~ ^[Yy]$ ]]; then
       adduser --gecos "" --disabled-password "$VIEWER_USER"
       USER_ID="$(id -u "$VIEWER_USER")"
-      echo "User '$VIEWER_USER' created with no password (you can set one later if desired)."
+      echo "User '$VIEWER_USER' created with no password."
     else
       echo "Cannot proceed without a valid user. Exiting."
       exit 1
@@ -161,16 +193,14 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
   IMAGE_DIR=${input_dir:-/mnt/PiViewers}
 
 else
-  # In --auto-update mode, set some defaults without prompting
   echo
-  echo "== Auto-Update Mode: skipping interactive prompts. Using defaults. =="
+  echo "== Auto-Update Mode: skipping interactive user/path prompts. Using defaults =="
   VIEWER_USER="pi"
   USER_ID="$(id -u "$VIEWER_USER")"
   if [ -z "$USER_ID" ]; then
     echo "User 'pi' not found. Exiting auto-update."
     exit 1
   fi
-
   VIEWER_HOME="/home/$VIEWER_USER/PiViewer"
   IMAGE_DIR="/mnt/PiViewers"
 fi
@@ -178,7 +208,7 @@ fi
 echo
 echo "Creating $VIEWER_HOME if it doesn't exist..."
 mkdir -p "$VIEWER_HOME"
-chown "$VIEWER_USER":"$VIEWER_USER" "$VIEWER_HOME"
+chown "$VIEWER_USER:$VIEWER_USER" "$VIEWER_HOME"
 
 # -------------------------------------------------------
 # 5) Create .env
@@ -189,7 +219,7 @@ cat <<EOF > "$ENV_FILE"
 VIEWER_HOME=$VIEWER_HOME
 IMAGE_DIR=$IMAGE_DIR
 EOF
-chown "$VIEWER_USER":"$VIEWER_USER" "$ENV_FILE"
+chown "$VIEWER_USER:$VIEWER_USER" "$ENV_FILE"
 
 echo
 echo "Contents of $ENV_FILE:"
@@ -197,7 +227,7 @@ cat "$ENV_FILE"
 echo
 
 # -------------------------------------------------------
-# 6) (Optional) Configure CIFS/SMB share (skip if AUTO_UPDATE)
+# 6) (Optional) Configure CIFS/SMB share
 # -------------------------------------------------------
 if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo
@@ -208,6 +238,8 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
     if [ -z "$SERVER_SHARE" ]; then
       echo "No share path entered. Skipping."
     else
+      # We might need the user ID from above
+      USER_ID="$(id -u "$VIEWER_USER")"
       read -p "Mount options (e.g. guest,uid=$USER_ID,gid=$USER_ID,vers=3.0) [ENTER for default]: " MOUNT_OPTS
       if [ -z "$MOUNT_OPTS" ]; then
         MOUNT_OPTS="guest,uid=$USER_ID,gid=$USER_ID,vers=3.0"
@@ -243,6 +275,7 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
 VIEWER_HOME=$VIEWER_HOME
 IMAGE_DIR=$IMAGE_DIR
 EOF
+    chown "$VIEWER_USER:$VIEWER_USER" "$ENV_FILE"
     echo "Updated .env file:"
     cat "$ENV_FILE"
   fi
@@ -257,30 +290,25 @@ fi
 echo
 echo "== Step 7: Creating systemd service files =="
 
-# (A) viewer.service
-VIEWER_SERVICE="/etc/systemd/system/viewer.service"
-echo "Creating $VIEWER_SERVICE ..."
-cat <<EOF > "$VIEWER_SERVICE"
+# (A) piviewer.service
+PIVIEWER_SERVICE="/etc/systemd/system/piviewer.service"
+echo "Creating $PIVIEWER_SERVICE ..."
+cat <<EOF > "$PIVIEWER_SERVICE"
 [Unit]
-Description=Slideshow Viewer (mpv on X:0)
+Description=PiViewer PySide6 Slideshow + Overlay
 After=lightdm.service
 Wants=lightdm.service
 
 [Service]
 User=$VIEWER_USER
 Group=$VIEWER_USER
-ExecStartPre=/bin/sleep 5
 WorkingDirectory=$VIEWER_HOME
 EnvironmentFile=$ENV_FILE
-
-# Provide environment for X
 Environment="DISPLAY=:0"
-Environment="XDG_RUNTIME_DIR=/run/user/$USER_ID"
 Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
-
-ExecStartPre=/bin/bash -c 'if [ ! -d /run/user/$USER_ID ]; then mkdir -p /run/user/$USER_ID && chown $VIEWER_USER:$VIEWER_USER /run/user/$USER_ID; fi'
-
-ExecStart=/usr/bin/python3 viewer.py
+Environment="QT_QPA_PLATFORM_PLUGIN_PATH=/usr/local/lib/python3.11/dist-packages/PySide6/Qt/plugins/platforms"
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/bin/python3 $VIEWER_HOME/piviewer.py
 
 Restart=always
 RestartSec=5
@@ -295,7 +323,7 @@ CONTROLLER_SERVICE="/etc/systemd/system/controller.service"
 echo "Creating $CONTROLLER_SERVICE ..."
 cat <<EOF > "$CONTROLLER_SERVICE"
 [Unit]
-Description=Viewer Controller (Flask web interface)
+Description=PiViewer Flask Web Controller
 After=network-online.target
 Wants=network-online.target
 
@@ -304,12 +332,7 @@ User=$VIEWER_USER
 Group=$VIEWER_USER
 WorkingDirectory=$VIEWER_HOME
 EnvironmentFile=$ENV_FILE
-
-# Provide environment for X (if needed)
-Environment="DISPLAY=:0"
-Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
-
-ExecStart=/usr/bin/python3 app.py
+ExecStart=/usr/bin/python3 $VIEWER_HOME/app.py
 Restart=always
 RestartSec=5
 Type=simple
@@ -318,34 +341,7 @@ Type=simple
 WantedBy=multi-user.target
 EOF
 
-# (C) overlay.service (optional transparent clock+weather overlay)
-OVERLAY_SERVICE="/etc/systemd/system/overlay.service"
-echo "Creating $OVERLAY_SERVICE ..."
-cat <<EOF > "$OVERLAY_SERVICE"
-[Unit]
-Description=Clock & Weather Overlay
-After=viewer.service
-Wants=viewer.service
-
-[Service]
-User=$VIEWER_USER
-Group=$VIEWER_USER
-WorkingDirectory=$VIEWER_HOME
-EnvironmentFile=$ENV_FILE
-
-Environment="DISPLAY=:0"
-Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
-
-ExecStart=/usr/bin/python3 overlay.py
-Restart=always
-RestartSec=5
-Type=simple
-
-[Install]
-WantedBy=graphical.target
-EOF
-
-# (D) picom.service
+# Optional: if you want picom for real alpha transparency:
 PICOM_SERVICE="/etc/systemd/system/picom.service"
 echo "Creating $PICOM_SERVICE ..."
 cat <<EOF > "$PICOM_SERVICE"
@@ -363,22 +359,15 @@ Restart=always
 
 [Install]
 WantedBy=graphical.target
-
 EOF
 
 echo "Reloading systemd..."
 systemctl daemon-reload
-
-echo "Enabling viewer.service & controller.service & overlay.service & picom.service..."
-systemctl enable viewer.service
+systemctl enable piviewer.service
 systemctl enable controller.service
-systemctl enable overlay.service
 systemctl enable picom.service
-
-echo "Starting them now..."
-systemctl start viewer.service
+systemctl start piviewer.service
 systemctl start controller.service
-systemctl start overlay.service
 systemctl start picom.service
 
 # -------------------------------------------------------
@@ -390,11 +379,10 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo "Setup is complete. The Pi will now reboot."
   echo "Upon reboot:"
   echo " - LightDM auto-logs into X (DISPLAY=:0)."
-  echo " - viewer.service starts viewer.py"
-  echo " - controller.service starts app.py on port 8080"
-  echo " - overlay.service starts the transparent overlay window"
+  echo " - piviewer.service starts piviewer.py (PySide6 GUI)"
+  echo " - controller.service runs Flask at http://<Pi-IP>:8080"
+  echo " - picom.service for compositing transparency"
   echo
-  echo "You can configure slides at http://<Pi-IP>:8080"
   echo "Rebooting in 5 seconds..."
   sleep 5
   reboot

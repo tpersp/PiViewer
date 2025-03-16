@@ -19,15 +19,24 @@ from config import (
 )
 
 def init_config():
-    """Initialize config file if missing, including default displays, multi-device placeholders, plus weather/overlay/spotify defaults."""
     if not os.path.exists(CONFIG_PATH):
         default_cfg = {
             "theme": "dark",
-            "displays": {},   # local device's displays
-            "role": "main",   # 'main' or 'sub'
+            "role": "main",
             "main_ip": "",
             "devices": [],
-            # Default overlay config
+            # displays dictionary for multi-display logic
+            "displays": {
+                "Display0": {
+                    "mode": "random_image",
+                    "image_interval": 60,
+                    "image_category": "",
+                    "specific_image": "",
+                    "shuffle_mode": False,
+                    "mixed_folders": [],
+                    "rotate": 0
+                }
+            },
             "overlay": {
                 "overlay_enabled": False,
                 "clock_enabled": True,
@@ -49,9 +58,8 @@ def init_config():
                 "show_temp": True,
                 "show_feels_like": False,
                 "show_humidity": False,
-                "monitor_selection": "All",
+                "monitor_selection": "All"
             },
-            # Default weather config
             "weather": {
                 "api_key": "",
                 "zip_code": "",
@@ -59,7 +67,6 @@ def init_config():
                 "lat": None,
                 "lon": None
             },
-            # Default Spotify config
             "spotify": {
                 "client_id": "",
                 "client_secret": "",
@@ -67,20 +74,6 @@ def init_config():
                 "scope": "user-read-currently-playing user-read-playback-state"
             }
         }
-
-        # Auto-create local displays from actual monitors
-        monitors = detect_monitors()
-        for m in monitors:
-            default_cfg["displays"][m] = {
-                "mode": "random_image",
-                "image_interval": 60,
-                "image_category": "",
-                "specific_image": "",
-                "shuffle_mode": False,
-                "mixed_folders": [],
-                "rotate": 0
-            }
-
         save_config(default_cfg)
 
 def load_config():
@@ -98,135 +91,22 @@ def log_message(msg):
         f.write(f"{datetime.now()}: {msg}\n")
     print(msg)
 
-def detect_monitors():
-    """
-    Use xrandr --listmonitors to detect connected monitors.
-    Returns a dict like:
-      {
-        "HDMI-1": {
-          "resolution": "1920x1080",
-          "name": "HDMI-1",
-          "offset_x": 0,
-          "offset_y": 0
-        },
-        ...
-      }
-    """
+def get_system_stats():
+    cpu = psutil.cpu_percent(interval=0.4)
+    mem = psutil.virtual_memory()
+    mem_used_mb = (mem.total - mem.available) / (1024 * 1024)
+    load1 = 0
     try:
-        out = subprocess.check_output(["xrandr", "--listmonitors"]).decode().strip()
-        lines = out.split("\n")
-        if len(lines) <= 1:
-            if os.path.exists("/dev/fb1"):
-                return {
-                    "FB1": {
-                        "resolution": "480x320",
-                        "name": "FB1",
-                        "offset_x": 0,
-                        "offset_y": 0
-                    }
-                }
-            else:
-                return {
-                    "Display0": {
-                        "resolution": "unknown",
-                        "name": "Display0",
-                        "offset_x": 0,
-                        "offset_y": 0
-                    }
-                }
-        monitors = {}
-        for line in lines[1:]:
-            parts = line.strip().split()
-            if len(parts) < 3:
-                continue
-            geometry_part = None
-            name_clean = parts[-1].strip("+*")
-
-            # look for something like "1920/444x1080/249+0+0"
-            for p in parts:
-                if "x" in p and "+" in p:
-                    geometry_part = p
-                    break
-            if not geometry_part:
-                monitors[name_clean] = {
-                    "resolution": "unknown",
-                    "name": name_clean,
-                    "offset_x": 0,
-                    "offset_y": 0
-                }
-                continue
-
-            try:
-                left, right = geometry_part.split("x", 1)
-                w_str = left.split("/")[0]
-                plus_index = right.find("+")
-                height_part = right[:plus_index]
-                offsets_part = right[plus_index:]
-                h_str = height_part.split("/")[0]
-                offsetbits = offsets_part.lstrip("+").split("+")
-                if len(offsetbits) == 2:
-                    ox_str, oy_str = offsetbits
-                else:
-                    ox_str, oy_str = ("0","0")
-
-                width_val = int(w_str)
-                height_val = int(h_str)
-                offset_x_val = int(ox_str)
-                offset_y_val = int(oy_str)
-
-                monitors[name_clean] = {
-                    "resolution": f"{width_val}x{height_val}",
-                    "name": name_clean,
-                    "offset_x": offset_x_val,
-                    "offset_y": offset_y_val
-                }
-            except:
-                monitors[name_clean] = {
-                    "resolution": "unknown",
-                    "name": name_clean,
-                    "offset_x": 0,
-                    "offset_y": 0
-                }
-
-        if not monitors:
-            if os.path.exists("/dev/fb1"):
-                return {
-                    "FB1": {
-                        "resolution": "480x320",
-                        "name": "FB1",
-                        "offset_x": 0,
-                        "offset_y": 0
-                    }
-                }
-            else:
-                return {
-                    "Display0": {
-                        "resolution": "unknown",
-                        "name": "Display0",
-                        "offset_x": 0,
-                        "offset_y": 0
-                    }
-                }
-        return monitors
+        load1 = os.getloadavg()[0]
     except:
-        if os.path.exists("/dev/fb1"):
-            return {
-                "FB1": {
-                    "resolution": "480x320",
-                    "name": "FB1",
-                    "offset_x": 0,
-                    "offset_y": 0
-                }
-            }
-        else:
-            return {
-                "Display0": {
-                    "resolution": "unknown",
-                    "name": "Display0",
-                    "offset_x": 0,
-                    "offset_y": 0
-                }
-            }
+        pass
+    temp = "N/A"
+    try:
+        out = subprocess.check_output(["vcgencmd", "measure_temp"]).decode().strip()
+        temp = out
+    except:
+        pass
+    return (cpu, mem_used_mb, load1, temp)
 
 def get_hostname():
     try:
@@ -258,24 +138,6 @@ def get_subfolders():
     except:
         return []
 
-def get_system_stats():
-    cpu = psutil.cpu_percent(interval=0.4)
-    mem = psutil.virtual_memory()
-    mem_used_mb = (mem.total - mem.available) / (1024 * 1024)
-    loadavg = os.getloadavg()[0] if hasattr(os, "getloadavg") else 0
-    try:
-        temp = subprocess.check_output(["vcgencmd", "measure_temp"]).decode().strip()
-    except:
-        temp = "N/A"
-    return (cpu, mem_used_mb, loadavg, temp)
-
-def get_folder_prefix(folder_name):
-    if not folder_name.strip():
-        return "misc"
-    words = folder_name.split()
-    letters = [w[0].lower() for w in words if w]
-    return "".join(letters)
-
 def count_files_in_folder(folder_path):
     if not os.path.isdir(folder_path):
         return 0
@@ -285,6 +147,10 @@ def count_files_in_folder(folder_path):
         if f.lower().endswith(valid_ext):
             cnt += 1
     return cnt
+
+################################
+# Remote device push/pull logic
+################################
 
 def get_remote_config(ip):
     url = f"http://{ip}:8080/sync_config"
@@ -297,6 +163,7 @@ def get_remote_config(ip):
     return None
 
 def get_remote_monitors(ip):
+    # not used much now, but keep for old usage
     url = f"http://{ip}:8080/list_monitors"
     try:
         r = requests.get(url, timeout=5)
