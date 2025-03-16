@@ -60,6 +60,9 @@ def init_config():
                 "show_humidity": False,
                 "monitor_selection": "All"
             },
+            "gui": {
+                "background_blur_radius": 20
+            },
             "weather": {
                 "api_key": "",
                 "zip_code": "",

@@ -250,6 +250,14 @@ def settings():
         except:
             cfg["weather"]["lon"] = None
 
+        # --- New GUI settings ---
+        if "gui" not in cfg:
+            cfg["gui"] = {}
+        try:
+            cfg["gui"]["background_blur_radius"] = int(request.form.get("background_blur_radius", "20"))
+        except:
+            cfg["gui"]["background_blur_radius"] = 20
+
         save_config(cfg)
         return redirect(url_for("main.settings"))
     else:
@@ -534,7 +542,6 @@ def index():
             monitors[dname] = {"resolution": sn.split(":", 1)[1].strip()}
         else:
             monitors[dname] = {"resolution": "?"}
-
     return render_template(
         "index.html",
         cfg=cfg,

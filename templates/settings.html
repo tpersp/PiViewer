@@ -41,12 +41,19 @@
     </select>
     <br><br>
 
+    <!-- New GUI Settings Fieldset -->
+    <fieldset style="border:1px solid #444; padding:10px; margin:20px 0;">
+      <legend style="font-weight:bold;">GUI Settings</legend>
+      <label>Background Blur Radius:</label><br>
+      <input type="number" name="background_blur_radius" value="{{ cfg.gui.background_blur_radius|default('20') }}" min="0">
+    </fieldset>
+
     {% if cfg.theme=="custom" %}
     <label>Upload Custom BG:</label><br>
     <input type="file" name="bg_image" accept="image/*"><br><br>
     {% endif %}
 
-    <!-- Weather Settings Moved Here -->
+    <!-- Weather Settings Fieldset -->
     <fieldset style="border:1px solid #444; padding:10px; margin:20px 0;">
       <legend style="font-weight:bold;">Weather Settings</legend>
 
