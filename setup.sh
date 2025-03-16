@@ -2,14 +2,14 @@
 #
 # setup.sh - "It Just Works" for the new PySide6 + Flask PiViewer
 #
-#   1) Installs LightDM (with Xorg), python3, PySide6, etc.
-#   2) Installs pip dependencies (with --break-system-packages)
+#   1) Installs LightDM (with Xorg), python3, PySide6, etc. (but uses distro's PySide6, not pip)
+#   2) Installs pip dependencies (with --break-system-packages) except PySide6
 #   3) Disables screen blanking (via raspi-config)
 #   4) Prompts for user & paths (unless in --auto-update mode)
 #   5) Creates .env in VIEWER_HOME
 #   6) (Optional) mounts a CIFS network share or fallback to local "Uploads"
 #   7) Creates systemd services for piviewer.py + controller
-#   8) Configures Openbox autologin & picom in Openbox autostart
+#   8) Configure Openbox autologin & picom in openbox autostart
 #   9) Reboots (unless in --auto-update mode)
 #
 # Usage:  sudo ./setup.sh  [--auto-update]
@@ -37,14 +37,14 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo "================================================================="
   echo
   echo "This script will:"
-  echo " 1) Install lightdm (Xorg), python3, PySide6, etc."
-  echo " 2) pip-install your Python dependencies (with --break-system-packages)"
+  echo " 1) Install lightdm (Xorg), python3, etc. plus system python3-pyside6"
+  echo " 2) pip-install your other dependencies (with --break-system-packages)"
   echo " 3) Disable screen blanking"
   echo " 4) Prompt for user & paths"
   echo " 5) Create .env in VIEWER_HOME"
   echo " 6) (Optional) mount a network share or fallback to local uploads folder"
   echo " 7) Create systemd services for piviewer.py + controller"
-  echo " 8) Configure Openbox autologin & picom"
+  echo " 8) Configure Openbox autologin & picom in openbox autostart"
   echo " 9) Reboot"
   echo
   read -p "Press [Enter] to continue or Ctrl+C to abort..."
@@ -67,6 +67,7 @@ apt-get install -y \
   x11-xserver-utils \
   python3 \
   python3-pip \
+  python3-pyside6 \
   cifs-utils \
   ffmpeg \
   raspi-config \
@@ -104,20 +105,23 @@ else
 fi
 
 # -------------------------------------------------------
-# 2) pip install from dependencies.txt
+# 2) pip install from dependencies.txt (but remove PySide6 from pip)
 # -------------------------------------------------------
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+echo
+echo "== Step 2: Handling Python dependencies =="
+# In case user had PySide6 via pip, remove it to avoid conflict
+pip3 uninstall -y PySide6
+
 if [ -f "$SCRIPT_DIR/dependencies.txt" ]; then
-  echo
-  echo "== Step 2: Installing Python dependencies (with --break-system-packages) =="
-  pip3 install --break-system-packages -r "$SCRIPT_DIR/dependencies.txt"
-  if [ $? -ne 0 ]; then
-    echo "Error installing pip packages. Exiting."
-    exit 1
-  fi
+  # Create a temporary filtered file that excludes "PySide6"
+  grep -v -i "^PySide6" "$SCRIPT_DIR/dependencies.txt" > /tmp/deps_no_pyside6.txt
+  echo "Installing from /tmp/deps_no_pyside6.txt..."
+  pip3 install --break-system-packages -r /tmp/deps_no_pyside6.txt
+  rm /tmp/deps_no_pyside6.txt
 else
-  echo "== Step 2: No dependencies.txt found, installing core packages by pip =="
-  pip3 install --break-system-packages flask psutil requests spotipy PySide6
+  echo "No dependencies.txt found. Installing minimal set by pip..."
+  pip3 install --break-system-packages flask psutil requests spotipy
 fi
 
 # -------------------------------------------------------
@@ -140,8 +144,7 @@ fi
 sed -i -- "s/#xserver-command=X/xserver-command=X -nocursor/" /etc/lightdm/lightdm.conf
 
 # -------------------------------------------------------
-# 3a) Update boot firmware configuration
-#     (Optional: ensures hardware accel on some Pi setups)
+# 3a) Update boot firmware configuration (optional)
 # -------------------------------------------------------
 echo
 echo "== Step 3a: Updating boot firmware configuration in /boot/firmware/config.txt =="
@@ -193,7 +196,6 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
 
   read -p "Enter the path for IMAGE_DIR (default: /mnt/PiViewers): " input_dir
   IMAGE_DIR=${input_dir:-/mnt/PiViewers}
-
 else
   echo
   echo "== Auto-Update Mode: skipping interactive user/path prompts. Using defaults =="
@@ -286,12 +288,11 @@ else
 fi
 
 # -------------------------------------------------------
-# 7) Create systemd services (piviewer + controller)
+# 7) Create systemd services for piviewer + controller
 # -------------------------------------------------------
 echo
 echo "== Step 7: Creating systemd service files =="
 
-# (A) piviewer.service
 PIVIEWER_SERVICE="/etc/systemd/system/piviewer.service"
 echo "Creating $PIVIEWER_SERVICE ..."
 cat <<EOF > "$PIVIEWER_SERVICE"
@@ -319,7 +320,6 @@ Type=simple
 WantedBy=graphical.target
 EOF
 
-# (B) controller.service
 CONTROLLER_SERVICE="/etc/systemd/system/controller.service"
 echo "Creating $CONTROLLER_SERVICE ..."
 cat <<EOF > "$CONTROLLER_SERVICE"
@@ -350,12 +350,11 @@ systemctl start piviewer.service
 systemctl start controller.service
 
 # -------------------------------------------------------
-# 8) Configure Openbox autologin & picom
+# 8) Configure Openbox autologin & picom in openbox autostart
 # -------------------------------------------------------
 echo
 echo "== Step 8: Configure Openbox autologin and autostart (with picom) =="
 
-# (A) LightDM snippet for openbox autologin
 mkdir -p /etc/lightdm/lightdm.conf.d
 cat <<EOF >/etc/lightdm/lightdm.conf.d/99-openbox-autologin.conf
 [Seat:*]
@@ -366,7 +365,6 @@ autologin-user-timeout=0
 autologin-session=openbox
 EOF
 
-# (B) Create openbox autostart so picom runs after X starts
 OPENBOX_CONF_DIR="/home/$VIEWER_USER/.config/openbox"
 mkdir -p "$OPENBOX_CONF_DIR"
 AUTOSTART_FILE="$OPENBOX_CONF_DIR/autostart"
@@ -398,7 +396,7 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo "Upon reboot:"
   echo " - LightDM auto-logs into X/Openbox (DISPLAY=:0)"
   echo " - openbox/autostart runs picom"
-  echo " - piviewer.service starts piviewer.py"
+  echo " - piviewer.service runs piviewer.py"
   echo " - controller.service runs Flask at http://<Pi-IP>:8080"
   echo
   echo "Rebooting in 5 seconds..."
