@@ -18,7 +18,7 @@ import subprocess
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer, Slot, QSize
-from PySide6.QtGui import QPixmap, QMovie, QPainter, QImageReader
+from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QGraphicsBlurEffect
 )
@@ -99,7 +99,8 @@ class DisplayWindow(QMainWindow):
         self.foreground_label = QLabel(self.main_widget)
         self.foreground_label.setScaledContents(False)
         self.foreground_label.setAlignment(Qt.AlignCenter)
-        self.foreground_label.setStyleSheet("background-color: black; color: white;")
+        # Foreground area is transparent (so we see blurred background behind it)
+        self.foreground_label.setStyleSheet("background-color: transparent; color: white;")
 
         # Overlay: clock and weather
         self.clock_label = QLabel(self.main_widget)
@@ -111,7 +112,7 @@ class DisplayWindow(QMainWindow):
 
         # Blur effect for background
         self.blur_effect = QGraphicsBlurEffect()
-        self.blur_effect.setBlurRadius(0)
+        self.blur_effect.setBlurRadius(0)  # Will get overridden below
         self.bg_label.setGraphicsEffect(self.blur_effect)
 
         # Slideshow and clock timers
@@ -125,7 +126,7 @@ class DisplayWindow(QMainWindow):
         # Weather update timer (update every 60 seconds)
         self.weather_timer = QTimer(self)
         self.weather_timer.timeout.connect(self.update_weather)
-        self.weather_timer.start(60000)  #-----------------------------Update this to change fetch weather interval. #60000=60 seconds
+        self.weather_timer.start(60000)  # 60000 ms = 60 seconds
         self.update_weather()  # Initial weather update
 
         # Load config, then start
@@ -149,11 +150,11 @@ class DisplayWindow(QMainWindow):
         self.bg_label.setGeometry(rect)
         self.foreground_label.setGeometry(rect)
 
-        # Make sure background is behind:
+        # Background behind everything
         self.bg_label.lower()
-        # Foreground above background:
+        # Foreground above background
         self.foreground_label.raise_()
-        # Overlay on top:
+        # Overlay on top
         self.clock_label.raise_()
         self.weather_label.raise_()
 
@@ -209,9 +210,13 @@ class DisplayWindow(QMainWindow):
                 f"color: {fcolor}; font-size: {weath_sz}px; background: transparent;"
             )
 
-            # Blur
-            user_blur = self.cfg.get("gui", {}).get("background_blur_radius", 0)
-            self.blur_effect.setBlurRadius(user_blur)
+        # ----- Ensure there's a nonzero blur radius -----
+        # If you want a user-controlled config field, we look in cfg["gui"]["background_blur_radius"]
+        # otherwise we apply a default of, say, 20:
+        user_blur = self.cfg.get("gui", {}).get("background_blur_radius", 0)
+        if user_blur == 0:
+            user_blur = 50  # Default blur if user hasn't set anything
+        self.blur_effect.setBlurRadius(user_blur)
 
         # Slideshow interval
         interval_s = self.disp_cfg.get("image_interval", 60)
@@ -312,9 +317,7 @@ class DisplayWindow(QMainWindow):
 
         ext = os.path.splitext(fullpath)[1].lower()
 
-        # ---------------------------------------------------------------------
-        # If it's an animated GIF, we must manually scale QMovie to fill space.
-        # ---------------------------------------------------------------------
+        # Handle animated GIFs
         if ext == ".gif":
             movie = QMovie(fullpath)
             self.current_movie = movie
@@ -348,12 +351,11 @@ class DisplayWindow(QMainWindow):
                     new_h = fh
                     new_w = int(new_h * image_aspect)
 
-                # Scale the animated GIF frames
                 movie.setScaledSize(QSize(new_w, new_h))
                 self.foreground_label.setMovie(movie)
                 movie.start()
 
-            # Now set blurred background
+            # Update blurred background
             if not first_frame.isNull():
                 pm = QPixmap.fromImage(first_frame)
                 blurred = self.make_background_cover(pm)
@@ -365,7 +367,7 @@ class DisplayWindow(QMainWindow):
                 self.bg_label.clear()
 
         else:
-            # Still image: scale with our existing approach
+            # Still image
             pm = QPixmap(fullpath)
             self.foreground_label.setMovie(None)
             self.current_pixmap = pm
@@ -391,44 +393,42 @@ class DisplayWindow(QMainWindow):
         if fw < 1 or fh < 1:
             return
 
-        # Original image size
         iw = self.current_pixmap.width()
         ih = self.current_pixmap.height()
         if iw < 1 or ih < 1:
             return
 
-        # Determine new dimensions (keep entire image visible)
         image_aspect = iw / float(ih)
         screen_aspect = fw / float(fh)
 
         if image_aspect > screen_aspect:
-            # Scale to full width so left and right touch
             new_w = fw
             new_h = int(new_w / image_aspect)
         else:
-            # Scale to full height so top and bottom touch
             new_h = fh
             new_w = int(new_h * image_aspect)
 
-        # Scale the image
         scaled_pm = self.current_pixmap.scaled(
             new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation
         )
 
-        # Draw it on a black background so it is centered
-        final_pm = QPixmap(fw, fh)
-        final_pm.fill(Qt.black)
-        painter = QPainter(final_pm)
+        # Fill with transparency so we can see blurred background behind
+        final_img = QImage(fw, fh, QImage.Format_ARGB32)
+        final_img.fill(Qt.transparent)
+
+        painter = QPainter(final_img)
         xoff = (fw - new_w) // 2
         yoff = (fh - new_h) // 2
         painter.drawPixmap(xoff, yoff, scaled_pm)
         painter.end()
 
+        final_pm = QPixmap.fromImage(final_img)
         self.foreground_label.setPixmap(final_pm)
 
     def make_background_cover(self, pixmap):
         """
-        The blurred background: we do a 'cover' fill that may crop edges.
+        The blurred background: we do a 'cover' fill that may crop edges,
+        then the QGraphicsBlurEffect is applied in real-time.
         """
         rect = self.main_widget.rect()
         sw, sh = rect.width(), rect.height()

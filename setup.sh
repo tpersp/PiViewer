@@ -11,6 +11,7 @@
 #   7) Creates systemd services:
 #        - piviewer.service (runs piviewer.py single GUI)
 #        - controller.service (Flask web interface)
+#        - picom.service (for compositing transparency)
 #   8) Reboots (unless in --auto-update mode)
 #
 # Usage:  sudo ./setup.sh  [--auto-update]
@@ -44,7 +45,7 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo " 4) Prompt for user & paths"
   echo " 5) Create .env in VIEWER_HOME"
   echo " 6) (Optional) mount a network share or fallback to local uploads folder"
-  echo " 7) Create systemd services for piviewer.py + controller"
+  echo " 7) Create systemd services for piviewer.py + controller + picom"
   echo " 8) Reboot"
   echo
   read -p "Press [Enter] to continue or Ctrl+C to abort..."
@@ -238,7 +239,6 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
     if [ -z "$SERVER_SHARE" ]; then
       echo "No share path entered. Skipping."
     else
-      # We might need the user ID from above
       USER_ID="$(id -u "$VIEWER_USER")"
       read -p "Mount options (e.g. guest,uid=$USER_ID,gid=$USER_ID,vers=3.0) [ENTER for default]: " MOUNT_OPTS
       if [ -z "$MOUNT_OPTS" ]; then
@@ -341,7 +341,7 @@ Type=simple
 WantedBy=multi-user.target
 EOF
 
-# Optional: if you want picom for real alpha transparency:
+# (C) picom.service
 PICOM_SERVICE="/etc/systemd/system/picom.service"
 echo "Creating $PICOM_SERVICE ..."
 cat <<EOF > "$PICOM_SERVICE"
@@ -369,6 +369,40 @@ systemctl enable picom.service
 systemctl start piviewer.service
 systemctl start controller.service
 systemctl start picom.service
+
+# -------------------------------------------------------
+# 7a) Configure picom.conf and xsetroot (for black root)
+# -------------------------------------------------------
+echo
+echo "== Step 7a: Setting up default picom.conf and black root background =="
+
+PICOM_CONF_DIR="/home/$VIEWER_USER/.config/picom"
+mkdir -p "$PICOM_CONF_DIR"
+
+# Create a basic picom.conf
+cat <<EOF > "$PICOM_CONF_DIR/picom.conf"
+###################################################
+# Basic picom config to avoid gray flash, etc.
+# Modify as needed.
+###################################################
+backend = "xrender";
+vsync = true;
+fading = false;
+unredir-if-possible = false;
+EOF
+
+chown -R "$VIEWER_USER:$VIEWER_USER" "/home/$VIEWER_USER/.config"
+
+# Ensure xsetroot -solid black is run on session startup
+XPROFILE="/home/$VIEWER_USER/.xprofile"
+if [ ! -f "$XPROFILE" ]; then
+  echo "#!/usr/bin/env bash" > "$XPROFILE"
+fi
+
+grep -q "xsetroot -solid black" "$XPROFILE" || echo "xsetroot -solid black" >> "$XPROFILE"
+
+chown "$VIEWER_USER:$VIEWER_USER" "$XPROFILE"
+chmod +x "$XPROFILE"
 
 # -------------------------------------------------------
 # 8) Reboot (skip if AUTO_UPDATE)
