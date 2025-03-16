@@ -79,7 +79,9 @@ apt-get install -y \
   libxcb-cursor0 \
   libxcb-randr0 \
   libxcb-shape0 \
-  libxcb-xfixes0
+  libxcb-xfixes0 \
+  libxcb-xinerama0 \
+  libxkbcommon-x11-0
 
 if [ $? -ne 0 ]; then
   echo "Error installing packages via apt. Exiting."

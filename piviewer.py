@@ -551,6 +551,17 @@ class PiViewerGUI:
 
         # Detect monitors
         detected = detect_monitors()
+
+        # === EDIT START ===
+        # If we do detect any real monitors, remove the default "Display0" from config
+        # so we don't accidentally create duplicates.
+        if detected and len(detected) > 0:
+            if "displays" not in self.cfg:
+                self.cfg["displays"] = {}
+            if "Display0" in self.cfg["displays"]:
+                del self.cfg["displays"]["Display0"]
+        # === EDIT END ===
+
         if detected:
             if "displays" not in self.cfg:
                 self.cfg["displays"] = {}
