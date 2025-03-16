@@ -8,11 +8,9 @@
 #   4) Prompts for user & paths (unless in --auto-update mode)
 #   5) Creates .env in VIEWER_HOME
 #   6) (Optional) mounts a CIFS network share or fallback to local "Uploads"
-#   7) Creates systemd services:
-#        - piviewer.service (runs piviewer.py single GUI)
-#        - controller.service (Flask web interface)
-#        - picom.service (for compositing transparency)
-#   8) Reboots (unless in --auto-update mode)
+#   7) Creates systemd services for piviewer.py + controller
+#   8) Configures Openbox autologin & picom in Openbox autostart
+#   9) Reboots (unless in --auto-update mode)
 #
 # Usage:  sudo ./setup.sh  [--auto-update]
 #   If you run with --auto-update, it will skip user prompts and final reboot.
@@ -45,8 +43,9 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo " 4) Prompt for user & paths"
   echo " 5) Create .env in VIEWER_HOME"
   echo " 6) (Optional) mount a network share or fallback to local uploads folder"
-  echo " 7) Create systemd services for piviewer.py + controller + picom"
-  echo " 8) Reboot"
+  echo " 7) Create systemd services for piviewer.py + controller"
+  echo " 8) Configure Openbox autologin & picom"
+  echo " 9) Reboot"
   echo
   read -p "Press [Enter] to continue or Ctrl+C to abort..."
 fi
@@ -287,7 +286,7 @@ else
 fi
 
 # -------------------------------------------------------
-# 7) Create systemd services
+# 7) Create systemd services (piviewer + controller)
 # -------------------------------------------------------
 echo
 echo "== Step 7: Creating systemd service files =="
@@ -343,76 +342,21 @@ Type=simple
 WantedBy=multi-user.target
 EOF
 
-# (C) picom.service
-PICOM_SERVICE="/etc/systemd/system/picom.service"
-echo "Creating $PICOM_SERVICE ..."
-cat <<EOF > "$PICOM_SERVICE"
-[Unit]
-Description=Picom Compositor
-After=lightdm.service
-
-[Service]
-User=$VIEWER_USER
-Group=$VIEWER_USER
-Environment="DISPLAY=:0"
-Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
-ExecStart=/usr/bin/picom
-Restart=always
-
-[Install]
-WantedBy=graphical.target
-EOF
-
 echo "Reloading systemd..."
 systemctl daemon-reload
 systemctl enable piviewer.service
 systemctl enable controller.service
-systemctl enable picom.service
 systemctl start piviewer.service
 systemctl start controller.service
-systemctl start picom.service
 
 # -------------------------------------------------------
-# 7a) Configure picom.conf and xsetroot (for black root)
-# -------------------------------------------------------
-echo
-echo "== Step 7a: Setting up default picom.conf and black root background =="
-
-PICOM_CONF_DIR="/home/$VIEWER_USER/.config/picom"
-mkdir -p "$PICOM_CONF_DIR"
-
-# Create a basic picom.conf
-cat <<EOF > "$PICOM_CONF_DIR/picom.conf"
-###################################################
-# Basic picom config to avoid gray flash, etc.
-# Modify as needed.
-###################################################
-backend = "xrender";
-vsync = true;
-fading = false;
-unredir-if-possible = false;
-EOF
-
-chown -R "$VIEWER_USER:$VIEWER_USER" "/home/$VIEWER_USER/.config"
-
-# Ensure xsetroot -solid black is run on session startup
-XPROFILE="/home/$VIEWER_USER/.xprofile"
-if [ ! -f "$XPROFILE" ]; then
-  echo "#!/usr/bin/env bash" > "$XPROFILE"
-fi
-
-grep -q "xsetroot -solid black" "$XPROFILE" || echo "xsetroot -solid black" >> "$XPROFILE"
-
-chown "$VIEWER_USER:$VIEWER_USER" "$XPROFILE"
-chmod +x "$XPROFILE"
-
-# -------------------------------------------------------
-# 7b) Force LightDM to auto-login user into openbox
+# 8) Configure Openbox autologin & picom
 # -------------------------------------------------------
 echo
-echo "== Step 7b: Setting LightDM to auto-login into Openbox session =="
+echo "== Step 8: Configure Openbox autologin and autostart (with picom) =="
+
+# (A) LightDM snippet for openbox autologin
 mkdir -p /etc/lightdm/lightdm.conf.d
-
 cat <<EOF >/etc/lightdm/lightdm.conf.d/99-openbox-autologin.conf
 [Seat:*]
 greeter-session=lightdm-gtk-greeter
@@ -422,18 +366,40 @@ autologin-user-timeout=0
 autologin-session=openbox
 EOF
 
+# (B) Create openbox autostart so picom runs after X starts
+OPENBOX_CONF_DIR="/home/$VIEWER_USER/.config/openbox"
+mkdir -p "$OPENBOX_CONF_DIR"
+AUTOSTART_FILE="$OPENBOX_CONF_DIR/autostart"
+
+cat <<EOF > "$AUTOSTART_FILE"
+#!/usr/bin/env bash
+# Minimal openbox autostart
+# Start picom after X is ready
+
+# Set a black root just in case
+xsetroot -solid black
+
+# Start picom in background
+picom &
+EOF
+
+chown -R "$VIEWER_USER:$VIEWER_USER" "/home/$VIEWER_USER/.config/openbox"
+chmod +x "$AUTOSTART_FILE"
+
+echo "Done configuring Openbox autostart."
+
 # -------------------------------------------------------
-# 8) Reboot (skip if AUTO_UPDATE)
+# 9) Reboot (skip if AUTO_UPDATE)
 # -------------------------------------------------------
 if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo
   echo "========================================================"
   echo "Setup is complete. The Pi will now reboot."
   echo "Upon reboot:"
-  echo " - LightDM auto-logs into X (DISPLAY=:0)."
-  echo " - piviewer.service starts piviewer.py (PySide6 GUI)"
+  echo " - LightDM auto-logs into X/Openbox (DISPLAY=:0)"
+  echo " - openbox/autostart runs picom"
+  echo " - piviewer.service starts piviewer.py"
   echo " - controller.service runs Flask at http://<Pi-IP>:8080"
-  echo " - picom.service for compositing transparency"
   echo
   echo "Rebooting in 5 seconds..."
   sleep 5
