@@ -313,15 +313,14 @@ class DisplayWindow(QMainWindow):
             movie = QMovie(fullpath)
             self.current_movie = movie
 
-            # Figure out original GIF size from the first frame
+            # Read the first frame to build the blurred background
             temp_reader = QImageReader(fullpath)
             temp_reader.setAutoDetectImageFormat(True)
-            if temp_reader.canRead():
-                original_size = temp_reader.size()
-                ow = original_size.width()
-                oh = original_size.height()
+            first_frame = temp_reader.read()
+            if not first_frame.isNull():
+                ow = first_frame.width()
+                oh = first_frame.height()
             else:
-                # fallback if metadata can't be read
                 ow, oh = 1, 1
 
             fw = self.foreground_label.width()
@@ -331,26 +330,24 @@ class DisplayWindow(QMainWindow):
                 # fallback: just show the movie at its original size
                 self.foreground_label.setMovie(movie)
                 movie.start()
-                return
-
-            image_aspect = ow / float(oh)
-            screen_aspect = fw / float(fh)
-
-            if image_aspect > screen_aspect:
-                new_w = fw
-                new_h = int(new_w / image_aspect)
             else:
-                new_h = fh
-                new_w = int(new_h * image_aspect)
+                # Calculate scaled dimensions to fill as much as possible
+                image_aspect = ow / float(oh)
+                screen_aspect = fw / float(fh)
 
-            # Scale the animated GIF frames
-            movie.setScaledSize(QSize(new_w, new_h))
-            self.foreground_label.setMovie(movie)
-            movie.start()
+                if image_aspect > screen_aspect:
+                    new_w = fw
+                    new_h = int(new_w / image_aspect)
+                else:
+                    new_h = fh
+                    new_w = int(new_h * image_aspect)
 
-            # For the blurred background, grab the first frame via QImageReader
-            temp_reader.setCurrentImage(0)
-            first_frame = temp_reader.read()
+                # Scale the animated GIF frames
+                movie.setScaledSize(QSize(new_w, new_h))
+                self.foreground_label.setMovie(movie)
+                movie.start()
+
+            # Now set blurred background
             if not first_frame.isNull():
                 pm = QPixmap.fromImage(first_frame)
                 blurred = self.make_background_cover(pm)
