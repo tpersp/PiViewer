@@ -134,7 +134,7 @@ class DisplayWindow(QMainWindow):
         self.bg_label.setGeometry(rect)
         self.foreground_label.setGeometry(rect)
         self.bg_label.lower()
-        self.foreground_label.raise()
+        self.foreground_label.raise_()  # <--- Notice the underscore!
 
         # Place overlay labels
         self.clock_label.adjustSize()
