@@ -140,6 +140,16 @@ fi
 sed -i -- "s/#xserver-command=X/xserver-command=X -nocursor/" /etc/lightdm/lightdm.conf
 
 # -------------------------------------------------------
+# 3b) Outcomment conflicting LightDM options in /etc/lightdm/lightdm.conf
+# (Comment out greeter-session, user-session, and autologin-session options that may conflict with Openbox autologin)
+# -------------------------------------------------------
+if [ -f /etc/lightdm/lightdm.conf ]; then
+  sed -i 's/^\(greeter-session=.*\)$/#\1/' /etc/lightdm/lightdm.conf
+  sed -i 's/^\(user-session=.*\)$/#\1/' /etc/lightdm/lightdm.conf
+  sed -i 's/^\(autologin-session=.*\)$/#\1/' /etc/lightdm/lightdm.conf
+fi
+
+# -------------------------------------------------------
 # 3a) Update boot firmware configuration (optional)
 # -------------------------------------------------------
 echo
@@ -304,7 +314,7 @@ WorkingDirectory=$VIEWER_HOME
 EnvironmentFile=$ENV_FILE
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
-Environment="QT_QPA_PLATFORM_PLUGIN_PATH=/usr/local/lib/python3.11/dist-packages/PySide6/Qt/plugins/platforms"
+# Removed explicit QT_QPA_PLATFORM_PLUGIN_PATH to allow Qt to use the default plugin path
 ExecStartPre=/bin/sleep 5
 ExecStart=/usr/bin/python3 $VIEWER_HOME/piviewer.py
 
