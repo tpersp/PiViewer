@@ -5,7 +5,7 @@
 #   1) Installs LightDM (with Xorg), python3, PySide6, etc.
 #   2) Installs pip dependencies (with --break-system-packages)
 #   3) Disables screen blanking (via raspi-config)
-#   4) Prompts for user + paths (unless in --auto-update mode)
+#   4) Prompts for user & paths (unless in --auto-update mode)
 #   5) Creates .env in VIEWER_HOME
 #   6) (Optional) mounts a CIFS network share or fallback to local "Uploads"
 #   7) Creates systemd services:
@@ -405,6 +405,22 @@ grep -q "xsetroot -solid black" "$XPROFILE" || echo "xsetroot -solid black" >> "
 
 chown "$VIEWER_USER:$VIEWER_USER" "$XPROFILE"
 chmod +x "$XPROFILE"
+
+# -------------------------------------------------------
+# 7b) Force LightDM to auto-login user into openbox
+# -------------------------------------------------------
+echo
+echo "== Step 7b: Setting LightDM to auto-login into Openbox session =="
+mkdir -p /etc/lightdm/lightdm.conf.d
+
+cat <<EOF >/etc/lightdm/lightdm.conf.d/99-openbox-autologin.conf
+[Seat:*]
+greeter-session=lightdm-gtk-greeter
+user-session=openbox
+autologin-user=$VIEWER_USER
+autologin-user-timeout=0
+autologin-session=openbox
+EOF
 
 # -------------------------------------------------------
 # 8) Reboot (skip if AUTO_UPDATE)
