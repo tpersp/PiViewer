@@ -17,15 +17,17 @@ import threading
 import subprocess
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTimer, Slot, QSize
+from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRectF
 from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QLabel, QGraphicsBlurEffect
+    QApplication, QMainWindow, QWidget, QLabel,
+    QGraphicsScene, QGraphicsPixmapItem, QGraphicsBlurEffect
 )
 
 from spotipy.oauth2 import SpotifyOAuth
 from config import APP_VERSION, IMAGE_DIR, LOG_PATH
 from utils import load_config, save_config, log_message
+
 
 def detect_monitors():
     '''
@@ -66,6 +68,7 @@ def detect_monitors():
         log_message(f"Monitor detection error: {e}")
     return monitors
 
+
 class DisplayWindow(QMainWindow):
     def __init__(self, disp_name, disp_cfg):
         super().__init__()
@@ -99,7 +102,7 @@ class DisplayWindow(QMainWindow):
         self.foreground_label = QLabel(self.main_widget)
         self.foreground_label.setScaledContents(False)
         self.foreground_label.setAlignment(Qt.AlignCenter)
-        # Foreground area is transparent (so we see blurred background behind it)
+        # Foreground area is transparent (so we see the blurred background behind it)
         self.foreground_label.setStyleSheet("background-color: transparent; color: white;")
 
         # Overlay: clock and weather
@@ -110,10 +113,7 @@ class DisplayWindow(QMainWindow):
         self.weather_label = QLabel(self.main_widget)
         self.weather_label.setStyleSheet("color: white; font-size: 18px; background: transparent;")
 
-        # Blur effect for background
-        self.blur_effect = QGraphicsBlurEffect()
-        self.blur_effect.setBlurRadius(0)  # Will get overridden below
-        self.bg_label.setGraphicsEffect(self.blur_effect)
+        # === We do not attach QGraphicsBlurEffect to the live label, only a one-time pass below. ===
 
         # Slideshow and clock timers
         self.slideshow_timer = QTimer(self)
@@ -210,13 +210,22 @@ class DisplayWindow(QMainWindow):
                 f"color: {fcolor}; font-size: {weath_sz}px; background: transparent;"
             )
 
-        # ----- Ensure there's a nonzero blur radius -----
-        # If you want a user-controlled config field, we look in cfg["gui"]["background_blur_radius"]
-        # otherwise we apply a default of, say, 20:
-        user_blur = self.cfg.get("gui", {}).get("background_blur_radius", 0)
-        if user_blur == 0:
-            user_blur = 50  # Default blur if user hasn't set anything
-        self.blur_effect.setBlurRadius(user_blur)
+        # We'll do a one-time blur pass using QGraphicsBlurEffect offscreen
+        self.bg_blur_radius = self.cfg.get("gui", {}).get("background_blur_radius", 0)
+        if not isinstance(self.bg_blur_radius, int):
+            self.bg_blur_radius = 0
+
+        # Background resolution scale factor (default 1.0)
+        try:
+            self.bg_resolution_scale = float(self.cfg.get("gui", {}).get("background_resolution_scale", 1.0))
+        except:
+            self.bg_resolution_scale = 1.0
+
+        # NEW: Foreground scale factor from user (percentage, 100 means no scaling)
+        try:
+            self.fg_scale_percent = float(self.cfg.get("gui", {}).get("foreground_scale_percent", 100)) / 100.0
+        except:
+            self.fg_scale_percent = 1.0
 
         # Slideshow interval
         interval_s = self.disp_cfg.get("image_interval", 60)
@@ -385,6 +394,7 @@ class DisplayWindow(QMainWindow):
         """
         Scale the (still) image up/down so it touches at least one screen edge,
         without clipping, and preserving aspect ratio.
+        Then apply the user-selected foreground resolution scale.
         """
         if not self.current_pixmap:
             return
@@ -408,6 +418,10 @@ class DisplayWindow(QMainWindow):
             new_h = fh
             new_w = int(new_h * image_aspect)
 
+        # Apply the foreground scale factor (user-specified percentage)
+        new_w = int(new_w * self.fg_scale_percent)
+        new_h = int(new_h * self.fg_scale_percent)
+
         scaled_pm = self.current_pixmap.scaled(
             new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation
         )
@@ -427,8 +441,7 @@ class DisplayWindow(QMainWindow):
 
     def make_background_cover(self, pixmap):
         """
-        The blurred background: we do a 'cover' fill that may crop edges,
-        then the QGraphicsBlurEffect is applied in real-time.
+        Do a 'cover' fill that may crop edges, then do one-time blur with QGraphicsBlurEffect offscreen.
         """
         rect = self.main_widget.rect()
         sw, sh = rect.width(), rect.height()
@@ -452,7 +465,45 @@ class DisplayWindow(QMainWindow):
         yoff = (scaled.height() - sh) // 2
 
         final = scaled.copy(xoff, yoff, sw, sh)
-        return final
+        # If the user has chosen to reduce the background resolution for performance, downscale now.
+        if self.bg_resolution_scale < 1.0:
+            reduced_width = int(final.width() * self.bg_resolution_scale)
+            reduced_height = int(final.height() * self.bg_resolution_scale)
+            final = final.scaled(reduced_width, reduced_height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        blurred = self.blur_pixmap_once(final, self.bg_blur_radius)
+        # Scale the blurred image back up to screen size if it was reduced.
+        if self.bg_resolution_scale < 1.0:
+            blurred = blurred.scaled(sw, sh, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        return blurred
+
+    def blur_pixmap_once(self, pm, radius):
+        """
+        Renders a QPixmap with QGraphicsBlurEffect exactly once, offscreen,
+        so we keep that soft, spill-like blur without real-time overhead.
+        """
+        if radius <= 0:
+            return pm
+
+        scene = QGraphicsScene()
+        item = QGraphicsPixmapItem(pm)
+        blur = QGraphicsBlurEffect()
+        blur.setBlurRadius(radius)
+        item.setGraphicsEffect(blur)
+        scene.addItem(item)
+
+        # Render result to an ARGB image
+        result = QImage(pm.width(), pm.height(), QImage.Format_ARGB32)
+        result.fill(Qt.transparent)
+
+        painter = QPainter(result)
+        scene.render(
+            painter,
+            QRectF(0, 0, pm.width(), pm.height()),
+            QRectF(0, 0, pm.width(), pm.height())
+        )
+        painter.end()
+
+        return QPixmap.fromImage(result)
 
     def update_clock(self):
         now_str = datetime.now().strftime("%H:%M:%S")
@@ -544,6 +595,7 @@ class DisplayWindow(QMainWindow):
             return None
         return None
 
+
 class PiViewerGUI:
     def __init__(self):
         self.cfg = load_config()
@@ -552,15 +604,12 @@ class PiViewerGUI:
         # Detect monitors
         detected = detect_monitors()
 
-        # === EDIT START ===
-        # If we do detect any real monitors, remove the default "Display0" from config
-        # so we don't accidentally create duplicates.
+        # If we do detect any real monitors, remove the default "Display0"
         if detected and len(detected) > 0:
             if "displays" not in self.cfg:
                 self.cfg["displays"] = {}
             if "Display0" in self.cfg["displays"]:
                 del self.cfg["displays"]["Display0"]
-        # === EDIT END ===
 
         if detected:
             if "displays" not in self.cfg:
@@ -593,6 +642,7 @@ class PiViewerGUI:
     def run(self):
         sys.exit(self.app.exec())
 
+
 def main():
     try:
         log_message(f"Starting PiViewer GUI (v{APP_VERSION}).")
@@ -601,6 +651,7 @@ def main():
     except Exception as e:
         log_message(f"Exception in main: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

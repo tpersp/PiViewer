@@ -258,6 +258,16 @@ def settings():
         except:
             cfg["gui"]["background_blur_radius"] = 20
 
+        try:
+            cfg["gui"]["background_resolution_scale"] = float(request.form.get("background_resolution_scale", "1.0"))
+        except:
+            cfg["gui"]["background_resolution_scale"] = 1.0
+
+        try:
+            cfg["gui"]["foreground_scale_percent"] = int(request.form.get("foreground_scale_percent", "100"))
+        except:
+            cfg["gui"]["foreground_scale_percent"] = 100
+
         save_config(cfg)
         return redirect(url_for("main.settings"))
     else:
