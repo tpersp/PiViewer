@@ -125,7 +125,7 @@ class DisplayWindow(QMainWindow):
         # Weather update timer (update every 60 seconds)
         self.weather_timer = QTimer(self)
         self.weather_timer.timeout.connect(self.update_weather)
-        self.weather_timer.start(60000)
+        self.weather_timer.start(60000)  #-----------------------------Update this to change fetch weather interval. #60000=60 seconds
         self.update_weather()  # Initial weather update
 
         # Load config, then start
