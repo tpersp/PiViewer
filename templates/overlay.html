@@ -6,7 +6,8 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script>
     // We'll generate a scaled-down preview for the chosen monitor(s) so the user can drag the overlay box.
-    // We store final X/Y in hidden fields offset_x / offset_y, and W/H in overlay_width / overlay_height.
+    // We store the final X/Y in the same <input> fields (offset_x, offset_y) that appear in the form below,
+    // so that dragging updates them in real-time.
 
     let scaleFactor = 1.0;
     let isDragging = false;
@@ -28,6 +29,7 @@
         isDragging = true;
         startMouseX = e.clientX;
         startMouseY = e.clientY;
+        // Current position of the draggable box:
         dragOffsetX = parseFloat(dragBox.style.left || "0");
         dragOffsetY = parseFloat(dragBox.style.top || "0");
       });
@@ -43,7 +45,7 @@
         // clamp so the green box isn't lost entirely
         let maxLeft = previewBox.clientWidth - dragBox.clientWidth;
         let maxTop = previewBox.clientHeight - dragBox.clientHeight;
-        if(newLeft < -dragBox.clientWidth + 10) newLeft = -dragBox.clientWidth + 10; 
+        if(newLeft < -dragBox.clientWidth + 10) newLeft = -dragBox.clientWidth + 10;
         if(newTop < -dragBox.clientHeight + 10) newTop = -dragBox.clientHeight + 10;
         if(newLeft > (maxLeft + dragBox.clientWidth) - 10) newLeft = (maxLeft + dragBox.clientWidth) - 10;
         if(newTop > (maxTop + dragBox.clientHeight) - 10) newTop = (maxTop + dragBox.clientHeight) - 10;
@@ -101,7 +103,7 @@
           <label for="overlay_enabled">Enable Overlay:</label>
           <input type="checkbox" name="overlay_enabled" id="overlay_enabled"
                  {% if overlay.overlay_enabled %}checked{% endif %}>
-          
+
           <label for="clock_enabled">Show Clock:</label>
           <input type="checkbox" name="clock_enabled" id="clock_enabled"
                  {% if overlay.clock_enabled %}checked{% endif %}>
@@ -202,11 +204,6 @@
       </fieldset>
     </div>
 
-    <!-- Hidden fields for the scaled preview offsets -->
-    <input type="hidden" name="offset_x"  id="offset_x"  value="{{ overlay.offset_x|default('20') }}">
-    <input type="hidden" name="offset_y"  id="offset_y"  value="{{ overlay.offset_y|default('20') }}">
-
-    <!-- Draggable overlay preview area -->
     <div class="overlay-preview-container">
       <div class="overlay-instructions">
         Drag the green box to place the overlay within the scaled monitor preview:
