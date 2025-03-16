@@ -122,6 +122,12 @@ class DisplayWindow(QMainWindow):
         self.clock_timer.timeout.connect(self.update_clock)
         self.clock_timer.start(1000)
 
+        # Weather update timer (update every 60 seconds)
+        self.weather_timer = QTimer(self)
+        self.weather_timer.timeout.connect(self.update_weather)
+        self.weather_timer.start(60000)
+        self.update_weather()  # Initial weather update
+
         # Load config, then start
         self.cfg = load_config()
         self.reload_settings()
@@ -451,6 +457,44 @@ class DisplayWindow(QMainWindow):
     def update_clock(self):
         now_str = datetime.now().strftime("%H:%M:%S")
         self.clock_label.setText(now_str)
+
+    def update_weather(self):
+        """
+        Fetch the current weather using the OpenWeatherMap API and update the weather_label.
+        Only updates if weather overlay is enabled.
+        """
+        cfg = load_config()
+        weather_cfg = cfg.get("weather", {})
+        over = cfg.get("overlay", {})
+        if not over.get("weather_enabled", False):
+            return
+        api_key = weather_cfg.get("api_key", "")
+        lat = weather_cfg.get("lat")
+        lon = weather_cfg.get("lon")
+        if not (api_key and lat is not None and lon is not None):
+            self.weather_label.setText("Weather: config missing")
+            return
+        try:
+            weather_url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={api_key}"
+            r = requests.get(weather_url, timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                parts = []
+                if over.get("show_desc", True):
+                    parts.append(data["weather"][0]["description"].title())
+                if over.get("show_temp", True):
+                    parts.append(f"{data['main']['temp']}\u00B0C")
+                if over.get("show_feels_like", False):
+                    parts.append(f"Feels: {data['main']['feels_like']}\u00B0C")
+                if over.get("show_humidity", False):
+                    parts.append(f"Humidity: {data['main']['humidity']}%")
+                weather_text = " | ".join(parts)
+                self.weather_label.setText(weather_text)
+            else:
+                self.weather_label.setText("Weather: error")
+        except Exception as e:
+            self.weather_label.setText("Weather: error")
+            log_message(f"Error updating weather: {e}")
 
     def fetch_spotify_album_art(self):
         try:
