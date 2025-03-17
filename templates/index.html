@@ -215,6 +215,7 @@
             <p>- Specific: pick exactly 1 file from a chosen folder</p>
             <p>- Spotify: show album art of currently playing track</p>
           </div>
+
           {% if mon_data %}
             <h3>{{ dname }} ({{ mon_data.resolution }})</h3>
           {% else %}
@@ -358,19 +359,21 @@
                 </button>
               </div>
             {% else %}
-              <div class="image-gallery">
-                {% for imgpath in fileList %}
-                  {% set bn = imgpath.split('/')[-1] %}
-                  <label class="thumb-label">
-                    <img src="/images/{{ imgpath }}" class="thumb-img"><br>
-                    <input type="radio" name="{{ dname }}_specific_image" value="{{ bn }}"
-                      {% if bn == dcfg.specific_image %}checked{% endif %}>
-                    {{ bn }}
-                  </label>
-                {% else %}
-                  <p>No images found or category is empty.</p>
-                {% endfor %}
-              </div>
+              {% if fileList and fileList|length > 0 %}
+                <div class="image-gallery">
+                  {% for imgpath in fileList %}
+                    {% set bn = imgpath.split('/')[-1] %}
+                    <label class="thumb-label">
+                      <img src="/images/{{ imgpath }}" class="thumb-img"><br>
+                      <input type="radio" name="{{ dname }}_specific_image" value="{{ bn }}"
+                        {% if bn == dcfg.specific_image %}checked{% endif %}>
+                      {{ bn }}
+                    </label>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p>No images found or category is empty.</p>
+              {% endif %}
             {% endif %}
           </div>
           {% endif %}
