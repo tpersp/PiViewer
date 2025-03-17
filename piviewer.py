@@ -16,6 +16,7 @@ import tempfile
 import threading
 import subprocess
 from datetime import datetime
+from collections import OrderedDict
 
 from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRectF
 from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader
@@ -75,6 +76,12 @@ class DisplayWindow(QMainWindow):
         self.disp_name = disp_name
         self.disp_cfg = disp_cfg
         self.running = True
+
+        # Cache for loaded images/gifs.
+        # Uses an OrderedDict as a simple LRU cache with a fixed capacity.
+        self.image_cache = OrderedDict()
+        self.cache_capacity = 3  # Adjust cache capacity as needed.
+        self.last_displayed_path = None  # To remove displayed image from cache
 
         # Store the last static image as QPixmap (foreground):
         self.current_pixmap = None
@@ -279,6 +286,52 @@ class DisplayWindow(QMainWindow):
         results.sort()
         return results
 
+    def load_and_cache_image(self, fullpath):
+        """
+        Load an image or gif from disk.
+        For GIFs, also read the first frame (for the blurred background).
+        Returns a dict with type and the loaded data.
+        """
+        ext = os.path.splitext(fullpath)[1].lower()
+        if ext == ".gif":
+            movie = QMovie(fullpath)
+            temp_reader = QImageReader(fullpath)
+            temp_reader.setAutoDetectImageFormat(True)
+            first_frame = temp_reader.read()
+            data = {"type": "gif", "movie": movie, "first_frame": first_frame}
+        else:
+            pixmap = QPixmap(fullpath)
+            data = {"type": "static", "pixmap": pixmap}
+        return data
+
+    def get_cached_image(self, fullpath):
+        """
+        Retrieve a cached image/gif if available; otherwise load it and cache it.
+        Implements a simple LRU cache with fixed capacity.
+        """
+        if fullpath in self.image_cache:
+            self.image_cache.move_to_end(fullpath)
+            return self.image_cache[fullpath]
+        else:
+            data = self.load_and_cache_image(fullpath)
+            self.image_cache[fullpath] = data
+            if len(self.image_cache) > self.cache_capacity:
+                self.image_cache.popitem(last=False)
+            return data
+
+    def preload_next_images(self):
+        """
+        Preload a few images (or gifs) ahead of time to improve performance.
+        """
+        if not self.image_list:
+            return
+        preload_count = 3  # number of images to preload
+        for i in range(1, preload_count + 1):
+            next_index = (self.index + i) % len(self.image_list)
+            next_path = self.image_list[next_index]
+            if next_path not in self.image_cache:
+                self.get_cached_image(next_path)
+
     def next_image(self, force=False):
         if not self.running:
             return
@@ -307,12 +360,19 @@ class DisplayWindow(QMainWindow):
             self.foreground_label.setAlignment(Qt.AlignCenter)
             return
 
+        # Remove previously displayed image from cache (to free memory)
+        if self.last_displayed_path and self.last_displayed_path in self.image_cache:
+            del self.image_cache[self.last_displayed_path]
+
         self.index += 1
         if self.index >= len(self.image_list):
             self.index = 0
 
         path = self.image_list[self.index]
+        self.last_displayed_path = path
+
         self.show_foreground_image(path)
+        self.preload_next_images()
 
     def show_foreground_image(self, fullpath):
         if not os.path.exists(fullpath):
@@ -324,32 +384,29 @@ class DisplayWindow(QMainWindow):
             self.current_movie.deleteLater()
             self.current_movie = None
 
+        data = self.get_cached_image(fullpath)
         ext = os.path.splitext(fullpath)[1].lower()
 
-        # Handle animated GIFs
-        if ext == ".gif":
-            movie = QMovie(fullpath)
+        if data["type"] == "gif":
+            movie = data["movie"]
             self.current_movie = movie
 
-            # Read the first frame to build the blurred background
-            temp_reader = QImageReader(fullpath)
-            temp_reader.setAutoDetectImageFormat(True)
-            first_frame = temp_reader.read()
-            if not first_frame.isNull():
-                ow = first_frame.width()
-                oh = first_frame.height()
-            else:
-                ow, oh = 1, 1
-
+            # Read first frame to build the blurred background
+            first_frame = data["first_frame"]
             fw = self.foreground_label.width()
             fh = self.foreground_label.height()
 
-            if fw < 1 or fh < 1 or ow < 1 or oh < 1:
+            if fw < 1 or fh < 1 or movie.frameRect().width() < 1 or movie.frameRect().height() < 1:
                 # fallback: just show the movie at its original size
                 self.foreground_label.setMovie(movie)
                 movie.start()
             else:
-                # Calculate scaled dimensions to fill as much as possible
+                if not first_frame.isNull():
+                    ow = first_frame.width()
+                    oh = first_frame.height()
+                else:
+                    ow, oh = 1, 1
+
                 image_aspect = ow / float(oh)
                 screen_aspect = fw / float(fh)
 
@@ -377,14 +434,14 @@ class DisplayWindow(QMainWindow):
 
         else:
             # Still image
-            pm = QPixmap(fullpath)
+            pixmap = data["pixmap"]
             self.foreground_label.setMovie(None)
-            self.current_pixmap = pm
+            self.current_pixmap = pixmap
 
             self.updateForegroundScaled()
 
             # Update blurred background
-            blurred = self.make_background_cover(pm)
+            blurred = self.make_background_cover(pixmap)
             if blurred:
                 self.bg_label.setPixmap(blurred)
             else:
