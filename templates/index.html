@@ -51,6 +51,7 @@
           });
         });
       }
+
       let dragSrcEl=null;
       function handleDragStart(e){
         dragSrcEl = this;
@@ -94,6 +95,7 @@
         }
         updateHiddenOrder();
       }
+
       if(availList){
         availList.addEventListener("click", e=>{
           if(e.target.tagName==="LI"){
@@ -108,12 +110,14 @@
           }
         });
       }
+
       function updateHiddenOrder(){
         let items = selList.querySelectorAll("li");
         let arr=[];
         items.forEach(li=> arr.push(li.getAttribute("data-folder")));
         hiddenOrder.value = arr.join(",");
       }
+
       if(selList){
         let selItems = selList.querySelectorAll("li");
         selItems.forEach(li => addDnDHandlers(li));
@@ -165,6 +169,7 @@
   <div style="text-align:center; font-size:12px; color:#888;">
     Version {{ version }}
   </div>
+
   <p style="text-align:center;">
     <strong>Hostname:</strong> {{ host }} |
     <strong>IP:</strong> {{ ipaddr }} |
@@ -177,6 +182,7 @@
     <strong>Load(1m):</strong> <span id="stat_load">{{ load1 }}</span> |
     <strong>Temp:</strong> <span id="stat_temp">{{ temp }}</span>
   </p>
+
   <div class="button-row">
     <a href="{{ url_for('main.settings') }}">
       <button style="font-size:14px;">Settings</button>
@@ -202,9 +208,11 @@
     <form method="POST">
       <input type="hidden" name="action" value="update_displays">
       <div class="display-grid">
+
         {% for dname, dcfg in cfg.displays.items() %}
         {% set mon_data = monitors[dname] if dname in monitors else None %}
         <div class="display-card">
+
           <div class="help-icon" onclick="toggleHelpBox('help_{{dname}}')">?</div>
           <div class="help-box" id="help_{{dname}}">
             <p><strong>Display Info</strong></p>
@@ -241,30 +249,29 @@
           </div>
           {% endif %}
 
-          <!-- Rotate is always shown for now -->
+          <!-- Rotate is always shown -->
           <div class="field-block">
             <label>Rotate (degrees):</label><br>
             <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
           </div>
 
-          <!-- Add resolution dropdown if we have a list of available modes -->
+          <!-- Resolution dropdown if the monitor has modes -->
           {% if mon_data and mon_data.available_modes|length > 0 %}
           {% set chosen_res = mon_data.resolution %}
-          <!-- Sort them into landscape vs. portrait groups -->
           {% set landscape = [] %}
           {% set portrait = [] %}
-          {% for r in mon_data.available_modes %}
-            {% set parts = r.split('x') %}
+          {% for mode_val in mon_data.available_modes %}
+            {% set parts = mode_val.split('x') %}
             {% if parts|length == 2 %}
               {% set w = parts[0]|int %}
               {% set h = parts[1]|int %}
               {% if w >= h %}
-                {% set _ = landscape.append(r) %}
+                {% set _ = landscape.append(mode_val) %}
               {% else %}
-                {% set _ = portrait.append(r) %}
+                {% set _ = portrait.append(mode_val) %}
               {% endif %}
             {% else %}
-              {% set _ = landscape.append(r) %}
+              {% set _ = landscape.append(mode_val) %}
             {% endif %}
           {% endfor %}
           <div class="field-block">
@@ -273,14 +280,14 @@
               {% if landscape|length > 0 %}
               <optgroup label="Landscape">
                 {% for lres in landscape %}
-                <option value="{{ lres }}" {% if lres == chosen_res %}selected{% endif %}>{{ lres }}</option>
+                  <option value="{{ lres }}" {% if lres == chosen_res %}selected{% endif %}>{{ lres }}</option>
                 {% endfor %}
               </optgroup>
               {% endif %}
               {% if portrait|length > 0 %}
               <optgroup label="Portrait">
                 {% for pres in portrait %}
-                <option value="{{ pres }}" {% if pres == chosen_res %}selected{% endif %}>{{ pres }}</option>
+                  <option value="{{ pres }}" {% if pres == chosen_res %}selected{% endif %}>{{ pres }}</option>
                 {% endfor %}
               </optgroup>
               {% endif %}
@@ -342,7 +349,7 @@
             <label>Shuffle?</label><br>
             <select name="{{ dname }}_shuffle_mode">
               <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
-              <option value="no"  {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
+              <option value="no" {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
             </select>
           </div>
           {% endif %}
@@ -380,6 +387,7 @@
 
         </div>
         {% endfor %}
+
       </div>
       <div class="centered-btn">
         <button type="submit">Save Display Settings</button>
