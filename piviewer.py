@@ -391,37 +391,26 @@ class DisplayWindow(QMainWindow):
             movie = data["movie"]
             self.current_movie = movie
 
-            # Read first frame to build the blurred background
             first_frame = data["first_frame"]
             fw = self.foreground_label.width()
             fh = self.foreground_label.height()
 
-            if fw < 1 or fh < 1 or movie.frameRect().width() < 1 or movie.frameRect().height() < 1:
-                # fallback: just show the movie at its original size
+            # If dimensions are invalid or first frame is unavailable, fallback
+            if fw < 1 or fh < 1 or first_frame.isNull():
                 self.foreground_label.setMovie(movie)
                 movie.start()
             else:
-                if not first_frame.isNull():
-                    ow = first_frame.width()
-                    oh = first_frame.height()
-                else:
-                    ow, oh = 1, 1
-
-                image_aspect = ow / float(oh)
-                screen_aspect = fw / float(fh)
-
-                if image_aspect > screen_aspect:
-                    new_w = fw
-                    new_h = int(new_w / image_aspect)
-                else:
-                    new_h = fh
-                    new_w = int(new_h * image_aspect)
-
+                ow = first_frame.width()
+                oh = first_frame.height()
+                # Compute scale factor for aspect fill: use the maximum ratio
+                factor = max(fw / ow, fh / oh)
+                new_w = int(ow * factor)
+                new_h = int(oh * factor)
                 movie.setScaledSize(QSize(new_w, new_h))
                 self.foreground_label.setMovie(movie)
                 movie.start()
 
-            # Update blurred background
+            # Update blurred background using the first frame
             if not first_frame.isNull():
                 pm = QPixmap.fromImage(first_frame)
                 blurred = self.make_background_cover(pm)
@@ -449,9 +438,8 @@ class DisplayWindow(QMainWindow):
 
     def updateForegroundScaled(self):
         """
-        Scale the (still) image up/down so it touches at least one screen edge,
-        without clipping, and preserving aspect ratio.
-        Then apply the user-selected foreground resolution scale.
+        Scale the (still) image so it fills the entire foreground area
+        (using an aspect-fill approach) and then center-crop it to the widget's size.
         """
         if not self.current_pixmap:
             return
@@ -460,45 +448,25 @@ class DisplayWindow(QMainWindow):
         if fw < 1 or fh < 1:
             return
 
-        iw = self.current_pixmap.width()
-        ih = self.current_pixmap.height()
-        if iw < 1 or ih < 1:
-            return
+        # Scale with KeepAspectRatioByExpanding to ensure full coverage.
+        scaled = self.current_pixmap.scaled(fw, fh, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        # Apply user-specified foreground scale factor if not 100%
+        if self.fg_scale_percent != 1.0:
+            new_width = int(scaled.width() * self.fg_scale_percent)
+            new_height = int(scaled.height() * self.fg_scale_percent)
+            scaled = scaled.scaled(new_width, new_height, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
 
-        image_aspect = iw / float(ih)
-        screen_aspect = fw / float(fh)
-
-        if image_aspect > screen_aspect:
-            new_w = fw
-            new_h = int(new_w / image_aspect)
-        else:
-            new_h = fh
-            new_w = int(new_h * image_aspect)
-
-        # Apply the foreground scale factor (user-specified percentage)
-        new_w = int(new_w * self.fg_scale_percent)
-        new_h = int(new_h * self.fg_scale_percent)
-
-        scaled_pm = self.current_pixmap.scaled(
-            new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
-
-        # Fill with transparency so we can see blurred background behind
-        final_img = QImage(fw, fh, QImage.Format_ARGB32)
-        final_img.fill(Qt.transparent)
-
-        painter = QPainter(final_img)
-        xoff = (fw - new_w) // 2
-        yoff = (fh - new_h) // 2
-        painter.drawPixmap(xoff, yoff, scaled_pm)
-        painter.end()
-
-        final_pm = QPixmap.fromImage(final_img)
-        self.foreground_label.setPixmap(final_pm)
+        # Crop the center of the scaled image to exactly fill the foreground label.
+        sw = scaled.width()
+        sh = scaled.height()
+        xoff = (sw - fw) // 2
+        yoff = (sh - fh) // 2
+        cropped = scaled.copy(xoff, yoff, fw, fh)
+        self.foreground_label.setPixmap(cropped)
 
     def make_background_cover(self, pixmap):
         """
-        Do a 'cover' fill that may crop edges, then do one-time blur with QGraphicsBlurEffect offscreen.
+        Do a 'cover' fill that may crop edges, then do a one-time blur with QGraphicsBlurEffect offscreen.
         """
         rect = self.main_widget.rect()
         sw, sh = rect.width(), rect.height()
@@ -509,7 +477,7 @@ class DisplayWindow(QMainWindow):
         screen_ratio = sw / float(sh)
         img_ratio = pw / float(ph)
 
-        # We'll fill the entire screen, cropping edges
+        # Fill the entire screen, cropping edges if needed.
         if img_ratio > screen_ratio:
             new_h = sh
             new_w = int(img_ratio * new_h)
@@ -522,13 +490,13 @@ class DisplayWindow(QMainWindow):
         yoff = (scaled.height() - sh) // 2
 
         final = scaled.copy(xoff, yoff, sw, sh)
-        # If the user has chosen to reduce the background resolution for performance, downscale now.
+        # If background resolution is reduced for performance, downscale now.
         if self.bg_resolution_scale < 1.0:
             reduced_width = int(final.width() * self.bg_resolution_scale)
             reduced_height = int(final.height() * self.bg_resolution_scale)
             final = final.scaled(reduced_width, reduced_height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         blurred = self.blur_pixmap_once(final, self.bg_blur_radius)
-        # Scale the blurred image back up to screen size if it was reduced.
+        # Scale the blurred image back up if it was reduced.
         if self.bg_resolution_scale < 1.0:
             blurred = blurred.scaled(sw, sh, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
         return blurred
@@ -536,7 +504,7 @@ class DisplayWindow(QMainWindow):
     def blur_pixmap_once(self, pm, radius):
         """
         Renders a QPixmap with QGraphicsBlurEffect exactly once, offscreen,
-        so we keep that soft, spill-like blur without real-time overhead.
+        to achieve a soft, spill-like blur without real-time overhead.
         """
         if radius <= 0:
             return pm
@@ -548,7 +516,7 @@ class DisplayWindow(QMainWindow):
         item.setGraphicsEffect(blur)
         scene.addItem(item)
 
-        # Render result to an ARGB image
+        # Render the result to an ARGB image.
         result = QImage(pm.width(), pm.height(), QImage.Format_ARGB32)
         result.fill(Qt.transparent)
 
@@ -568,8 +536,8 @@ class DisplayWindow(QMainWindow):
 
     def update_weather(self):
         """
-        Fetch the current weather using the OpenWeatherMap API and update the weather_label.
-        Only updates if weather overlay is enabled.
+        Fetch the current weather using the OpenWeatherMap API and update the weather label.
+        Only updates if the weather overlay is enabled.
         """
         cfg = load_config()
         weather_cfg = cfg.get("weather", {})
@@ -661,7 +629,7 @@ class PiViewerGUI:
         # Detect monitors
         detected = detect_monitors()
 
-        # If we do detect any real monitors, remove the default "Display0"
+        # If we detect real monitors, remove the default "Display0"
         if detected and len(detected) > 0:
             if "displays" not in self.cfg:
                 self.cfg["displays"] = {}
