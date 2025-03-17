@@ -341,6 +341,13 @@ User=$VIEWER_USER
 Group=$VIEWER_USER
 WorkingDirectory=$VIEWER_HOME
 EnvironmentFile=$ENV_FILE
+
+# Added environment lines for DBus, XDG, X
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$USER_ID/bus"
+Environment="XDG_RUNTIME_DIR=/run/user/$USER_ID"
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/$VIEWER_USER/.Xauthority"
+
 ExecStart=/usr/bin/python3 $VIEWER_HOME/app.py
 Restart=always
 RestartSec=5
