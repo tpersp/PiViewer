@@ -18,7 +18,7 @@ import subprocess
 from datetime import datetime
 from collections import OrderedDict
 
-from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRectF
+from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRectF, QTransform
 from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel,
@@ -32,16 +32,9 @@ from utils import load_config, save_config, log_message
 
 def detect_monitors():
     """
-    Use xrandr to detect connected monitors.
-    Returns a dict of:
-      {
-        "HDMI-1": {
-          "screen_name": "HDMI-1: 1920x1080",
-          "width": 1920,
-          "height": 1080
-        },
-        ...
-      }
+    Basic usage of xrandr for single resolution detection.
+    (We now have an extended approach in routes.py for modes.)
+    We keep this for fallback if needed.
     """
     monitors = {}
     try:
@@ -66,7 +59,7 @@ def detect_monitors():
                         }
                         break
     except Exception as e:
-        log_message(f"Monitor detection error: {e}")
+        log_message(f"Monitor detection error (fallback): {e}")
     return monitors
 
 
@@ -77,22 +70,20 @@ class DisplayWindow(QMainWindow):
         self.disp_cfg = disp_cfg
         self.running = True
 
-        # Increase cache size to reduce repeated loading on Pi Zero
+        # Increase cache size
         self.image_cache = OrderedDict()
         self.cache_capacity = 15
 
         self.last_displayed_path = None
 
-        # For static images:
+        # For static images
         self.current_pixmap = None
 
-        # For animated GIFs:
-        # - If scale=100, we let QMovie scale frames internally (fast).
-        # - If scale<100, we degrade frames ourselves.
+        # For GIFs
         self.current_movie = None
         self.handling_gif_frames = False
 
-        # Attempt to occupy full screen on this monitor
+        # Attempt full-screen on monitor
         screen = self.screen()
         if screen:
             self.setGeometry(screen.geometry())
@@ -104,18 +95,18 @@ class DisplayWindow(QMainWindow):
         self.setCentralWidget(self.main_widget)
         self.main_widget.setStyleSheet("background-color: black;")
 
-        # Background label (blurred background)
+        # Background label
         self.bg_label = QLabel(self.main_widget)
         self.bg_label.setScaledContents(False)
         self.bg_label.setStyleSheet("background-color: black;")
 
-        # Foreground label for final composited frames
+        # Foreground label
         self.foreground_label = QLabel(self.main_widget)
         self.foreground_label.setScaledContents(False)
         self.foreground_label.setAlignment(Qt.AlignCenter)
         self.foreground_label.setStyleSheet("background-color: transparent; color: white;")
 
-        # Overlay: clock and weather
+        # Overlay: clock/weather
         self.clock_label = QLabel(self.main_widget)
         self.clock_label.setText("00:00:00")
         self.clock_label.setStyleSheet("color: white; font-size: 24px; background: transparent;")
@@ -135,11 +126,10 @@ class DisplayWindow(QMainWindow):
         self.weather_timer.start(60000)
         self.update_weather()
 
-        # Load config and start
+        # Load config
         self.cfg = load_config()
         self.reload_settings()
         self.next_image(force=True)
-        # Delay layout until after show
         QTimer.singleShot(1000, self.setup_layout)
 
     def setup_layout(self):
@@ -150,25 +140,20 @@ class DisplayWindow(QMainWindow):
             self.setGeometry(screen.geometry())
         rect = self.main_widget.rect()
 
-        # Make background & foreground fill entire window
         self.bg_label.setGeometry(rect)
         self.foreground_label.setGeometry(rect)
 
-        # Ensure the background is behind
         self.bg_label.lower()
         self.foreground_label.raise_()
         self.clock_label.raise_()
         self.weather_label.raise_()
 
-        # Position clock & weather near top-left
         self.clock_label.adjustSize()
         self.clock_label.move(20, 20)
 
         self.weather_label.adjustSize()
         self.weather_label.move(20, self.clock_label.y() + self.clock_label.height() + 10)
 
-        # If we have a static image loaded (not a manually handled GIF),
-        # re-scale it to fill the new geometry
         if self.current_pixmap and not self.handling_gif_frames:
             self.updateForegroundScaled()
 
@@ -180,53 +165,33 @@ class DisplayWindow(QMainWindow):
     def reload_settings(self):
         self.cfg = load_config()
         over = self.cfg.get("overlay", {})
-
-        # Show/hide overlay elements
         if not over.get("overlay_enabled", False):
             self.clock_label.hide()
             self.weather_label.hide()
         else:
-            if over.get("clock_enabled", True):
-                self.clock_label.show()
-            else:
-                self.clock_label.hide()
-
-            if over.get("weather_enabled", False):
-                self.weather_label.show()
-            else:
-                self.weather_label.hide()
-
-            # Overlay style
-            csize = over.get("clock_font_size", 24)
-            wsize = over.get("weather_font_size", 18)
+            self.clock_label.setVisible(over.get("clock_enabled", True))
+            self.weather_label.setVisible(over.get("weather_enabled", False))
+            cfsize = over.get("clock_font_size", 24)
+            wfsize = over.get("weather_font_size", 18)
             fcolor = over.get("font_color", "#ffffff")
-            self.clock_label.setStyleSheet(
-                f"color: {fcolor}; font-size: {csize}px; background: transparent;"
-            )
-            self.weather_label.setStyleSheet(
-                f"color: {fcolor}; font-size: {wsize}px; background: transparent;"
-            )
+            self.clock_label.setStyleSheet(f"color: {fcolor}; font-size: {cfsize}px; background: transparent;")
+            self.weather_label.setStyleSheet(f"color: {fcolor}; font-size: {wfsize}px; background: transparent;")
 
-        # Read background / foreground scale
         gui_cfg = self.cfg.get("gui", {})
         try:
             self.bg_blur_radius = int(gui_cfg.get("background_blur_radius", 0))
         except:
             self.bg_blur_radius = 0
-
-        # background scale -> degrade the background resolution
         try:
             self.bg_scale_percent = int(gui_cfg.get("background_scale_percent", 100))
         except:
             self.bg_scale_percent = 100
-
-        # foreground scale -> degrade the foreground resolution
         try:
             self.fg_scale_percent = int(gui_cfg.get("foreground_scale_percent", 100))
         except:
             self.fg_scale_percent = 100
 
-        # Update slideshow interval
+        # set timer
         interval_s = self.disp_cfg.get("image_interval", 60)
         self.slideshow_timer.setInterval(interval_s * 1000)
         self.slideshow_timer.start()
@@ -234,7 +199,6 @@ class DisplayWindow(QMainWindow):
         self.current_mode = self.disp_cfg.get("mode", "random_image")
         self.image_list = []
         self.index = 0
-
         if self.current_mode in ("random_image", "mixed", "specific_image"):
             self.build_local_image_list()
 
@@ -248,12 +212,12 @@ class DisplayWindow(QMainWindow):
             self.image_list = images
         elif mode == "mixed":
             folder_list = self.disp_cfg.get("mixed_folders", [])
-            all_img = []
+            allimg = []
             for folder in folder_list:
-                all_img += self.gather_images(folder)
+                allimg += self.gather_images(folder)
             if self.disp_cfg.get("shuffle_mode", False):
-                random.shuffle(all_img)
-            self.image_list = all_img
+                random.shuffle(allimg)
+            self.image_list = allimg
         elif mode == "specific_image":
             cat = self.disp_cfg.get("image_category", "")
             spec = self.disp_cfg.get("specific_image", "")
@@ -276,14 +240,10 @@ class DisplayWindow(QMainWindow):
         results.sort()
         return results
 
-    # -----------------------------------------------------------------------
-    # Caching
-    # -----------------------------------------------------------------------
     def load_and_cache_image(self, fullpath):
         ext = os.path.splitext(fullpath)[1].lower()
         if ext == ".gif":
             movie = QMovie(fullpath)
-            # We'll read first frame to see its size
             tmp_reader = QImageReader(fullpath)
             tmp_reader.setAutoDetectImageFormat(True)
             first_frame = tmp_reader.read()
@@ -306,21 +266,15 @@ class DisplayWindow(QMainWindow):
     def preload_next_images(self):
         if not self.image_list:
             return
-        preload_count = 3
-        for i in range(1, preload_count + 1):
+        for i in range(1, 4):
             idx = (self.index + i) % len(self.image_list)
             path = self.image_list[idx]
             if path not in self.image_cache:
                 self.get_cached_image(path)
 
-    # -----------------------------------------------------------------------
-    # Slideshow logic
-    # -----------------------------------------------------------------------
     def next_image(self, force=False):
         if not self.running:
             return
-
-        # If we're in Spotify mode
         if self.current_mode == "spotify":
             path = self.fetch_spotify_album_art()
             if path:
@@ -328,23 +282,19 @@ class DisplayWindow(QMainWindow):
             else:
                 self.clear_foreground_label("No Spotify track info")
             return
-
-        # Otherwise, local images
         if not self.image_list:
             self.clear_foreground_label("No images found")
             return
-
-        # Purge old item from cache
         if self.last_displayed_path and self.last_displayed_path in self.image_cache:
             del self.image_cache[self.last_displayed_path]
 
         self.index += 1
         if self.index >= len(self.image_list):
             self.index = 0
-        new_path = self.image_list[self.index]
-        self.last_displayed_path = new_path
+        path = self.image_list[self.index]
+        self.last_displayed_path = path
 
-        self.show_foreground_image(new_path)
+        self.show_foreground_image(path)
         self.preload_next_images()
 
     def clear_foreground_label(self, message):
@@ -358,17 +308,9 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setAlignment(Qt.AlignCenter)
 
     def show_foreground_image(self, fullpath, is_spotify=False):
-        """
-        Show an image/GIF, scaling it so it fills the window dimension
-        in at least one dimension (width or height).
-        If scale=100 & it's a GIF => we let QMovie handle scaling (faster).
-        If scale<100 => we degrade frames ourselves (downscale->upscale).
-        """
         if not os.path.exists(fullpath):
             self.clear_foreground_label("Missing file")
             return
-
-        # Stop old QMovie if any
         if self.current_movie:
             self.current_movie.stop()
             self.current_movie.deleteLater()
@@ -376,86 +318,58 @@ class DisplayWindow(QMainWindow):
             self.handling_gif_frames = False
 
         data = self.get_cached_image(fullpath)
-
         if data["type"] == "gif" and not is_spotify:
-            # If scale=100, we use QMovie.setScaledSize
             if self.fg_scale_percent == 100:
                 self.current_movie = data["movie"]
-                # Use setScaledSize so it always fills the bounding dimension
-                bounding_w, bounding_h = self.calc_bounding_for_window(data["first_frame"])
+                # bounding size
+                ff = data["first_frame"]
+                bounding_w, bounding_h = self.calc_bounding_for_window(ff)
                 if bounding_w > 0 and bounding_h > 0:
                     self.current_movie.setScaledSize(QSize(bounding_w, bounding_h))
-
                 self.foreground_label.setMovie(self.current_movie)
                 self.current_movie.start()
                 self.handling_gif_frames = False
-
-                # Blur background from first frame
-                if not data["first_frame"].isNull():
-                    pm = QPixmap.fromImage(data["first_frame"])
+                if not ff.isNull():
+                    pm = QPixmap.fromImage(ff)
                     blurred = self.make_background_cover(pm)
-                    if blurred:
-                        self.bg_label.setPixmap(blurred)
-                    else:
-                        self.bg_label.clear()
-                else:
-                    self.bg_label.clear()
-
+                    self.bg_label.setPixmap(blurred if blurred else QPixmap())
             else:
-                # degrade frames ourselves
                 self.current_movie = data["movie"]
                 self.handling_gif_frames = True
                 ff = data["first_frame"]
                 if ff.isNull():
                     self.clear_foreground_label("GIF error")
                     return
-
-                # blur background from first frame
                 pm = QPixmap.fromImage(ff)
                 blurred = self.make_background_cover(pm)
-                if blurred:
-                    self.bg_label.setPixmap(blurred)
-                else:
-                    self.bg_label.clear()
+                self.bg_label.setPixmap(blurred if blurred else QPixmap())
 
-                # bounding dimension for the window
                 bounding_w, bounding_h = self.calc_bounding_for_window(ff)
                 self.gif_bounds = (bounding_w, bounding_h)
-                # connect signals
                 self.current_movie.frameChanged.connect(self.on_gif_frame_changed)
                 self.current_movie.start()
-
         else:
-            # static or Spotify
+            # static
             if data["type"] == "static":
                 self.current_pixmap = data["pixmap"]
             else:
-                # treat Spotify as static
                 self.current_pixmap = QPixmap(fullpath)
-
             self.handling_gif_frames = False
             self.updateForegroundScaled()
-
-            # blur background
             blurred = self.make_background_cover(self.current_pixmap)
-            if blurred:
-                self.bg_label.setPixmap(blurred)
-            else:
-                self.bg_label.clear()
+            self.bg_label.setPixmap(blurred if blurred else QPixmap())
 
     def on_gif_frame_changed(self, frame_index):
-        """
-        For scale<100, degrade each GIF frame manually.
-        """
         if not self.current_movie or not self.handling_gif_frames:
             return
-        frame_img = self.current_movie.currentImage()
-        if frame_img.isNull():
+        frm_img = self.current_movie.currentImage()
+        if frm_img.isNull():
             return
+        src_pm = QPixmap.fromImage(frm_img)
+        degraded = self.degrade_foreground(src_pm, self.gif_bounds)
+        # Now rotate if needed
+        rotated = self.apply_rotation_if_any(degraded)
 
-        src_pm = QPixmap.fromImage(frame_img)
-        final_pm = self.degrade_foreground(src_pm, self.gif_bounds)
-        # Center it in the label
         fw = self.foreground_label.width()
         fh = self.foreground_label.height()
         bounding_w, bounding_h = self.gif_bounds
@@ -465,18 +379,12 @@ class DisplayWindow(QMainWindow):
         painter = QPainter(final_img)
         xoff = (fw - bounding_w) // 2
         yoff = (fh - bounding_h) // 2
-        painter.drawPixmap(xoff, yoff, final_pm)
+        painter.drawPixmap(xoff, yoff, rotated)
         painter.end()
 
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
 
     def calc_bounding_for_window(self, first_frame):
-        """
-        Compute bounding size so the image/gif touches side or top/bottom.
-        Input: a QImage (the first frame) to get original aspect,
-               plus the window size from foreground_label.
-        Output: (bounding_w, bounding_h)
-        """
         fw = self.foreground_label.width()
         fh = self.foreground_label.height()
         if fw < 1 or fh < 1:
@@ -486,15 +394,12 @@ class DisplayWindow(QMainWindow):
         if iw < 1 or ih < 1:
             return (fw, fh)
 
-        # same approach used for fill
         image_aspect = iw / float(ih)
         screen_aspect = fw / float(fh)
         if image_aspect > screen_aspect:
-            # fill width
             bounding_w = fw
             bounding_h = int(bounding_w / image_aspect)
         else:
-            # fill height
             bounding_h = fh
             bounding_w = int(bounding_h * image_aspect)
         if bounding_w < 1: bounding_w = 1
@@ -502,58 +407,46 @@ class DisplayWindow(QMainWindow):
         return (bounding_w, bounding_h)
 
     def updateForegroundScaled(self):
-        """
-        For static images: always fill the window dimension in at least
-        one direction, then degrade if <100.
-        """
         if not self.current_pixmap:
             return
-
         fw = self.foreground_label.width()
         fh = self.foreground_label.height()
         if fw < 1 or fh < 1:
             return
-
         iw = self.current_pixmap.width()
         ih = self.current_pixmap.height()
         if iw < 1 or ih < 1:
             return
 
-        # bounding dimension that touches side or top/bottom
+        # bounding fill
         bounding_w, bounding_h = self.calc_fill_size(iw, ih, fw, fh)
+        degraded = self.degrade_foreground(self.current_pixmap, (bounding_w, bounding_h))
+        # apply rotate
+        rotated = self.apply_rotation_if_any(degraded)
 
-        # degrade if needed
-        final_pm = self.degrade_foreground(self.current_pixmap, (bounding_w, bounding_h))
-
-        # center it in the label
         final_img = QImage(fw, fh, QImage.Format_ARGB32)
         final_img.fill(Qt.transparent)
         painter = QPainter(final_img)
-        xoff = (fw - bounding_w) // 2
-        yoff = (fh - bounding_h) // 2
-        painter.drawPixmap(xoff, yoff, final_pm)
+
+        # After rotation, the pixmap might have new w/h
+        rw = rotated.width()
+        rh = rotated.height()
+        xoff = (fw - rw) // 2
+        yoff = (fh - rh) // 2
+        painter.drawPixmap(xoff, yoff, rotated)
         painter.end()
 
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
 
     def calc_fill_size(self, iw, ih, fw, fh):
-        """
-        Return (bounding_w, bounding_h) so that (iw x ih) is scaled
-        to fill the (fw x fh) region in at least one dimension.
-        This is the same approach as 'cover' or 'fit inside' to
-        ensure side-to-side or top-to-bottom is fully spanned.
-        """
         if iw <= 0 or ih <= 0 or fw <= 0 or fh <= 0:
             return (fw, fh)
-
         image_aspect = iw / float(ih)
         screen_aspect = fw / float(fh)
         if image_aspect > screen_aspect:
-            # fill width
             new_w = fw
             new_h = int(new_w / image_aspect)
         else:
-            # fill height
             new_h = fh
             new_w = int(new_h * image_aspect)
         if new_w < 1: new_w = 1
@@ -561,74 +454,66 @@ class DisplayWindow(QMainWindow):
         return (new_w, new_h)
 
     def degrade_foreground(self, src_pm, bounding):
-        """
-        Scale src_pm up or down to bounding (covering the screen dimension),
-        then if fg_scale_percent < 100, do an internal down+up degrade.
-        """
-        (bw, bh) = bounding
+        bw, bh = bounding
         if bw < 1 or bh < 1:
             return src_pm
-
-        # 1) scale to bounding
         scaled = src_pm.scaled(bw, bh, Qt.KeepAspectRatio, Qt.FastTransformation)
-        # 2) degrade if <100
         if self.fg_scale_percent >= 100:
             return scaled
-
-        scale_factor = float(self.fg_scale_percent) / 100.0
-        down_w = int(bw * scale_factor)
-        down_h = int(bh * scale_factor)
+        sf = float(self.fg_scale_percent) / 100.0
+        down_w = int(bw * sf)
+        down_h = int(bh * sf)
         if down_w < 1 or down_h < 1:
             return scaled
-
-        small = scaled.scaled(down_w, down_h, Qt.IgnoreAspectRatio, Qt.FastTransformation)
-        final_pm = small.scaled(bw, bh, Qt.IgnoreAspectRatio, Qt.FastTransformation)
+        smaller = scaled.scaled(down_w, down_h, Qt.IgnoreAspectRatio, Qt.FastTransformation)
+        final_pm = smaller.scaled(bw, bh, Qt.IgnoreAspectRatio, Qt.FastTransformation)
         return final_pm
 
-    # -----------------------------------------------------------------------
-    # Background logic (blur with optional resolution downscale)
-    # -----------------------------------------------------------------------
+    def apply_rotation_if_any(self, pixmap):
+        """
+        Re-apply user-chosen rotate from config. This is now done in code
+        for arbitrary degrees (not just 0,90,180,270). We'll do a QTransform.
+        """
+        degrees = self.disp_cfg.get("rotate", 0)
+        if degrees == 0:
+            return pixmap
+
+        transform = QTransform()
+        transform.rotate(degrees)
+        # Use SmoothTransformation or Fast? We'll do Smooth
+        rotated = pixmap.transformed(transform, Qt.SmoothTransformation)
+        return rotated
+
     def make_background_cover(self, pixmap):
-        """
-        Scale `pixmap` so it covers entire window dimension (with possible cropping),
-        optionally degrade resolution, then blur once. Return final QPixmap
-        sized exactly to the window geometry.
-        """
         rect = self.main_widget.rect()
         sw, sh = rect.width(), rect.height()
         pw, ph = pixmap.width(), pixmap.height()
         if sw < 1 or sh < 1 or pw < 1 or ph < 1:
             return None
-
         screen_ratio = float(sw) / float(sh)
         img_ratio = float(pw) / float(ph)
         trans_mode = Qt.FastTransformation
 
-        # Step 1: scale so it's big enough to cover
         if img_ratio > screen_ratio:
             new_h = sh
             new_w = int(new_h * img_ratio)
         else:
             new_w = sw
             new_h = int(new_w / img_ratio)
-
         scaled = pixmap.scaled(new_w, new_h, Qt.KeepAspectRatio, trans_mode)
-        # Crop center to exactly (sw x sh)
         xoff = (scaled.width() - sw) // 2
         yoff = (scaled.height() - sh) // 2
         final_cover = scaled.copy(xoff, yoff, sw, sh)
 
-        # Step 2: degrade if needed
         if self.bg_scale_percent < 100:
             sf = float(self.bg_scale_percent) / 100.0
             down_w = int(sw * sf)
             down_h = int(sh * sf)
             if down_w > 0 and down_h > 0:
                 temp_down = final_cover.scaled(down_w, down_h, Qt.IgnoreAspectRatio, trans_mode)
-                # blur that
-                temp_blurred = self.blur_pixmap_once(temp_down, self.bg_blur_radius)
-                if temp_blurred:
-                    final_bg = temp_blurred.scaled(sw, sh, Qt.IgnoreAspectRatio, trans_mode)
+                blurred = self.blur_pixmap_once(temp_down, self.bg_blur_radius)
+                if blurred:
+                    final_bg = blurred.scaled(sw, sh, Qt.IgnoreAspectRatio, trans_mode)
                 else:
                     final_bg = temp_down.scaled(sw, sh, Qt.IgnoreAspectRatio, trans_mode)
             else:
@@ -657,9 +542,6 @@ class DisplayWindow(QMainWindow):
         painter.end()
         return QPixmap.fromImage(result)
 
-    # -----------------------------------------------------------------------
-    # Clock & Weather
-    # -----------------------------------------------------------------------
     def update_clock(self):
         now_str = datetime.now().strftime("%H:%M:%S")
         self.clock_label.setText(now_str)
@@ -669,7 +551,6 @@ class DisplayWindow(QMainWindow):
         over = cfg.get("overlay", {})
         if not over.get("weather_enabled", False):
             return
-
         wcfg = cfg.get("weather", {})
         api_key = wcfg.get("api_key", "")
         lat = wcfg.get("lat")
@@ -677,7 +558,6 @@ class DisplayWindow(QMainWindow):
         if not (api_key and lat is not None and lon is not None):
             self.weather_label.setText("Weather: config missing")
             return
-
         try:
             url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={api_key}"
             r = requests.get(url, timeout=5)
@@ -700,9 +580,6 @@ class DisplayWindow(QMainWindow):
             self.weather_label.setText("Weather: error")
             log_message(f"Error updating weather: {e}")
 
-    # -----------------------------------------------------------------------
-    # Spotify
-    # -----------------------------------------------------------------------
     def fetch_spotify_album_art(self):
         try:
             cfg = load_config()
@@ -713,7 +590,6 @@ class DisplayWindow(QMainWindow):
             scope = sp_cfg.get("scope", "user-read-currently-playing user-read-playback-state")
             if not (cid and csec and ruri):
                 return None
-
             auth = SpotifyOAuth(client_id=cid, client_secret=csec,
                                 redirect_uri=ruri, scope=scope,
                                 cache_path=".spotify_cache")
@@ -722,7 +598,7 @@ class DisplayWindow(QMainWindow):
                 return None
             if auth.is_token_expired(token_info):
                 token_info = auth.refresh_access_token(token_info["refresh_token"])
-
+            import spotipy
             sp = spotipy.Spotify(auth=token_info["access_token"])
             current = sp.current_playback()
             if not current or not current.get("item"):
@@ -748,18 +624,14 @@ class PiViewerGUI:
     def __init__(self):
         self.cfg = load_config()
         self.app = QApplication(sys.argv)
-
-        # Detect monitors
-        detected = detect_monitors()
-        if detected and len(detected) > 0:
+        # old fallback detect
+        fallback_mons = detect_monitors()
+        if fallback_mons and len(fallback_mons) > 0:
             if "displays" not in self.cfg:
                 self.cfg["displays"] = {}
-            # Remove any old "Display0"
             if "Display0" in self.cfg["displays"]:
                 del self.cfg["displays"]["Display0"]
-
-            # Add newly found monitors if missing
-            for mon_name, mon_info in detected.items():
+            for mon_name, mon_info in fallback_mons.items():
                 if mon_name not in self.cfg["displays"]:
                     self.cfg["displays"][mon_name] = {
                         "mode": "random_image",
@@ -771,18 +643,18 @@ class PiViewerGUI:
                         "rotate": 0,
                         "screen_name": mon_info["screen_name"]
                     }
-                    log_message(f"Added new monitor to config: {mon_info['screen_name']}")
-
+                    log_message(f"Added fallback monitor to config: {mon_info['screen_name']}")
             save_config(self.cfg)
-        else:
-            log_message("No monitors detected via xrandr. Using existing config...")
 
-        # Create a window per display in config
         self.windows = []
         for dname, dcfg in self.cfg.get("displays", {}).items():
             w = DisplayWindow(dname, dcfg)
-            title = dcfg.get("screen_name", dname)
-            w.setWindowTitle(title)
+            # If we have a 'monitor_model' use that, else use dcfg["screen_name"]
+            if "monitor_model" in dcfg and dcfg["monitor_model"]:
+                t = f"{dname} ({dcfg['monitor_model']})"
+            else:
+                t = dcfg.get("screen_name", dname)
+            w.setWindowTitle(t)
             w.show()
             self.windows.append(w)
 
