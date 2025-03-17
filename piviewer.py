@@ -79,7 +79,7 @@ class DisplayWindow(QMainWindow):
 
         # Caching: use an OrderedDict as a simple LRU cache.
         self.image_cache = OrderedDict()
-        self.cache_capacity = 5  # Adjust as needed.
+        self.cache_capacity = 10  # Increased from 5
         self.last_displayed_path = None  # For cache removal
 
         # For static images:
@@ -182,17 +182,17 @@ class DisplayWindow(QMainWindow):
             self.clock_label.setStyleSheet(f"color: {fcolor}; font-size: {clock_sz}px; background: transparent;")
             self.weather_label.setStyleSheet(f"color: {fcolor}; font-size: {weath_sz}px; background: transparent;")
         try:
-            self.bg_blur_radius = int(self.cfg.get("gui", {}).get("background_blur_radius", 0))
+            self.bg_blur_radius = int(self.cfg.get("gui", {}).get("background_blur_radius", 10))  # Default to 10
         except:
             self.bg_blur_radius = 0
         try:
-            self.bg_resolution_scale = float(self.cfg.get("gui", {}).get("background_resolution_scale", 1.0))
+            self.bg_resolution_scale = float(self.cfg.get("gui", {}).get("background_resolution_scale", 0.5))  # Default 0.5
         except:
-            self.bg_resolution_scale = 1.0
+            self.bg_resolution_scale = 0.5
         try:
-            self.fg_scale_percent = float(self.cfg.get("gui", {}).get("foreground_scale_percent", 100)) / 100.0
+            self.fg_scale_percent = float(self.cfg.get("gui", {}).get("foreground_scale_percent", 90)) / 100.0  # Default 90%
         except:
-            self.fg_scale_percent = 1.0
+            self.fg_scale_percent = 0.9
         interval_s = self.disp_cfg.get("image_interval", 60)
         self.slideshow_timer.setInterval(interval_s * 1000)
         self.slideshow_timer.start()
@@ -268,7 +268,7 @@ class DisplayWindow(QMainWindow):
     def preload_next_images(self):
         if not self.image_list:
             return
-        preload_count = 3  # number of images to preload
+        preload_count = 5  # Increased from 3
         for i in range(1, preload_count + 1):
             next_index = (self.index + i) % len(self.image_list)
             next_path = self.image_list[next_index]
@@ -440,7 +440,8 @@ class DisplayWindow(QMainWindow):
             final = final.scaled(reduced_width, reduced_height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         blurred = self.blur_pixmap_once(final, self.bg_blur_radius)
         if self.bg_resolution_scale < 1.0:
-            blurred = blurred.scaled(sw, sh, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+            # Use faster scaling for blurred background upscale
+            blurred = blurred.scaled(sw, sh, Qt.IgnoreAspectRatio, Qt.FastTransformation)  # Changed to FastTransformation
         return blurred
 
     def blur_pixmap_once(self, pm, radius):
