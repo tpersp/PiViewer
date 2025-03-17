@@ -18,7 +18,7 @@ import subprocess
 from datetime import datetime
 from collections import OrderedDict
 
-from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRectF, QThread, Signal
+from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRectF
 from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel,
@@ -29,100 +29,47 @@ from spotipy.oauth2 import SpotifyOAuth
 from config import APP_VERSION, IMAGE_DIR, LOG_PATH
 from utils import load_config, save_config, log_message
 
-# ----------------------------------------------------------------
-# Worker thread class to offload heavy image processing.
-# It scales the foreground image and computes a blurred background.
-# ----------------------------------------------------------------
-class ImageProcessingThread(QThread):
-    # Emits two QImage objects: one for the processed foreground, one for the processed background.
-    processed_images = Signal(object, object)
 
-    def __init__(self, original_image, fg_target_size, bg_target_size, fg_scale_percent, bg_blur_radius, bg_resolution_scale):
-        super().__init__()
-        self.original_image = original_image  # QImage
-        self.fg_target_size = fg_target_size  # QSize for foreground label
-        self.bg_target_size = bg_target_size  # QSize for main widget/background
-        self.fg_scale_percent = fg_scale_percent
-        self.bg_blur_radius = bg_blur_radius
-        self.bg_resolution_scale = bg_resolution_scale
-
-    def run(self):
-        fg = self.process_foreground(self.original_image, self.fg_target_size, self.fg_scale_percent)
-        bg = self.process_background(self.original_image, self.bg_target_size, self.bg_resolution_scale, self.bg_blur_radius)
-        self.processed_images.emit(fg, bg)
-
-    def process_foreground(self, image, target_size, fg_scale_percent):
-        fw, fh = target_size.width(), target_size.height()
-        iw, ih = image.width(), image.height()
-        if iw < 1 or ih < 1 or fw < 1 or fh < 1:
-            return QImage()
-        image_aspect = iw / float(ih)
-        screen_aspect = fw / float(fh)
-        if image_aspect > screen_aspect:
-            new_w = fw
-            new_h = int(new_w / image_aspect)
-        else:
-            new_h = fh
-            new_w = int(new_h * image_aspect)
-        new_w = int(new_w * fg_scale_percent)
-        new_h = int(new_h * fg_scale_percent)
-        scaled = image.scaled(new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        final = QImage(fw, fh, QImage.Format_ARGB32)
-        final.fill(Qt.transparent)
-        painter = QPainter(final)
-        xoff = (fw - new_w) // 2
-        yoff = (fh - new_h) // 2
-        painter.drawImage(xoff, yoff, scaled)
-        painter.end()
-        return final
-
-    def process_background(self, image, target_size, bg_resolution_scale, bg_blur_radius):
-        sw, sh = target_size.width(), target_size.height()
-        pw, ph = image.width(), image.height()
-        if sw < 1 or sh < 1 or pw < 1 or ph < 1:
-            return QImage()
-        screen_ratio = sw / float(sh)
-        img_ratio = pw / float(ph)
-        if img_ratio > screen_ratio:
-            new_h = sh
-            new_w = int(img_ratio * new_h)
-        else:
-            new_w = sw
-            new_h = int(new_w / img_ratio)
-        scaled = image.scaled(new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        xoff = (scaled.width() - sw) // 2
-        yoff = (scaled.height() - sh) // 2
-        final = scaled.copy(xoff, yoff, sw, sh)
-        if bg_resolution_scale < 1.0:
-            reduced_width = int(final.width() * bg_resolution_scale)
-            reduced_height = int(final.height() * bg_resolution_scale)
-            final = final.scaled(reduced_width, reduced_height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        blurred = self.blur_image(final, bg_blur_radius)
-        if bg_resolution_scale < 1.0:
-            blurred = blurred.scaled(sw, sh, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-        return blurred
-
-    def blur_image(self, image, radius):
-        if radius <= 0:
-            return image
-        scene = QGraphicsScene()
-        pix = QPixmap.fromImage(image)
-        item = QGraphicsPixmapItem(pix)
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(radius)
-        item.setGraphicsEffect(blur)
-        scene.addItem(item)
-        result = QImage(pix.width(), pix.height(), QImage.Format_ARGB32)
-        result.fill(Qt.transparent)
-        painter = QPainter(result)
-        scene.render(painter, QRectF(0, 0, pix.width(), pix.height()), QRectF(0, 0, pix.width(), pix.height()))
-        painter.end()
-        return result
+def detect_monitors():
+    """
+    Use xrandr to detect connected monitors.
+    Returns a dict of:
+      {
+        "HDMI-1": {
+          "screen_name": "HDMI-1: 1920x1080",
+          "width": 1920,
+          "height": 1080
+        },
+        ...
+      }
+    """
+    monitors = {}
+    try:
+        output = subprocess.check_output(["xrandr", "--query"]).decode("utf-8")
+        for line in output.splitlines():
+            if " connected " in line:
+                parts = line.split()
+                name = parts[0]
+                for part in parts:
+                    if "x" in part and "+" in part:
+                        res = part.split("+")[0]
+                        try:
+                            w, h = res.split("x")
+                            w = int(w)
+                            h = int(h)
+                        except:
+                            w, h = 0, 0
+                        monitors[name] = {
+                            "screen_name": f"{name}: {w}x{h}",
+                            "width": w,
+                            "height": h
+                        }
+                        break
+    except Exception as e:
+        log_message(f"Monitor detection error: {e}")
+    return monitors
 
 
-# ----------------------------------------------------------------
-# Main display window class.
-# ----------------------------------------------------------------
 class DisplayWindow(QMainWindow):
     def __init__(self, disp_name, disp_cfg):
         super().__init__()
@@ -139,11 +86,6 @@ class DisplayWindow(QMainWindow):
         self.current_pixmap = None
         # For animated GIFs:
         self.current_movie = None
-
-        # Processed image caches (from worker thread)
-        self.cached_fg = None
-        self.cached_bg = None
-        self.image_thread = None
 
         # Force full-screen on the monitor
         screen = self.screen()
@@ -209,18 +151,14 @@ class DisplayWindow(QMainWindow):
         self.clock_label.move(20, 20)
         self.weather_label.adjustSize()
         self.weather_label.move(20, self.clock_label.y() + self.clock_label.height() + 10)
-        # If a processed image exists, reapply it on layout change
-        if self.cached_fg:
-            self.foreground_label.setPixmap(self.cached_fg)
-        if self.cached_bg:
-            self.bg_label.setPixmap(self.cached_bg)
+        if self.current_pixmap:
+            self.updateForegroundScaled()
 
     def resizeEvent(self, event):
         QMainWindow.resizeEvent(self, event)
         self.setup_layout()
         if self.current_pixmap:
-            # Delay reprocessing slightly to avoid rapid-fire processing during resize.
-            QTimer.singleShot(100, self.start_image_processing)
+            self.updateForegroundScaled()
 
     @Slot()
     def reload_settings(self):
@@ -417,37 +355,112 @@ class DisplayWindow(QMainWindow):
             # Update blurred background using first frame
             if not first_frame.isNull():
                 pm = QPixmap.fromImage(first_frame)
-                # For GIFs we do not offload processing
-                blurred = pm.scaled(self.bg_label.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
-                self.bg_label.setPixmap(blurred)
+                blurred = self.make_background_cover(pm)
+                if blurred:
+                    self.bg_label.setPixmap(blurred)
+                else:
+                    self.bg_label.clear()
             else:
                 self.bg_label.clear()
         else:
-            # Still image: use worker thread for scaling and blurring
+            # Still image: use original scaling logic
             pixmap = data["pixmap"]
+            self.foreground_label.setMovie(None)
             self.current_pixmap = pixmap
-            self.start_image_processing()
+            self.updateForegroundScaled()
+            blurred = self.make_background_cover(pixmap)
+            if blurred:
+                self.bg_label.setPixmap(blurred)
+            else:
+                self.bg_label.clear()
 
-    def start_image_processing(self):
-        if self.current_pixmap is None:
+    def updateForegroundScaled(self):
+        """
+        Scale the still image so that the entire image is visible and centered.
+        The image is scaled (using Qt.KeepAspectRatio) until it touches either the top+bottom
+        or left+right edges, with blank space on the other sides.
+        """
+        if not self.current_pixmap:
             return
-        fg_target_size = self.foreground_label.size()
-        bg_target_size = self.main_widget.size()
-        original_image = self.current_pixmap.toImage()
-        if self.image_thread is not None:
-            self.image_thread.terminate()
-            self.image_thread.wait()
-        self.image_thread = ImageProcessingThread(original_image, fg_target_size, bg_target_size,
-                                                  self.fg_scale_percent, self.bg_blur_radius, self.bg_resolution_scale)
-        self.image_thread.processed_images.connect(self.on_processing_done)
-        self.image_thread.start()
+        fw = self.foreground_label.width()
+        fh = self.foreground_label.height()
+        if fw < 1 or fh < 1:
+            return
+        iw = self.current_pixmap.width()
+        ih = self.current_pixmap.height()
+        if iw < 1 or ih < 1:
+            return
+        image_aspect = iw / float(ih)
+        screen_aspect = fw / float(fh)
+        if image_aspect > screen_aspect:
+            new_w = fw
+            new_h = int(new_w / image_aspect)
+        else:
+            new_h = fh
+            new_w = int(new_h * image_aspect)
+        # Apply user-specified scaling factor
+        new_w = int(new_w * self.fg_scale_percent)
+        new_h = int(new_h * self.fg_scale_percent)
+        scaled_pm = self.current_pixmap.scaled(new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        final_img = QImage(fw, fh, QImage.Format_ARGB32)
+        final_img.fill(Qt.transparent)
+        painter = QPainter(final_img)
+        xoff = (fw - new_w) // 2
+        yoff = (fh - new_h) // 2
+        painter.drawPixmap(xoff, yoff, scaled_pm)
+        painter.end()
+        final_pm = QPixmap.fromImage(final_img)
+        self.foreground_label.setPixmap(final_pm)
 
-    @Slot(object, object)
-    def on_processing_done(self, fg_image, bg_image):
-        self.cached_fg = QPixmap.fromImage(fg_image)
-        self.cached_bg = QPixmap.fromImage(bg_image)
-        self.foreground_label.setPixmap(self.cached_fg)
-        self.bg_label.setPixmap(self.cached_bg)
+    def make_background_cover(self, pixmap):
+        """
+        Create a background image by scaling the given pixmap to fill the screen
+        (with potential cropping) and then applying a one-time blur.
+        """
+        rect = self.main_widget.rect()
+        sw, sh = rect.width(), rect.height()
+        pw, ph = pixmap.width(), pixmap.height()
+        if sw < 1 or sh < 1 or pw < 1 or ph < 1:
+            return None
+        screen_ratio = sw / float(sh)
+        img_ratio = pw / float(ph)
+        if img_ratio > screen_ratio:
+            new_h = sh
+            new_w = int(img_ratio * new_h)
+        else:
+            new_w = sw
+            new_h = int(new_w / img_ratio)
+        scaled = pixmap.scaled(new_w, new_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        xoff = (scaled.width() - sw) // 2
+        yoff = (scaled.height() - sh) // 2
+        final = scaled.copy(xoff, yoff, sw, sh)
+        if self.bg_resolution_scale < 1.0:
+            reduced_width = int(final.width() * self.bg_resolution_scale)
+            reduced_height = int(final.height() * self.bg_resolution_scale)
+            final = final.scaled(reduced_width, reduced_height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        blurred = self.blur_pixmap_once(final, self.bg_blur_radius)
+        if self.bg_resolution_scale < 1.0:
+            blurred = blurred.scaled(sw, sh, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+        return blurred
+
+    def blur_pixmap_once(self, pm, radius):
+        """
+        Render the given QPixmap with a one-time QGraphicsBlurEffect offscreen.
+        """
+        if radius <= 0:
+            return pm
+        scene = QGraphicsScene()
+        item = QGraphicsPixmapItem(pm)
+        blur = QGraphicsBlurEffect()
+        blur.setBlurRadius(radius)
+        item.setGraphicsEffect(blur)
+        scene.addItem(item)
+        result = QImage(pm.width(), pm.height(), QImage.Format_ARGB32)
+        result.fill(Qt.transparent)
+        painter = QPainter(result)
+        scene.render(painter, QRectF(0, 0, pm.width(), pm.height()), QRectF(0, 0, pm.width(), pm.height()))
+        painter.end()
+        return QPixmap.fromImage(result)
 
     def update_clock(self):
         now_str = datetime.now().strftime("%H:%M:%S")
@@ -564,46 +577,6 @@ class PiViewerGUI:
 
     def run(self):
         sys.exit(self.app.exec())
-
-
-def detect_monitors():
-    """
-    Use xrandr to detect connected monitors.
-    Returns a dict of:
-      {
-        "HDMI-1": {
-          "screen_name": "HDMI-1: 1920x1080",
-          "width": 1920,
-          "height": 1080
-        },
-        ...
-      }
-    """
-    monitors = {}
-    try:
-        output = subprocess.check_output(["xrandr", "--query"]).decode("utf-8")
-        for line in output.splitlines():
-            if " connected " in line:
-                parts = line.split()
-                name = parts[0]
-                for part in parts:
-                    if "x" in part and "+" in part:
-                        res = part.split("+")[0]
-                        try:
-                            w, h = res.split("x")
-                            w = int(w)
-                            h = int(h)
-                        except:
-                            w, h = 0, 0
-                        monitors[name] = {
-                            "screen_name": f"{name}: {w}x{h}",
-                            "width": w,
-                            "height": h
-                        }
-                        break
-    except Exception as e:
-        log_message(f"Monitor detection error: {e}")
-    return monitors
 
 
 def main():
