@@ -18,7 +18,7 @@ import subprocess
 from datetime import datetime
 from collections import OrderedDict
 
-from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRectF, Signal
+from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRectF
 from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel,
@@ -86,9 +86,9 @@ class DisplayWindow(QMainWindow):
         # For static images:
         self.current_pixmap = None
 
-        # For animated GIFs (we manage frames ourselves):
+        # For animated GIFs (manual handling if scale < 100%)
         self.current_movie = None
-        self.handling_gif_frames = False  # set True once we connect signals
+        self.handling_gif_frames = False
 
         # Attempt full-screen on the specified monitor
         screen = self.screen()
@@ -165,7 +165,7 @@ class DisplayWindow(QMainWindow):
         self.weather_label.adjustSize()
         self.weather_label.move(20, self.clock_label.y() + self.clock_label.height() + 10)
 
-        # If we have a current static pixmap, re-render it
+        # If we have a current static pixmap and we're not manually handling GIF frames
         if self.current_pixmap and not self.handling_gif_frames:
             self.updateForegroundScaled()
 
@@ -344,7 +344,6 @@ class DisplayWindow(QMainWindow):
 
     def clear_foreground_label(self, message):
         if self.current_movie:
-            # If we had a QMovie, we stop it
             self.current_movie.stop()
             self.current_movie.deleteLater()
             self.current_movie = None
@@ -356,7 +355,8 @@ class DisplayWindow(QMainWindow):
     def show_foreground_image(self, fullpath, is_spotify=False):
         """
         Show the image or GIF at 'fullpath' in the foreground,
-        applying the "Foreground Resolution Scale" logic (downscale -> upscale).
+        applying the "Foreground Resolution Scale" logic (downscale -> upscale),
+        but only if fg_scale_percent < 100 for GIF. If =100, set QMovie directly.
         """
         if not os.path.exists(fullpath):
             self.clear_foreground_label("Missing file")
@@ -371,49 +371,60 @@ class DisplayWindow(QMainWindow):
 
         data = self.get_cached_image(fullpath)
 
+        # Decide how to handle an animated GIF
         if data["type"] == "gif" and not is_spotify:
-            # For an animated GIF, we handle frames manually to degrade resolution
-            self.current_movie = data["movie"]
-            self.handling_gif_frames = True
-            # We'll store the bounding box for the first frame's aspect ratio
-            if data["first_frame"].isNull():
-                # If the first frame can't be read, fallback
-                self.clear_foreground_label("GIF error")
-                return
-            iw = data["first_frame"].width()
-            ih = data["first_frame"].height()
-
-            # Calculate bounding box for final display
-            fw = self.foreground_label.width()
-            fh = self.foreground_label.height()
-            if fw < 1 or fh < 1 or iw < 1 or ih < 1:
-                # fallback: no good dimension
+            # If scale is exactly 100, we can just setMovie for performance
+            if self.fg_scale_percent == 100:
+                self.current_movie = data["movie"]
                 self.foreground_label.setMovie(self.current_movie)
                 self.current_movie.start()
-                return
+                self.handling_gif_frames = False
 
-            # We'll store final bounding dimensions
-            self.gif_bounds = self.calc_final_display_size(iw, ih, fw, fh)
-            # Connect frameChanged
-            self.current_movie.frameChanged.connect(self.on_gif_frame_changed)
-            self.current_movie.start()
-
-            # Also update the background with the first frame
-            pm = QPixmap.fromImage(data["first_frame"])
-            blurred = self.make_background_cover(pm)
-            if blurred:
-                self.bg_label.setPixmap(blurred)
+                # Blur background once from first frame
+                if not data["first_frame"].isNull():
+                    pm = QPixmap.fromImage(data["first_frame"])
+                    blurred = self.make_background_cover(pm)
+                    if blurred:
+                        self.bg_label.setPixmap(blurred)
+                    else:
+                        self.bg_label.clear()
+                else:
+                    self.bg_label.clear()
             else:
-                self.bg_label.clear()
+                # We have to degrade resolution ourselves:
+                self.current_movie = data["movie"]
+                self.handling_gif_frames = True
+
+                # We'll store the bounding box for the first frame's aspect ratio
+                first_img = data["first_frame"]
+                if first_img.isNull():
+                    self.clear_foreground_label("GIF error")
+                    return
+
+                # Update background ONCE with first frame:
+                pm = QPixmap.fromImage(first_img)
+                blurred = self.make_background_cover(pm)
+                if blurred:
+                    self.bg_label.setPixmap(blurred)
+                else:
+                    self.bg_label.clear()
+
+                # figure out final bounding (for reference only)
+                iw = first_img.width()
+                ih = first_img.height()
+                fw = self.foreground_label.width()
+                fh = self.foreground_label.height()
+
+                self.gif_bounds = self.calc_final_display_size(iw, ih, fw, fh)
+                self.current_movie.frameChanged.connect(self.on_gif_frame_changed)
+                self.current_movie.start()
 
         else:
-            # Either a static image or a "Spotify" image
-            # Show it with resolution degrading
+            # Either a static image or a "Spotify" single image
             if data["type"] == "static":
                 self.current_pixmap = data["pixmap"]
             else:
-                # If is_spotify, data["type"] might also be 'gif' but let's treat it as static
-                # because we only got one album-art frame from Spotify
+                # is_spotify => treat it as static
                 self.current_pixmap = QPixmap(fullpath)
 
             self.handling_gif_frames = False
@@ -431,6 +442,9 @@ class DisplayWindow(QMainWindow):
         Called each time QMovie advances to a new frame.
         We'll fetch the current frame as QImage, degrade resolution,
         and then put it on the foreground label.
+
+        We do NOT re-blur the background here for each frame
+        (only once with the first frame) to save CPU.
         """
         if not self.current_movie or not self.handling_gif_frames:
             return
@@ -441,17 +455,10 @@ class DisplayWindow(QMainWindow):
 
         # Convert to pixmap
         original_pm = QPixmap.fromImage(frame_image)
-        # Degrade resolution
+        # degrade resolution
         final_pm = self.degrade_foreground(original_pm, self.gif_bounds)
-        # Show on label
-        self.foreground_label.setPixmap(final_pm)
 
-        # Also update background blur with current frame
-        blurred = self.make_background_cover(original_pm)
-        if blurred:
-            self.bg_label.setPixmap(blurred)
-        else:
-            self.bg_label.clear()
+        self.foreground_label.setPixmap(final_pm)
 
     # -----------------------------------------------------------------------
     # Foreground resolution logic
@@ -522,23 +529,25 @@ class DisplayWindow(QMainWindow):
         if w < 1 or h < 1:
             return pixmap  # fallback
 
-        scale_pct = max(1, self.fg_scale_percent)  # avoid zero
-        # Downscaled dims
-        down_w = int(w * (scale_pct / 100.0))
-        down_h = int(h * (scale_pct / 100.0))
+        if self.fg_scale_percent >= 100:
+            # No degrade => just scale the original to final_dims (keeping aspect ratio ignored)
+            # but we basically want to preserve the bounding approach. So let's do:
+            trans_mode = Qt.FastTransformation
+            return pixmap.scaled(w, h, Qt.IgnoreAspectRatio, trans_mode)
+
+        scale_factor = float(self.fg_scale_percent) / 100.0
+        down_w = int(w * scale_factor)
+        down_h = int(h * scale_factor)
 
         if down_w < 1 or down_h < 1:
-            return pixmap
+            # can't degrade, just do final
+            trans_mode = Qt.FastTransformation
+            return pixmap.scaled(w, h, Qt.IgnoreAspectRatio, trans_mode)
 
-        # Downscale from original to (down_w, down_h)
-        # We'll do "KeepAspectRatioByExpanding" or "IgnoreAspectRatio"?
-        # Because the final dims might differ from the original aspect ratio slightly.
-        # We'll do a normal keep aspect from the original to the bounding box, then degrade.
-        # But for consistent logic, let's do a direct scale with the bounding ratio:
         trans_mode = Qt.FastTransformation
+        # Downscale
         smaller = pixmap.scaled(down_w, down_h, Qt.IgnoreAspectRatio, trans_mode)
-
-        # Then upscale to final size
+        # Then upscale
         bigger = smaller.scaled(w, h, Qt.IgnoreAspectRatio, trans_mode)
         return bigger
 
@@ -578,11 +587,10 @@ class DisplayWindow(QMainWindow):
 
         # Degrade resolution further if bg_scale_percent < 100
         if self.bg_scale_percent < 100:
-            scale_factor = float(self.bg_scale_percent) / 100.0
-            down_w = int(sw * scale_factor)
-            down_h = int(sh * scale_factor)
+            sf = float(self.bg_scale_percent) / 100.0
+            down_w = int(sw * sf)
+            down_h = int(sh * sf)
             if down_w > 0 and down_h > 0:
-                # scale down
                 final_down = final.scaled(down_w, down_h, Qt.IgnoreAspectRatio, trans_mode)
                 # blur that
                 blurred_down = self.blur_pixmap_once(final_down, self.bg_blur_radius)
@@ -592,10 +600,10 @@ class DisplayWindow(QMainWindow):
                 else:
                     return final_down.scaled(sw, sh, Qt.IgnoreAspectRatio, trans_mode)
             else:
-                # If it can't go smaller, just blur
+                # can't degrade, just blur
                 return self.blur_pixmap_once(final, self.bg_blur_radius)
         else:
-            # blur the fullsize final
+            # blur fullsize
             return self.blur_pixmap_once(final, self.bg_blur_radius)
 
     def blur_pixmap_once(self, pm, radius):
