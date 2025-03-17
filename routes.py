@@ -19,7 +19,6 @@ from utils import (
 
 main_bp = Blueprint("main", __name__, static_folder="static")
 
-
 ################################################################################
 # For the overlay page, we show actual monitors from the config (instead of "fake" ones).
 ################################################################################
@@ -30,7 +29,7 @@ def get_local_monitors_from_config(cfg):
     Example:
       {
         "HDMI-2": {"resolution":"1024x600"},
-        "Fallback": {"resolution":"1920x1080"}
+        ...
       }
     """
     out = {}
@@ -39,17 +38,14 @@ def get_local_monitors_from_config(cfg):
         sn = dcfg.get("screen_name", "")
         if sn and ":" in sn:
             # e.g. "HDMI-2: 1024x600"
-            # parse after the colon
             part = sn.split(":")[-1].strip()
             if "x" in part:
                 out[dname] = {"resolution": part}
             else:
-                # fallback
                 out[dname] = {"resolution": "?"}
         else:
             out[dname] = {"resolution": "?"}
     return out
-
 
 def compute_overlay_preview(overlay_cfg, monitors_dict):
     """
@@ -57,10 +53,6 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
     We combine them with the monitors_dict for the template.
     """
     selection = overlay_cfg.get("monitor_selection", "All")
-    # We'll figure out total_width/total_height by scanning monitors_dict
-    # if "All," pick largest W/H
-    # if a single chosen, parse that one
-
     if selection == "All":
         maxw = 0
         maxh = 0
@@ -109,7 +101,6 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
 
     return (preview_width, preview_height, preview_overlay)
 
-
 @main_bp.route("/stats")
 def stats_json():
     cpu, mem_mb, load1, temp = get_system_stats()
@@ -120,22 +111,18 @@ def stats_json():
         "temp": temp
     })
 
-
 @main_bp.route("/list_monitors")
 def list_monitors():
     # older remote logic
     return jsonify({"Display0": {"resolution": "1920x1080", "offset_x": 0, "offset_y": 0}})
 
-
 @main_bp.route("/list_folders")
 def list_folders():
     return jsonify(get_subfolders())
 
-
 @main_bp.route("/images/<path:filename>")
 def serve_image(filename):
     return send_from_directory(IMAGE_DIR, filename)
-
 
 @main_bp.route("/bg_image")
 def bg_image():
@@ -143,13 +130,11 @@ def bg_image():
         return send_file(WEB_BG)
     return "", 404
 
-
 @main_bp.route("/download_log")
 def download_log():
     if os.path.exists(LOG_PATH):
         return send_file(LOG_PATH, as_attachment=True)
     return "No log file found", 404
-
 
 @main_bp.route("/upload_media", methods=["GET", "POST"])
 def upload_media():
@@ -183,7 +168,6 @@ def upload_media():
 
     return redirect(url_for("main.index"))
 
-
 @main_bp.route("/restart_viewer", methods=["POST"])
 def restart_viewer():
     try:
@@ -191,7 +175,6 @@ def restart_viewer():
         return redirect(url_for("main.index"))
     except subprocess.CalledProcessError as e:
         return f"Failed to restart service: {e}", 500
-
 
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
@@ -258,10 +241,11 @@ def settings():
         except:
             cfg["gui"]["background_blur_radius"] = 20
 
+        # changed from float-based to percentage-based
         try:
-            cfg["gui"]["background_resolution_scale"] = float(request.form.get("background_resolution_scale", "1.0"))
+            cfg["gui"]["background_scale_percent"] = int(request.form.get("background_scale_percent", "100"))
         except:
-            cfg["gui"]["background_resolution_scale"] = 1.0
+            cfg["gui"]["background_scale_percent"] = 100
 
         try:
             cfg["gui"]["foreground_scale_percent"] = int(request.form.get("foreground_scale_percent", "100"))
@@ -277,7 +261,6 @@ def settings():
             cfg=cfg,
             update_branch=UPDATE_BRANCH
         )
-
 
 @main_bp.route("/configure_spotify", methods=["GET", "POST"])
 def configure_spotify():
@@ -303,7 +286,6 @@ def configure_spotify():
             spotify=cfg["spotify"],
             theme=cfg.get("theme", "dark")
         )
-
 
 @main_bp.route("/spotify_auth")
 def spotify_auth():
@@ -351,7 +333,6 @@ def callback():
         log_message(f"Spotify callback error: {e}")
         return "Spotify callback error", 500
     return redirect(url_for("main.configure_spotify"))
-
 
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
@@ -432,9 +413,7 @@ def overlay_config():
 
             return redirect(url_for("main.overlay_config"))
 
-    # Build the monitors dict from config
     monitors_dict = get_local_monitors_from_config(cfg)
-    # Then compute scaled preview
     pw, ph, preview_overlay = compute_overlay_preview(cfg["overlay"], monitors_dict)
 
     return render_template(
@@ -445,7 +424,6 @@ def overlay_config():
         preview_size={"width": pw, "height": ph},
         preview_overlay=preview_overlay
     )
-
 
 @main_bp.route("/", methods=["GET", "POST"])
 def index():
@@ -507,17 +485,12 @@ def index():
                 pass
             return redirect(url_for("main.index"))
 
-    # Now we compute folder_counts
     folder_counts = {}
     for sf in get_subfolders():
         folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
 
-    # Build a dictionary of actual images to show for "specific_image" UI.
-    # We'll replicate the logic so that if "image_category" is set,
-    # we gather them from that subfolder. If none set, gather from entire IMAGE_DIR.
     display_images = {}
     for dname, dcfg in cfg["displays"].items():
-        # gather all images from the chosen category or "All"
         cat = dcfg.get("image_category", "")
         base_dir = os.path.join(IMAGE_DIR, cat) if cat else IMAGE_DIR
         image_list = []
@@ -525,7 +498,7 @@ def index():
             for fname in os.listdir(base_dir):
                 lf = fname.lower()
                 if lf.endswith((".jpg", ".jpeg", ".png", ".gif")):
-                    rel_path = fname  # relative in that folder
+                    rel_path = fname
                     image_list.append(os.path.join(cat, rel_path) if cat else rel_path)
         image_list.sort()
         display_images[dname] = image_list
@@ -542,16 +515,14 @@ def index():
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
-    # We'll also gather a dictionary of monitors from config for the "Local Display Settings" headings
-    # e.g. so we can show "HDMI-2 (1024x600)"
     monitors = {}
     for dname, dcfg in cfg["displays"].items():
         sn = dcfg.get("screen_name", "")
         if sn and ":" in sn:
-            # e.g. "HDMI-2: 1024x600"
             monitors[dname] = {"resolution": sn.split(":", 1)[1].strip()}
         else:
             monitors[dname] = {"resolution": "?"}
+
     return render_template(
         "index.html",
         cfg=cfg,
@@ -570,7 +541,6 @@ def index():
         sub_info_line=sub_info_line,
         monitors=monitors
     )
-
 
 @main_bp.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
 def remote_configure(dev_index):
@@ -642,11 +612,9 @@ def remote_configure(dev_index):
         remote_folders=remote_folders
     )
 
-
 @main_bp.route("/sync_config", methods=["GET"])
 def sync_config():
     return jsonify(load_config())
-
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
@@ -661,7 +629,6 @@ def update_config():
     save_config(cfg)
     log_message("Local config partially updated via /update_config")
     return "Config updated", 200
-
 
 @main_bp.route("/device_manager", methods=["GET", "POST"])
 def device_manager():
@@ -729,7 +696,6 @@ def device_manager():
         theme=cfg.get("theme", "dark")
     )
 
-
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():
     cfg = load_config()
@@ -764,7 +730,6 @@ def update_app():
 
     log_message("Update completed successfully.")
     return render_template("update_complete.html")
-
 
 @main_bp.route("/restart_services", methods=["POST", "GET"])
 def restart_services():

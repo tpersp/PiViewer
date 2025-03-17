@@ -61,9 +61,9 @@ def init_config():
                 "monitor_selection": "All"
             },
             "gui": {
-                "background_blur_radius": 10,  # Reduced from 20
-                "background_resolution_scale": 0.2,  # Reduced from 1.0
-                "foreground_scale_percent": 75  # Reduced from 100
+                "background_blur_radius": 20,
+                "background_scale_percent": 100,  # now a % rather than 0.1-1.0
+                "foreground_scale_percent": 100
             },
             "weather": {
                 "api_key": "",
