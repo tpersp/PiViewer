@@ -148,7 +148,6 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
     return (preview_width, preview_height, preview_overlay)
 
 
-# We no longer do dynamic xrandr sets from the POST, so leaving this as-is if needed:
 def set_monitor_resolution(output_name, resolution):
     try:
         subprocess.check_call(["xrandr", "--output", output_name, "--mode", resolution])
@@ -532,6 +531,7 @@ def index():
     # Update or add each known monitor
     for mon_name, minfo in ext_mons.items():
         if mon_name not in cfg["displays"]:
+            # If brand new, we assume the "current_mode"
             cfg["displays"][mon_name] = {
                 "mode": "random_image",
                 "image_interval": 60,
@@ -546,20 +546,23 @@ def index():
             log_message(f"Detected new monitor {mon_name} with current mode {minfo['current_mode']}")
         else:
             dcfg = cfg["displays"][mon_name]
+            # Always refresh 'screen_name' for display
             dcfg["screen_name"] = f"{mon_name}: {minfo['current_mode']}"
+            # If the user-chosen mode is invalid (not in 'modes'), revert:
             if dcfg.get("chosen_mode") not in minfo["modes"]:
                 dcfg["chosen_mode"] = minfo["current_mode"]
+            # If there's a model name from EDID
             if minfo["model"]:
                 dcfg["monitor_model"] = minfo["model"]
 
     save_config(cfg)
 
-    flash_msg = None
+    flash_msg = None  # We'll store a short message if resolution changed
 
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_displays":
-            # Update display modes/intervals/etc.:
+            # The user changed display config: mode, interval, category, etc.
             for dname in cfg["displays"]:
                 pre = dname + "_"
                 dcfg = cfg["displays"][dname]
@@ -594,42 +597,90 @@ def index():
                     dcfg["mixed_folders"] = []
 
             save_config(cfg)
+            try:
+                subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
+            except:
+                pass
+            return redirect(url_for("main.index"))
 
-            # Now check for changed resolution (chosen_res) and store that:
-            res_changed = False
-            for dname in cfg["displays"]:
-                param_name = dname + "_chosen_res"
-                if param_name in request.form:
-                    chosen_res = request.form.get(param_name)
-                    old_res = cfg["displays"][dname].get("chosen_mode")
-                    if chosen_res != old_res:
-                        cfg["displays"][dname]["chosen_mode"] = chosen_res
-                        res_changed = True
+        # Possibly user chose a new resolution in the dropdown
+        res_changed = False
+        for dname in cfg["displays"]:
+            param_name = dname + "_chosen_res"
+            if param_name in request.form:
+                chosen_res = request.form.get(param_name)
+                ok = set_monitor_resolution(dname, chosen_res)
+                if ok:
+                    cfg["displays"][dname]["chosen_mode"] = chosen_res
+                    rot = cfg["displays"][dname].get("rotate", 0)
+                    set_monitor_rotation(dname, rot)
+                    res_changed = True
 
-            save_config(cfg)
+        if res_changed:
+            # We'll store a short message telling user to reboot
+            flash_msg = "Resolution changes have been applied via xrandr, but a reboot may be required for the Pi to fully honor them."
 
-            if res_changed:
-                # Instead of calling xrandr on the fly, we just reboot:
-                log_message("Resolution changed; rebooting now so changes take effect on next boot.")
-                subprocess.Popen(["sudo", "reboot"])
-                return """
-                <html>
-                  <body style='text-align:center;margin-top:50px;'>
-                    <h1>Rebooting to apply resolution changes...</h1>
-                  </body>
-                </html>
-                """
-            else:
-                # If resolution wasn't changed, just restart piviewer as before:
-                try:
-                    subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
-                except:
-                    pass
-                return redirect(url_for("main.index"))
+        save_config(cfg)
+        # We'll re-render the index with the flash_msg
+        folder_counts = {}
+        for sf in get_subfolders():
+            folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
 
-        # If some other POST action arrives, handle it here as needed.
-        # By default, we just reload the page.
-        return redirect(url_for("main.index"))
+        display_images = {}
+        for dname, dcfg in cfg["displays"].items():
+            cat = dcfg.get("image_category", "")
+            base_dir = os.path.join(IMAGE_DIR, cat) if cat else IMAGE_DIR
+            img_list = []
+            if os.path.isdir(base_dir):
+                for fname in os.listdir(base_dir):
+                    lf = fname.lower()
+                    if lf.endswith((".jpg", ".jpeg", ".png", ".gif")):
+                        rel_path = fname
+                        img_list.append(os.path.join(cat, rel_path) if cat else rel_path)
+            img_list.sort()
+            display_images[dname] = img_list
+
+        cpu, mem_mb, load1, temp = get_system_stats()
+        host = get_hostname()
+        ipaddr = get_ip_address()
+        model = get_pi_model()
+        theme = cfg.get("theme", "dark")
+
+        sub_info_line = ""
+        if cfg.get("role") == "sub":
+            sub_info_line = "This device is SUB"
+            if cfg["main_ip"]:
+                sub_info_line += f" - Main IP: {cfg['main_ip']}"
+
+        final_monitors = {}
+        for mon_name, minfo in ext_mons.items():
+            chosen = cfg["displays"][mon_name].get("chosen_mode", minfo["current_mode"])
+            model_name = minfo["model"] or "?"
+            final_monitors[mon_name] = {
+                "resolution": chosen,
+                "available_modes": minfo["modes"],
+                "model_name": model_name
+            }
+
+        return render_template(
+            "index.html",
+            cfg=cfg,
+            subfolders=get_subfolders(),
+            folder_counts=folder_counts,
+            display_images=display_images,
+            cpu=cpu,
+            mem_mb=round(mem_mb, 1),
+            load1=round(load1, 2),
+            temp=temp,
+            host=host,
+            ipaddr=ipaddr,
+            model=model,
+            theme=theme,
+            version=APP_VERSION,
+            sub_info_line=sub_info_line,
+            monitors=final_monitors,
+            flash_msg=flash_msg
+        )
 
     # Build the folder counts for each subfolder
     folder_counts = {}
@@ -663,7 +714,7 @@ def index():
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
-    # Build final dict for resolution + available modes
+
     final_monitors = {}
     for mon_name, minfo in ext_mons.items():
         chosen = cfg["displays"][mon_name].get("chosen_mode", minfo["current_mode"])
@@ -855,6 +906,11 @@ def device_manager():
 
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():
+    """
+    Pull latest code from GitHub, run setup.sh in --auto-update mode,
+    and then forcibly reboot so the user never ends up stuck in a loop or
+    needing to manually restart services.
+    """
     cfg = load_config()
     log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
 
@@ -886,7 +942,20 @@ def update_app():
             log_message(f"Re-running setup.sh failed: {e}")
 
     log_message("Update completed successfully.")
-    return render_template("update_complete.html")
+    # Instead of restarting services and showing update_complete.html,
+    # we reboot the entire system right now:
+    subprocess.Popen(["sudo", "reboot"])
+
+    return """
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+      </head>
+      <body style="text-align:center; margin-top:50px;">
+        <h2>Update is complete. The system is now rebooting...</h2>
+      </body>
+    </html>
+    """
 
 
 @main_bp.route("/restart_services", methods=["POST", "GET"])

@@ -152,22 +152,22 @@ if [ -f /etc/lightdm/lightdm.conf ]; then
 fi
 
 # -------------------------------------------------------
-# 3a) Update boot firmware configuration (optional)
+# 3a) Update boot firmware configuration (enable full KMS + force hotplug)
 # -------------------------------------------------------
 echo
 echo "== Step 3a: Updating boot firmware configuration in /boot/firmware/config.txt =="
 if [ -f /boot/firmware/config.txt ]; then
   cp /boot/firmware/config.txt /boot/firmware/config.txt.backup
 
-  # Insert dtoverlay if missing
+  # Insert dtoverlay=vc4-kms-v3d if missing (full KMS)
   grep -q '^dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt" || \
     sed -i '/^# Enable DRM VC4 V3D driver/ a dtoverlay=vc4-kms-v3d' "/boot/firmware/config.txt"
 
-  # Insert max_framebuffers if missing
+  # Insert max_framebuffers=2 if missing
   grep -q '^max_framebuffers=2' "/boot/firmware/config.txt" || \
     sed -i '/^dtoverlay=vc4-kms-v3d/ a max_framebuffers=2' "/boot/firmware/config.txt"
 
-  # Insert hdmi_force_hotplug if missing
+  # Insert hdmi_force_hotplug=1 if missing
   grep -q '^hdmi_force_hotplug=1' "/boot/firmware/config.txt" || \
     sed -i '/^max_framebuffers=2/ a hdmi_force_hotplug=1' "/boot/firmware/config.txt"
 fi
