@@ -24,17 +24,6 @@ def detect_monitors_extended():
     """
     Calls xrandr --props to find connected monitors, their preferred/current resolution,
     plus a list of possible modes, plus a 'monitor name' from EDID if available.
-
-    Returns a dict, e.g.:
-      {
-        "HDMI-1": {
-          "model": "Some EDID Name",
-          "connected": True,
-          "current_mode": "1920x1080",
-          "modes": ["1920x1080", "1280x720", "640x480", ...]
-        },
-        ...
-      }
     """
     result = {}
     try:
@@ -58,27 +47,28 @@ def detect_monitors_extended():
                     "current_mode": None,
                     "modes": []
                 }
+                # Attempt to parse the actual "current_mode" from the line
                 for p in parts:
                     if "x" in p and "+" in p:
                         mode_part = p.split("+")[0]
                         result[current_monitor]["current_mode"] = mode_part
                         break
-        elif current_monitor and line.startswith("EDID:"):
-            pass
+
         elif current_monitor and "Monitor name:" in line:
             idx = line.find("Monitor name:")
             name_str = line[idx + len("Monitor name:"):].strip()
             if name_str:
                 result[current_monitor]["model"] = name_str
-        elif current_monitor and (line.startswith("  ") or line.startswith("\t")):
+
+        elif current_monitor:
+            # If there's a token that looks like 1920x1080, treat it as a possible mode
             tokens = line.split()
             if tokens:
                 mode_candidate = tokens[0]
+                # If it looks like "1920x1080" etc.
                 if "x" in mode_candidate and mode_candidate[0].isdigit():
                     if mode_candidate not in result[current_monitor]["modes"]:
                         result[current_monitor]["modes"].append(mode_candidate)
-        elif line and not line.startswith(" "):
-            current_monitor = None
 
     return result
 
@@ -115,8 +105,10 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
             try:
                 w_str, h_str = minfo["resolution"].split("x")
                 w, h = int(w_str), int(h_str)
-                if w > maxw: maxw = w
-                if h > maxh: maxh = h
+                if w > maxw:
+                    maxw = w
+                if h > maxh:
+                    maxh = h
             except:
                 pass
         if maxw == 0 or maxh == 0:
@@ -156,6 +148,7 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
     return (preview_width, preview_height, preview_overlay)
 
 
+# We no longer do dynamic xrandr sets from the POST, so leaving this as-is if needed:
 def set_monitor_resolution(output_name, resolution):
     try:
         subprocess.check_call(["xrandr", "--output", output_name, "--mode", resolution])
@@ -198,6 +191,7 @@ def stats_json():
 
 @main_bp.route("/list_monitors")
 def list_monitors():
+    # not used as frequently now, just a placeholder
     return jsonify({"Display0": {"resolution": "1920x1080", "offset_x": 0, "offset_y": 0}})
 
 
@@ -520,12 +514,12 @@ def overlay_config():
 def index():
     cfg = load_config()
 
-    # Re-detect extended monitors
+    # Re-detect extended monitors:
     ext_mons = detect_monitors_extended()
     if "displays" not in cfg:
         cfg["displays"] = {}
 
-    # remove old Display0 etc. if no longer present
+    # remove old Display0, etc., if they no longer appear in xrandr
     to_remove = []
     for dname in cfg["displays"]:
         if dname not in ext_mons and dname.startswith("Display"):
@@ -535,6 +529,7 @@ def index():
     for dr in to_remove:
         del cfg["displays"][dr]
 
+    # Update or add each known monitor
     for mon_name, minfo in ext_mons.items():
         if mon_name not in cfg["displays"]:
             cfg["displays"][mon_name] = {
@@ -552,16 +547,19 @@ def index():
         else:
             dcfg = cfg["displays"][mon_name]
             dcfg["screen_name"] = f"{mon_name}: {minfo['current_mode']}"
-            if "chosen_mode" not in dcfg or dcfg["chosen_mode"] != minfo["current_mode"]:
+            if dcfg.get("chosen_mode") not in minfo["modes"]:
                 dcfg["chosen_mode"] = minfo["current_mode"]
             if minfo["model"]:
                 dcfg["monitor_model"] = minfo["model"]
 
     save_config(cfg)
 
+    flash_msg = None
+
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_displays":
+            # Update display modes/intervals/etc.:
             for dname in cfg["displays"]:
                 pre = dname + "_"
                 dcfg = cfg["displays"][dname]
@@ -596,29 +594,49 @@ def index():
                     dcfg["mixed_folders"] = []
 
             save_config(cfg)
-            try:
-                subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
-            except:
-                pass
-            return redirect(url_for("main.index"))
 
-        # check if user picked a new resolution
-        for dname in cfg["displays"]:
-            param_name = dname + "_chosen_res"
-            if param_name in request.form:
-                chosen_res = request.form.get(param_name)
-                ok = set_monitor_resolution(dname, chosen_res)
-                if ok:
-                    cfg["displays"][dname]["chosen_mode"] = chosen_res
-                    rot = cfg["displays"][dname].get("rotate", 0)
-                    set_monitor_rotation(dname, rot)
-        save_config(cfg)
+            # Now check for changed resolution (chosen_res) and store that:
+            res_changed = False
+            for dname in cfg["displays"]:
+                param_name = dname + "_chosen_res"
+                if param_name in request.form:
+                    chosen_res = request.form.get(param_name)
+                    old_res = cfg["displays"][dname].get("chosen_mode")
+                    if chosen_res != old_res:
+                        cfg["displays"][dname]["chosen_mode"] = chosen_res
+                        res_changed = True
+
+            save_config(cfg)
+
+            if res_changed:
+                # Instead of calling xrandr on the fly, we just reboot:
+                log_message("Resolution changed; rebooting now so changes take effect on next boot.")
+                subprocess.Popen(["sudo", "reboot"])
+                return """
+                <html>
+                  <body style='text-align:center;margin-top:50px;'>
+                    <h1>Rebooting to apply resolution changes...</h1>
+                  </body>
+                </html>
+                """
+            else:
+                # If resolution wasn't changed, just restart piviewer as before:
+                try:
+                    subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
+                except:
+                    pass
+                return redirect(url_for("main.index"))
+
+        # If some other POST action arrives, handle it here as needed.
+        # By default, we just reload the page.
         return redirect(url_for("main.index"))
 
+    # Build the folder counts for each subfolder
     folder_counts = {}
     for sf in get_subfolders():
         folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
 
+    # Collect images for "specific_image" selection
     display_images = {}
     for dname, dcfg in cfg["displays"].items():
         cat = dcfg.get("image_category", "")
@@ -645,6 +663,7 @@ def index():
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
+    # Build final dict for resolution + available modes
     final_monitors = {}
     for mon_name, minfo in ext_mons.items():
         chosen = cfg["displays"][mon_name].get("chosen_mode", minfo["current_mode"])
@@ -671,7 +690,8 @@ def index():
         theme=theme,
         version=APP_VERSION,
         sub_info_line=sub_info_line,
-        monitors=final_monitors
+        monitors=final_monitors,
+        flash_msg=None
     )
 
 

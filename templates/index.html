@@ -159,6 +159,16 @@
 <body class="{{ theme }}">
 <div class="container">
 
+  {% if flash_msg %}
+  <div style="margin: 10px; border: 2px dashed #f70; padding: 10px; background: #ffeecc;">
+    {{ flash_msg }} 
+    <br><br>
+    <form action="{{ url_for('main.restart_services') }}" method="POST">
+      <button type="submit">Reboot Now</button>
+    </form>
+  </div>
+  {% endif %}
+
   <!-- Title row -->
   <h1 style="text-align:center; display:flex; align-items:center; justify-content:center; gap:20px;">
     <img src="{{ url_for('static', filename='icon.png') }}" alt="Left Icon" style="height:48px;">
