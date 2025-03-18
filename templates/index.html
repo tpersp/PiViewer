@@ -160,12 +160,8 @@
 <div class="container">
 
   {% if flash_msg %}
-  <div style="margin: 10px; border: 2px dashed #f70; padding: 10px; background: #ffeecc;">
+  <div style="margin: 10px; border: 2px dashed rgb(59, 27, 0); padding: 10px; background: #161004;">
     {{ flash_msg }}
-    <br><br>
-    <form action="{{ url_for('main.restart_services') }}" method="POST">
-      <button type="submit">Reboot Now</button>
-    </form>
   </div>
   {% endif %}
 
