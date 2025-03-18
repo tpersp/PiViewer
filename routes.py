@@ -47,7 +47,7 @@ def detect_monitors_extended():
                     "current_mode": None,
                     "modes": []
                 }
-                # Attempt to parse the actual "current_mode" from the line
+                # Attempt to parse the "current_mode" from that line
                 for p in parts:
                     if "x" in p and "+" in p:
                         mode_part = p.split("+")[0]
@@ -61,11 +61,10 @@ def detect_monitors_extended():
                 result[current_monitor]["model"] = name_str
 
         elif current_monitor:
-            # If there's a token that looks like 1920x1080, treat it as a possible mode
+            # If there's a token like 1920x1080, treat it as a possible mode
             tokens = line.split()
             if tokens:
                 mode_candidate = tokens[0]
-                # If it looks like "1920x1080" etc.
                 if "x" in mode_candidate and mode_candidate[0].isdigit():
                     if mode_candidate not in result[current_monitor]["modes"]:
                         result[current_monitor]["modes"].append(mode_candidate)
@@ -190,7 +189,7 @@ def stats_json():
 
 @main_bp.route("/list_monitors")
 def list_monitors():
-    # Not used as frequently now, just a placeholder
+    # Rarely used, just a placeholder
     return jsonify({"Display0": {"resolution": "1920x1080", "offset_x": 0, "offset_y": 0}})
 
 
@@ -268,7 +267,7 @@ def settings():
     if "weather" not in cfg:
         cfg["weather"] = {}
 
-    # We detect monitors so we can list them in the resolution section.
+    # Detect extended monitors so we can list them in the resolution section
     ext_mons = detect_monitors_extended()
 
     if request.method == "POST":
@@ -276,22 +275,21 @@ def settings():
 
         # =============== APPLY RESOLUTIONS ===============
         if action == "apply_resolutions":
-            # For each known extended monitor, set the chosen resolution:
+            # For each known extended monitor, set the chosen resolution
             for mon_name, minfo in ext_mons.items():
                 form_field = f"res_{mon_name}"
                 if form_field in request.form:
                     chosen_res = request.form[form_field]
-                    # Always apply it (no check if changed)
+                    # Apply it unconditionally
                     set_monitor_resolution(mon_name, chosen_res)
-                    # Also re-apply any stored rotation in config, if present
+                    # Also re-apply any stored rotation
                     stored_rot = cfg["displays"].get(mon_name, {}).get("rotate", 0)
                     set_monitor_rotation(mon_name, stored_rot)
-                    # Save it to config as chosen_mode
+                    # Save in config
                     if mon_name not in cfg["displays"]:
                         cfg["displays"][mon_name] = {}
                     cfg["displays"][mon_name]["chosen_mode"] = chosen_res
 
-            # Save and reboot
             save_config(cfg)
             subprocess.Popen(["sudo", "reboot"])
             return "Rebooting now... Please wait."
@@ -368,7 +366,7 @@ def settings():
         return redirect(url_for("main.settings"))
 
     else:
-        # GET request: just render the Settings page
+        # GET request
         return render_template(
             "settings.html",
             theme=cfg.get("theme", "dark"),
@@ -547,12 +545,12 @@ def overlay_config():
 def index():
     cfg = load_config()
 
-    # Re-detect extended monitors:
+    # Re-detect extended monitors
     ext_mons = detect_monitors_extended()
     if "displays" not in cfg:
         cfg["displays"] = {}
 
-    # remove old Display0, etc., if they no longer appear in xrandr
+    # Remove old Display0, etc., if no longer in xrandr
     to_remove = []
     for dname in cfg["displays"]:
         if dname not in ext_mons and dname.startswith("Display"):
@@ -631,12 +629,12 @@ def index():
                 pass
             return redirect(url_for("main.index"))
 
-    # Build the folder counts for each subfolder
+    # Build folder counts
     folder_counts = {}
     for sf in get_subfolders():
         folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
 
-    # Collect images for "specific_image" selection
+    # Gather images for "specific_image"
     display_images = {}
     for dname, dcfg in cfg["displays"].items():
         cat = dcfg.get("image_category", "")
@@ -856,8 +854,8 @@ def device_manager():
 def update_app():
     """
     Pull latest code from GitHub, run setup.sh in --auto-update mode,
-    and then forcibly reboot so the user never ends up stuck in a loop or
-    needing to manually restart services.
+    then re-mount shares and forcibly reboot so the user doesn't get stuck
+    needing manual restarts.
     """
     cfg = load_config()
     log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
@@ -882,6 +880,7 @@ def update_app():
     except Exception as e:
         log_message(f"Could not get new setup.sh hash: {e}")
 
+    # If setup.sh changed, run it in --auto-update mode
     if old_hash and new_hash and (old_hash != new_hash):
         log_message("setup.sh changed. Re-running it in --auto-update mode...")
         try:
@@ -889,7 +888,23 @@ def update_app():
         except subprocess.CalledProcessError as e:
             log_message(f"Re-running setup.sh failed: {e}")
 
-    log_message("Update completed successfully.")
+    # Ensure CIFS shares are mounted and services are reloaded
+    log_message("Re-mounting all shares after update...")
+    try:
+        subprocess.check_call(["mount", "-a"])
+        log_message("mount -a successful.")
+    except subprocess.CalledProcessError as e:
+        log_message(f"Warning: mount -a failed: {e}")
+
+    try:
+        subprocess.check_call(["systemctl", "daemon-reload"])
+        subprocess.check_call(["systemctl", "restart", "controller.service"])
+        subprocess.check_call(["systemctl", "restart", "piviewer.service"])
+        log_message("Services restarted after mount -a.")
+    except subprocess.CalledProcessError as e:
+        log_message(f"Failed to restart services after mount -a: {e}")
+
+    log_message("Update completed successfully. Now rebooting.")
     subprocess.Popen(["sudo", "reboot"])
 
     return """
