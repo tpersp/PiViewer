@@ -80,7 +80,7 @@ def get_local_monitors_from_config(cfg):
         "HDMI-1": {"resolution": "1920x1080"},
         ...
       }
-    We prefer 'chosen_mode' if available, or the old 'screen_name' fallback.
+    We prefer 'chosen_mode' if available, or else fallback to what's stored in 'screen_name'.
     """
     out = {}
     for dname, dcfg in cfg.get("displays", {}).items():
@@ -190,7 +190,7 @@ def stats_json():
 
 @main_bp.route("/list_monitors")
 def list_monitors():
-    # not used as frequently now, just a placeholder
+    # Not used as frequently now, just a placeholder
     return jsonify({"Display0": {"resolution": "1920x1080", "offset_x": 0, "offset_y": 0}})
 
 
@@ -229,10 +229,12 @@ def upload_media():
     files = request.files.getlist("mediafiles")
     if not files:
         return "No files selected", 400
+
     subfolder = request.form.get("subfolder", "")
     new_subfolder = request.form.get("new_subfolder", "").strip()
     if new_subfolder:
         subfolder = new_subfolder
+
     target_dir = os.path.join(IMAGE_DIR, subfolder)
     if not os.path.exists(target_dir):
         os.makedirs(target_dir)
@@ -271,6 +273,7 @@ def settings():
         new_role = request.form.get("role", "main")
         cfg["theme"] = new_theme
         cfg["role"] = new_role
+
         if new_role == "sub":
             cfg["main_ip"] = request.form.get("main_ip", "").strip()
         else:
@@ -335,6 +338,7 @@ def settings():
 
         save_config(cfg)
         return redirect(url_for("main.settings"))
+
     else:
         return render_template(
             "settings.html",
@@ -548,11 +552,12 @@ def index():
             dcfg = cfg["displays"][mon_name]
             # Always refresh 'screen_name' for display
             dcfg["screen_name"] = f"{mon_name}: {minfo['current_mode']}"
-            # If the user-chosen mode is invalid (not in 'modes'), revert:
-            if dcfg.get("chosen_mode") not in minfo["modes"]:
-                dcfg["chosen_mode"] = minfo["current_mode"]
-            # If there's a model name from EDID
-            if minfo["model"]:
+
+            # NOTE: We removed the code that forced the user's chosen_mode to revert
+            # if it isn't found among minfo["modes"]. That was preventing changes
+            # from "sticking" when the xrandr mode list doesn't match user picks.
+
+            if minfo.get("model"):
                 dcfg["monitor_model"] = minfo["model"]
 
     save_config(cfg)
@@ -713,7 +718,6 @@ def index():
         sub_info_line = "This device is SUB"
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
-
 
     final_monitors = {}
     for mon_name, minfo in ext_mons.items():
