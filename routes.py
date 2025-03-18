@@ -268,7 +268,35 @@ def settings():
     if "weather" not in cfg:
         cfg["weather"] = {}
 
+    # We detect monitors so we can list them in the resolution section.
+    ext_mons = detect_monitors_extended()
+
     if request.method == "POST":
+        action = request.form.get("action", "")
+
+        # =============== APPLY RESOLUTIONS ===============
+        if action == "apply_resolutions":
+            # For each known extended monitor, set the chosen resolution:
+            for mon_name, minfo in ext_mons.items():
+                form_field = f"res_{mon_name}"
+                if form_field in request.form:
+                    chosen_res = request.form[form_field]
+                    # Always apply it (no check if changed)
+                    set_monitor_resolution(mon_name, chosen_res)
+                    # Also re-apply any stored rotation in config, if present
+                    stored_rot = cfg["displays"].get(mon_name, {}).get("rotate", 0)
+                    set_monitor_rotation(mon_name, stored_rot)
+                    # Save it to config as chosen_mode
+                    if mon_name not in cfg["displays"]:
+                        cfg["displays"][mon_name] = {}
+                    cfg["displays"][mon_name]["chosen_mode"] = chosen_res
+
+            # Save and reboot
+            save_config(cfg)
+            subprocess.Popen(["sudo", "reboot"])
+            return "Rebooting now... Please wait."
+
+        # =============== SAVE ALL GENERAL SETTINGS ===============
         new_theme = request.form.get("theme", "dark")
         new_role = request.form.get("role", "main")
         cfg["theme"] = new_theme
@@ -340,11 +368,13 @@ def settings():
         return redirect(url_for("main.settings"))
 
     else:
+        # GET request: just render the Settings page
         return render_template(
             "settings.html",
             theme=cfg.get("theme", "dark"),
             cfg=cfg,
-            update_branch=UPDATE_BRANCH
+            update_branch=UPDATE_BRANCH,
+            ext_mons=ext_mons
         )
 
 
@@ -535,7 +565,6 @@ def index():
     # Update or add each known monitor
     for mon_name, minfo in ext_mons.items():
         if mon_name not in cfg["displays"]:
-            # If brand new, we assume the "current_mode"
             cfg["displays"][mon_name] = {
                 "mode": "random_image",
                 "image_interval": 60,
@@ -550,19 +579,13 @@ def index():
             log_message(f"Detected new monitor {mon_name} with current mode {minfo['current_mode']}")
         else:
             dcfg = cfg["displays"][mon_name]
-            # Always refresh 'screen_name' for display
             dcfg["screen_name"] = f"{mon_name}: {minfo['current_mode']}"
-
-            # NOTE: We removed the code that forced the user's chosen_mode to revert
-            # if it isn't found among minfo["modes"]. That was preventing changes
-            # from "sticking" when the xrandr mode list doesn't match user picks.
-
             if minfo.get("model"):
                 dcfg["monitor_model"] = minfo["model"]
 
     save_config(cfg)
 
-    flash_msg = None  # We'll store a short message if resolution changed
+    flash_msg = None
 
     if request.method == "POST":
         action = request.form.get("action", "")
@@ -607,85 +630,6 @@ def index():
             except:
                 pass
             return redirect(url_for("main.index"))
-
-        # Possibly user chose a new resolution in the dropdown
-        res_changed = False
-        for dname in cfg["displays"]:
-            param_name = dname + "_chosen_res"
-            if param_name in request.form:
-                chosen_res = request.form.get(param_name)
-                ok = set_monitor_resolution(dname, chosen_res)
-                if ok:
-                    cfg["displays"][dname]["chosen_mode"] = chosen_res
-                    rot = cfg["displays"][dname].get("rotate", 0)
-                    set_monitor_rotation(dname, rot)
-                    res_changed = True
-
-        if res_changed:
-            # We'll store a short message telling user to reboot
-            flash_msg = "Resolution changes have been applied via xrandr, but a reboot may be required for the Pi to fully honor them."
-
-        save_config(cfg)
-        # We'll re-render the index with the flash_msg
-        folder_counts = {}
-        for sf in get_subfolders():
-            folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
-
-        display_images = {}
-        for dname, dcfg in cfg["displays"].items():
-            cat = dcfg.get("image_category", "")
-            base_dir = os.path.join(IMAGE_DIR, cat) if cat else IMAGE_DIR
-            img_list = []
-            if os.path.isdir(base_dir):
-                for fname in os.listdir(base_dir):
-                    lf = fname.lower()
-                    if lf.endswith((".jpg", ".jpeg", ".png", ".gif")):
-                        rel_path = fname
-                        img_list.append(os.path.join(cat, rel_path) if cat else rel_path)
-            img_list.sort()
-            display_images[dname] = img_list
-
-        cpu, mem_mb, load1, temp = get_system_stats()
-        host = get_hostname()
-        ipaddr = get_ip_address()
-        model = get_pi_model()
-        theme = cfg.get("theme", "dark")
-
-        sub_info_line = ""
-        if cfg.get("role") == "sub":
-            sub_info_line = "This device is SUB"
-            if cfg["main_ip"]:
-                sub_info_line += f" - Main IP: {cfg['main_ip']}"
-
-        final_monitors = {}
-        for mon_name, minfo in ext_mons.items():
-            chosen = cfg["displays"][mon_name].get("chosen_mode", minfo["current_mode"])
-            model_name = minfo["model"] or "?"
-            final_monitors[mon_name] = {
-                "resolution": chosen,
-                "available_modes": minfo["modes"],
-                "model_name": model_name
-            }
-
-        return render_template(
-            "index.html",
-            cfg=cfg,
-            subfolders=get_subfolders(),
-            folder_counts=folder_counts,
-            display_images=display_images,
-            cpu=cpu,
-            mem_mb=round(mem_mb, 1),
-            load1=round(load1, 2),
-            temp=temp,
-            host=host,
-            ipaddr=ipaddr,
-            model=model,
-            theme=theme,
-            version=APP_VERSION,
-            sub_info_line=sub_info_line,
-            monitors=final_monitors,
-            flash_msg=flash_msg
-        )
 
     # Build the folder counts for each subfolder
     folder_counts = {}
@@ -746,7 +690,7 @@ def index():
         version=APP_VERSION,
         sub_info_line=sub_info_line,
         monitors=final_monitors,
-        flash_msg=None
+        flash_msg=flash_msg
     )
 
 
@@ -946,8 +890,6 @@ def update_app():
             log_message(f"Re-running setup.sh failed: {e}")
 
     log_message("Update completed successfully.")
-    # Instead of restarting services and showing update_complete.html,
-    # we reboot the entire system right now:
     subprocess.Popen(["sudo", "reboot"])
 
     return """

@@ -265,45 +265,7 @@
             <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
           </div>
 
-          <!-- Resolution dropdown if the monitor has modes -->
-          {% if mon_data and mon_data.available_modes|length > 0 %}
-          {% set chosen_res = mon_data.resolution %}
-          {% set landscape = [] %}
-          {% set portrait = [] %}
-          {% for mode_val in mon_data.available_modes %}
-            {% set parts = mode_val.split('x') %}
-            {% if parts|length == 2 %}
-              {% set w = parts[0]|int %}
-              {% set h = parts[1]|int %}
-              {% if w >= h %}
-                {% set _ = landscape.append(mode_val) %}
-              {% else %}
-                {% set _ = portrait.append(mode_val) %}
-              {% endif %}
-            {% else %}
-              {% set _ = landscape.append(mode_val) %}
-            {% endif %}
-          {% endfor %}
-          <div class="field-block">
-            <label>Resolution:</label><br>
-            <select name="{{ dname }}_chosen_res">
-              {% if landscape|length > 0 %}
-              <optgroup label="Landscape">
-                {% for lres in landscape %}
-                  <option value="{{ lres }}" {% if lres == chosen_res %}selected{% endif %}>{{ lres }}</option>
-                {% endfor %}
-              </optgroup>
-              {% endif %}
-              {% if portrait|length > 0 %}
-              <optgroup label="Portrait">
-                {% for pres in portrait %}
-                  <option value="{{ pres }}" {% if pres == chosen_res %}selected{% endif %}>{{ pres }}</option>
-                {% endfor %}
-              </optgroup>
-              {% endif %}
-            </select>
-          </div>
-          {% endif %}
+          <!-- (RESOLUTION DROPDOWN REMOVED; now in /settings) -->
 
           <!-- Category if random_image or specific_image -->
           {% if dcfg.mode in ["random_image","specific_image"] %}
