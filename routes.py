@@ -24,6 +24,7 @@ def detect_monitors_extended():
     """
     Calls xrandr --props to find connected monitors, their preferred/current resolution,
     plus a list of possible modes, plus a 'monitor name' from EDID if available.
+    We do NOT use these to change resolution, only to identify monitors.
     """
     result = {}
     try:
@@ -47,7 +48,7 @@ def detect_monitors_extended():
                     "current_mode": None,
                     "modes": []
                 }
-                # Attempt to parse the "current_mode" from that line
+                # Attempt to parse the actual "current_mode" from the line
                 for p in parts:
                     if "x" in p and "+" in p:
                         mode_part = p.split("+")[0]
@@ -61,7 +62,7 @@ def detect_monitors_extended():
                 result[current_monitor]["model"] = name_str
 
         elif current_monitor:
-            # If there's a token like 1920x1080, treat it as a possible mode
+            # If there's a token that looks like 1920x1080, treat it as a possible mode
             tokens = line.split()
             if tokens:
                 mode_candidate = tokens[0]
@@ -74,12 +75,8 @@ def detect_monitors_extended():
 
 def get_local_monitors_from_config(cfg):
     """
-    Return a dict for overlay usage:
-      {
-        "HDMI-1": {"resolution": "1920x1080"},
-        ...
-      }
-    We prefer 'chosen_mode' if available, or else fallback to what's stored in 'screen_name'.
+    Return a dict for referencing each monitor's resolution in overlays, etc.
+    We do NOT change resolution; we only store & display what's detected.
     """
     out = {}
     for dname, dcfg in cfg.get("displays", {}).items():
@@ -97,6 +94,9 @@ def get_local_monitors_from_config(cfg):
 
 
 def compute_overlay_preview(overlay_cfg, monitors_dict):
+    """
+    Used for overlay preview, only. Does not do resolution changes.
+    """
     selection = overlay_cfg.get("monitor_selection", "All")
     if selection == "All":
         maxw, maxh = 0, 0
@@ -147,30 +147,7 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
     return (preview_width, preview_height, preview_overlay)
 
 
-def set_monitor_resolution(output_name, resolution):
-    try:
-        subprocess.check_call(["xrandr", "--output", output_name, "--mode", resolution])
-        log_message(f"Set {output_name} to resolution {resolution} via xrandr.")
-        return True
-    except subprocess.CalledProcessError as e:
-        log_message(f"Failed xrandr set {output_name} -> {resolution}: {e}")
-        return False
-
-
-def set_monitor_rotation(output_name, degrees):
-    angle_map = {
-        0: "normal",
-        90: "left",
-        180: "inverted",
-        270: "right"
-    }
-    if degrees in angle_map:
-        rot_arg = angle_map[degrees]
-        try:
-            subprocess.check_call(["xrandr", "--output", output_name, "--rotate", rot_arg])
-            log_message(f"XRandR rotate {output_name} -> {degrees} deg.")
-        except subprocess.CalledProcessError as e:
-            log_message(f"Failed xrandr rotate {output_name} to {degrees}: {e}")
+# We keep rotation logic for images but remove any function to change resolution.
 
 
 main_bp = Blueprint("main", __name__, static_folder="static")
@@ -189,7 +166,7 @@ def stats_json():
 
 @main_bp.route("/list_monitors")
 def list_monitors():
-    # Rarely used, just a placeholder
+    # Not used often, just a placeholder
     return jsonify({"Display0": {"resolution": "1920x1080", "offset_x": 0, "offset_y": 0}})
 
 
@@ -263,38 +240,15 @@ def restart_viewer():
 
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
+    """
+    Settings page, but DOES NOT allow changing resolution.
+    We only keep the theme, weather, etc.
+    """
     cfg = load_config()
     if "weather" not in cfg:
         cfg["weather"] = {}
 
-    # Detect extended monitors so we can list them in the resolution section
-    ext_mons = detect_monitors_extended()
-
     if request.method == "POST":
-        action = request.form.get("action", "")
-
-        # =============== APPLY RESOLUTIONS ===============
-        if action == "apply_resolutions":
-            # For each known extended monitor, set the chosen resolution
-            for mon_name, minfo in ext_mons.items():
-                form_field = f"res_{mon_name}"
-                if form_field in request.form:
-                    chosen_res = request.form[form_field]
-                    # Apply it unconditionally
-                    set_monitor_resolution(mon_name, chosen_res)
-                    # Also re-apply any stored rotation
-                    stored_rot = cfg["displays"].get(mon_name, {}).get("rotate", 0)
-                    set_monitor_rotation(mon_name, stored_rot)
-                    # Save in config
-                    if mon_name not in cfg["displays"]:
-                        cfg["displays"][mon_name] = {}
-                    cfg["displays"][mon_name]["chosen_mode"] = chosen_res
-
-            save_config(cfg)
-            subprocess.Popen(["sudo", "reboot"])
-            return "Rebooting now... Please wait."
-
-        # =============== SAVE ALL GENERAL SETTINGS ===============
         new_theme = request.form.get("theme", "dark")
         new_role = request.form.get("role", "main")
         cfg["theme"] = new_theme
@@ -366,13 +320,14 @@ def settings():
         return redirect(url_for("main.settings"))
 
     else:
-        # GET request
+        # GET request: just render the Settings page
+        cfg = load_config()
+        theme = cfg.get("theme", "dark")
         return render_template(
             "settings.html",
-            theme=cfg.get("theme", "dark"),
+            theme=theme,
             cfg=cfg,
-            update_branch=UPDATE_BRANCH,
-            ext_mons=ext_mons
+            update_branch=UPDATE_BRANCH
         )
 
 
@@ -453,6 +408,9 @@ def callback():
 
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
+    """
+    Configure overlay (clock, weather, etc.). Not related to resolution changes.
+    """
     cfg = load_config()
     if "overlay" not in cfg:
         cfg["overlay"] = {}
@@ -528,6 +486,7 @@ def overlay_config():
 
             return redirect(url_for("main.overlay_config"))
 
+    # For preview
     monitors_dict = get_local_monitors_from_config(cfg)
     pw, ph, preview_overlay = compute_overlay_preview(cfg["overlay"], monitors_dict)
 
@@ -545,12 +504,12 @@ def overlay_config():
 def index():
     cfg = load_config()
 
-    # Re-detect extended monitors
+    # Re-detect extended monitors, just to show their current resolution, not to change it
     ext_mons = detect_monitors_extended()
     if "displays" not in cfg:
         cfg["displays"] = {}
 
-    # Remove old Display0, etc., if no longer in xrandr
+    # remove old Display0, etc., if they no longer appear in xrandr
     to_remove = []
     for dname in cfg["displays"]:
         if dname not in ext_mons and dname.startswith("Display"):
@@ -560,7 +519,7 @@ def index():
     for dr in to_remove:
         del cfg["displays"][dr]
 
-    # Update or add each known monitor
+    # Update or add each known monitor for reference only
     for mon_name, minfo in ext_mons.items():
         if mon_name not in cfg["displays"]:
             cfg["displays"][mon_name] = {
@@ -583,12 +542,15 @@ def index():
 
     save_config(cfg)
 
-    flash_msg = None
+    flash_msg = (
+      "If you experience lower performance or framerate than expected, "
+      "please consider using a physically lower resolution monitor."
+    )
 
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_displays":
-            # The user changed display config: mode, interval, category, etc.
+            # Just update display modes, categories, etc. No resolution changes
             for dname in cfg["displays"]:
                 pre = dname + "_"
                 dcfg = cfg["displays"][dname]
@@ -629,12 +591,12 @@ def index():
                 pass
             return redirect(url_for("main.index"))
 
-    # Build folder counts
+    # Build the folder counts for each subfolder
     folder_counts = {}
     for sf in get_subfolders():
         folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
 
-    # Gather images for "specific_image"
+    # Collect images for "specific_image" selection
     display_images = {}
     for dname, dcfg in cfg["displays"].items():
         cat = dcfg.get("image_category", "")
@@ -854,8 +816,7 @@ def device_manager():
 def update_app():
     """
     Pull latest code from GitHub, run setup.sh in --auto-update mode,
-    then re-mount shares and forcibly reboot so the user doesn't get stuck
-    needing manual restarts.
+    and forcibly reboot so we don't require manual restarts.
     """
     cfg = load_config()
     log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
@@ -880,7 +841,6 @@ def update_app():
     except Exception as e:
         log_message(f"Could not get new setup.sh hash: {e}")
 
-    # If setup.sh changed, run it in --auto-update mode
     if old_hash and new_hash and (old_hash != new_hash):
         log_message("setup.sh changed. Re-running it in --auto-update mode...")
         try:
@@ -888,23 +848,7 @@ def update_app():
         except subprocess.CalledProcessError as e:
             log_message(f"Re-running setup.sh failed: {e}")
 
-    # Ensure CIFS shares are mounted and services are reloaded
-    log_message("Re-mounting all shares after update...")
-    try:
-        subprocess.check_call(["mount", "-a"])
-        log_message("mount -a successful.")
-    except subprocess.CalledProcessError as e:
-        log_message(f"Warning: mount -a failed: {e}")
-
-    try:
-        subprocess.check_call(["systemctl", "daemon-reload"])
-        subprocess.check_call(["systemctl", "restart", "controller.service"])
-        subprocess.check_call(["systemctl", "restart", "piviewer.service"])
-        log_message("Services restarted after mount -a.")
-    except subprocess.CalledProcessError as e:
-        log_message(f"Failed to restart services after mount -a: {e}")
-
-    log_message("Update completed successfully. Now rebooting.")
+    log_message("Update completed successfully.")
     subprocess.Popen(["sudo", "reboot"])
 
     return """

@@ -161,7 +161,7 @@
 
   {% if flash_msg %}
   <div style="margin: 10px; border: 2px dashed #f70; padding: 10px; background: #ffeecc;">
-    {{ flash_msg }} 
+    {{ flash_msg }}
     <br><br>
     <form action="{{ url_for('main.restart_services') }}" method="POST">
       <button type="submit">Reboot Now</button>
@@ -215,6 +215,7 @@
 
   <section>
     <h2 style="text-align:center;">Local Display Settings</h2>
+
     <form method="POST">
       <input type="hidden" name="action" value="update_displays">
       <div class="display-grid">
@@ -251,7 +252,6 @@
             </select>
           </div>
 
-          <!-- Interval only if random or mixed -->
           {% if dcfg.mode in ["random_image","mixed"] %}
           <div class="field-block">
             <label>Interval (seconds):</label><br>
@@ -259,15 +259,13 @@
           </div>
           {% endif %}
 
-          <!-- Rotate is always shown -->
           <div class="field-block">
             <label>Rotate (degrees):</label><br>
             <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
           </div>
 
-          <!-- (RESOLUTION DROPDOWN REMOVED; now in /settings) -->
+          <!-- No resolution-change dropdown here! -->
 
-          <!-- Category if random_image or specific_image -->
           {% if dcfg.mode in ["random_image","specific_image"] %}
           <div class="field-block">
             <label>Category (subfolder):</label><br>
@@ -283,7 +281,6 @@
           </div>
           {% endif %}
 
-          <!-- If mode == mixed, show multi-folder UI -->
           {% if dcfg.mode == "mixed" %}
           <div class="field-block">
             <label>Multiple Folders (drag to reorder):</label><br>
@@ -315,7 +312,6 @@
           </div>
           {% endif %}
 
-          <!-- Shuffle only if random or mixed -->
           {% if dcfg.mode in ["random_image","mixed"] %}
           <div class="field-block">
             <label>Shuffle?</label><br>
@@ -326,7 +322,6 @@
           </div>
           {% endif %}
 
-          <!-- If mode == specific_image, show file selection -->
           {% if dcfg.mode == "specific_image" %}
           <div class="field-block">
             <h4>Select Image/GIF</h4>
@@ -356,7 +351,6 @@
             {% endif %}
           </div>
           {% endif %}
-
         </div>
         {% endfor %}
 

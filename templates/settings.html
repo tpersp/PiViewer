@@ -20,11 +20,10 @@
 <div class="container">
   <h1>Settings</h1>
 
+  <!-- We have removed all resolution-changing code. -->
+
   <!-- ============== General Settings Form ============== -->
   <form method="POST" enctype="multipart/form-data">
-    <!-- Hidden action indicates normal settings save -->
-    <input type="hidden" name="action" value="">
-
     <label>Role:</label><br>
     <select name="role" id="roleSelect" onchange="toggleMainIP()">
       <option value="main" {% if cfg.role=="main" %}selected{% endif %}>main</option>
@@ -51,14 +50,14 @@
     <input type="file" name="bg_image" accept="image/*"><br><br>
     {% endif %}
 
-    <!-- New GUI Settings Fieldset -->
+    <!-- GUI Settings -->
     <fieldset style="border:1px solid #444; padding:10px; margin:20px 0;">
       <legend style="font-weight:bold;">GUI Settings</legend>
       <label>Background Blur Radius:</label><br>
-      <input type="number" name="background_blur_radius" value="{{ cfg.gui.background_blur_radius|default('20') }}" min="0">
+      <input type="number" name="background_blur_radius"
+             value="{{ cfg.gui.background_blur_radius|default('20') }}" min="0">
       <br><br>
 
-      <!-- Using a percentage-based scale input -->
       <label>Background Resolution Scale (%):</label><br>
       <input type="number" name="background_scale_percent"
              value="{{ cfg.gui.background_scale_percent|default('100') }}"
@@ -71,7 +70,7 @@
              step="1" min="1" max="100">
     </fieldset>
 
-    <!-- Weather Settings Fieldset -->
+    <!-- Weather Settings -->
     <fieldset style="border:1px solid #444; padding:10px; margin:20px 0;">
       <legend style="font-weight:bold;">Weather Settings</legend>
 
@@ -104,55 +103,16 @@
 
     <button type="submit">Save Settings</button>
   </form>
-  <br>
-  <hr>
-
-  <!-- ============== Resolution Settings ============== -->
-  <h2>Display Resolution Settings</h2>
-  <p>Choose a resolution for each connected display. Upon pressing the button below, the device will reboot.</p>
-  <form method="POST">
-    <input type="hidden" name="action" value="apply_resolutions">
-
-    <table style="border-collapse:collapse; margin-bottom:15px;">
-      <thead>
-        <tr>
-          <th style="padding:5px; border-bottom:1px solid #ccc;">Monitor Name</th>
-          <th style="padding:5px; border-bottom:1px solid #ccc;">Available Modes</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for mon_name, mdict in ext_mons.items() %}
-        <tr>
-          <td style="padding:5px; border-right:1px solid #ccc;">
-            <strong>{{ mon_name }}</strong>
-            {% if mdict.model %}
-              <div style="font-size:0.85em; color:#aaa;">({{ mdict.model }})</div>
-            {% endif %}
-          </td>
-          <td style="padding:5px;">
-            <select name="res_{{ mon_name }}">
-            {% for mode_val in mdict.modes %}
-              {% set is_sel = (mode_val == mdict.current_mode) %}
-              <option value="{{ mode_val }}" {% if is_sel %}selected{% endif %}>{{ mode_val }}</option>
-            {% endfor %}
-            </select>
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-
-    <button type="submit">Apply All Resolution Settings (Reboot)</button>
-  </form>
 
   <br>
   <hr>
+  <!-- We removed the entire "Resolution Settings" section. -->
 
   <!-- Update Section -->
   <form method="POST" action="{{ url_for('main.update_app') }}">
     <p><strong>Update from GitHub:</strong></p>
     <p>
-      Branch: <em>{{ update_branch }}</em>  
+      Branch: <em>{{ update_branch }}</em>
       (Configured in <code>config.py</code>)
     </p>
     <button type="submit">Update Now</button>
