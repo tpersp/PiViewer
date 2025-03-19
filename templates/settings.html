@@ -5,104 +5,125 @@
 <div class="page-section">
   <h2>Settings</h2>
 
-  <form method="POST" enctype="multipart/form-data" style="margin-bottom:20px;">
-    <!-- Role selection -->
-    <label>Role:</label><br>
-    <select name="role" id="roleSelect" onchange="toggleMainIP()">
-      <option value="main" {% if cfg.role=="main" %}selected{% endif %}>main</option>
-      <option value="sub"  {% if cfg.role=="sub"  %}selected{% endif %}>sub</option>
-    </select>
-    <br><br>
-
-    <!-- If sub, show main_ip -->
-    <div id="mainIPField" style="{% if cfg.role!="sub" %}display:none;{% endif %}">
-      <label>Main Device IP:</label><br>
-      <input type="text" name="main_ip" value="{{ cfg.main_ip }}">
+  <!-- Role + Theme in a top card -->
+  <div class="card" style="margin-bottom:20px;">
+    <form method="POST" enctype="multipart/form-data">
+      <label>Role:</label><br>
+      <select name="role" id="roleSelect" onchange="toggleMainIP()">
+        <option value="main" {% if cfg.role=="main" %}selected{% endif %}>main</option>
+        <option value="sub"  {% if cfg.role=="sub"  %}selected{% endif %}>sub</option>
+      </select>
       <br><br>
+
+      <div id="mainIPField" style="{% if cfg.role!="sub" %}display:none;{% endif %}">
+        <label>Main Device IP:</label><br>
+        <input type="text" name="main_ip" value="{{ cfg.main_ip }}">
+        <br><br>
+      </div>
+
+      <label>Theme:</label><br>
+      <select name="theme">
+        <option value="dark"   {% if cfg.theme=="dark"   %}selected{% endif %}>Dark</option>
+        <option value="light"  {% if cfg.theme=="light"  %}selected{% endif %}>Light</option>
+        <option value="custom" {% if cfg.theme=="custom" %}selected{% endif %}>Custom</option>
+      </select>
+      <br><br>
+
+      {% if cfg.theme=="custom" %}
+        <label>Upload Custom BG:</label><br>
+        <input type="file" name="bg_image" accept="image/*">
+        <br><br>
+      {% endif %}
+
+      <!-- We'll save other settings below, so let's let user know to see next form. -->
+      <button type="submit">Save Role/Theme</button>
+    </form>
+  </div>
+
+  <!-- Two side-by-side cards: GUI Settings and Weather Settings -->
+  <div class="cards-container">
+
+    <!-- GUI card -->
+    <div class="card">
+      <h3>GUI Settings</h3>
+      <form method="POST" enctype="multipart/form-data">
+        <fieldset style="border:none;">
+          <input type="hidden" name="role" value="{{ cfg.role }}">
+          <input type="hidden" name="main_ip" value="{{ cfg.main_ip }}">
+          <input type="hidden" name="theme" value="{{ cfg.theme }}">
+          <!-- Only re-save if user wants to update everything in one go -->
+          <label>Background Blur Radius:</label><br>
+          <input type="number" name="background_blur_radius"
+                 value="{{ cfg.gui.background_blur_radius|default('20') }}" min="0">
+          <br><br>
+
+          <label>Background Resolution Scale (%):</label><br>
+          <input type="number" name="background_scale_percent"
+                 value="{{ cfg.gui.background_scale_percent|default('100') }}"
+                 step="1" min="1" max="100">
+          <br><br>
+
+          <label>Foreground Resolution Scale (%):</label><br>
+          <input type="number" name="foreground_scale_percent"
+                 value="{{ cfg.gui.foreground_scale_percent|default('100') }}"
+                 step="1" min="1" max="100">
+          <br><br>
+        </fieldset>
+        <button type="submit">Save GUI Settings</button>
+      </form>
     </div>
 
-    <!-- Theme -->
-    <label>Theme:</label><br>
-    <select name="theme">
-      <option value="dark"   {% if cfg.theme=="dark"   %}selected{% endif %}>Dark</option>
-      <option value="light"  {% if cfg.theme=="light"  %}selected{% endif %}>Light</option>
-      <option value="custom" {% if cfg.theme=="custom" %}selected{% endif %}>Custom</option>
-    </select>
-    <br><br>
+    <!-- Weather card -->
+    <div class="card">
+      <h3>Weather Settings</h3>
+      <form method="POST" enctype="multipart/form-data">
+        <fieldset style="border:none;">
+          <input type="hidden" name="role" value="{{ cfg.role }}">
+          <input type="hidden" name="main_ip" value="{{ cfg.main_ip }}">
+          <input type="hidden" name="theme" value="{{ cfg.theme }}">
+          <label>OpenWeatherMap API Key:</label><br>
+          <input type="text" name="weather_api_key"
+                 value="{{ cfg.weather.api_key|default('') }}"
+                 style="width:300px;">
+          <br><br>
 
-    {% if cfg.theme=="custom" %}
-      <label>Upload Custom BG:</label><br>
-      <input type="file" name="bg_image" accept="image/*">
-      <br><br>
-    {% endif %}
+          <label>Zip Code:</label><br>
+          <input type="text" name="weather_zip_code"
+                 value="{{ cfg.weather.zip_code|default('') }}">
+          <br><br>
 
-    <!-- GUI Settings -->
-    <fieldset style="margin-bottom:20px;">
-      <legend>GUI Settings</legend>
-      <label>Background Blur Radius:</label><br>
-      <input type="number" name="background_blur_radius"
-             value="{{ cfg.gui.background_blur_radius|default('20') }}" min="0">
-      <br><br>
+          <label>Country Code (2-letter):</label><br>
+          <input type="text" name="weather_country_code"
+                 value="{{ cfg.weather.country_code|default('') }}">
+          <br><br>
 
-      <label>Background Resolution Scale (%):</label><br>
-      <input type="number" name="background_scale_percent"
-             value="{{ cfg.gui.background_scale_percent|default('100') }}"
-             step="1" min="1" max="100">
-      <br><br>
+          <label>Latitude:</label><br>
+          <input type="text" name="weather_lat"
+                 value="{{ cfg.weather.lat|default('') }}">
+          <br><br>
 
-      <label>Foreground Resolution Scale (%):</label><br>
-      <input type="number" name="foreground_scale_percent"
-             value="{{ cfg.gui.foreground_scale_percent|default('100') }}"
-             step="1" min="1" max="100">
-    </fieldset>
+          <label>Longitude:</label><br>
+          <input type="text" name="weather_lon"
+                 value="{{ cfg.weather.lon|default('') }}">
+          <br><br>
+        </fieldset>
+        <button type="submit">Save Weather Settings</button>
+      </form>
+    </div>
+  </div>
 
-    <!-- Weather Settings -->
-    <fieldset style="margin-bottom:20px;">
-      <legend>Weather Settings</legend>
-      <label>OpenWeatherMap API Key:</label><br>
-      <input type="text" name="weather_api_key"
-             value="{{ cfg.weather.api_key|default('') }}"
-             style="width:300px;">
-      <br><br>
-
-      <label>Zip Code:</label><br>
-      <input type="text" name="weather_zip_code"
-             value="{{ cfg.weather.zip_code|default('') }}">
-      <br><br>
-
-      <label>Country Code (2-letter):</label><br>
-      <input type="text" name="weather_country_code"
-             value="{{ cfg.weather.country_code|default('') }}">
-      <br><br>
-
-      <label>Latitude:</label><br>
-      <input type="text" name="weather_lat"
-             value="{{ cfg.weather.lat|default('') }}">
-      <br><br>
-
-      <label>Longitude:</label><br>
-      <input type="text" name="weather_lon"
-             value="{{ cfg.weather.lon|default('') }}">
-    </fieldset>
-
-    <button type="submit">Save Settings</button>
-  </form>
-
-  <hr>
-
-  <!-- Update from GitHub -->
-  <form method="POST" action="{{ url_for('main.update_app') }}">
-    <p><strong>Update from GitHub</strong></p>
-    <p>Branch: <em>{{ update_branch }}</em></p>
-    <button type="submit">Update Now</button>
-  </form>
-
-  <hr>
-
-  <p style="margin-top:20px;">
-    <a href="{{ url_for('main.download_log') }}"><button>Download Log</button></a>
-  </p>
-
+  <!-- Update from GitHub, logs, etc. as a final separate card -->
+  <div class="card" style="margin-top:20px;">
+    <form method="POST" action="{{ url_for('main.update_app') }}">
+      <p><strong>Update from GitHub</strong></p>
+      <p>Branch: <em>{{ update_branch }}</em></p>
+      <button type="submit">Update Now</button>
+    </form>
+    <hr>
+    <p style="margin-top:10px;">
+      <a href="{{ url_for('main.download_log') }}"><button>Download Log</button></a>
+    </p>
+  </div>
 </div>
 
 <script>

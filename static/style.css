@@ -1,5 +1,5 @@
 /* --------------------------------------------------------------
-   style.css - Modernized PiViewer UI
+   style.css - Modernized PiViewer UI (revised)
    -------------------------------------------------------------- */
 
 /* Base resets and layout */
@@ -14,13 +14,14 @@
     font-family: Arial, sans-serif;
   }
   
-  /* The container for main content (below the navbar). */
+  /* The container for main content (below the navbar).
+     Added margin-top so content doesn't get hidden behind navbar. */
   main.content {
+    margin-top: 60px;
+    padding: 20px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 20px;
-    min-height: calc(100vh - 60px); /* account for navbar height */
   }
   
   /* Top navigation bar */
@@ -131,11 +132,12 @@
   
   /* Collapsible sections, used in Spotify page, etc. */
   .collapsible-header {
-    cursor: pointer;
+    cursor: pointer; /* show pointer to indicate clickable */
     background: var(--collapsible-bg);
     padding: 10px;
     border-radius: 4px;
     margin-bottom: 4px;
+    user-select: none;
   }
   .collapsible-header:hover {
     background: var(--collapsible-hover);

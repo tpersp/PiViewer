@@ -1,233 +1,165 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Viewer Controller{% endblock %}
 {% block content %}
 
-<!-- Flash message if any -->
-{% if flash_msg %}
-<div class="flash-message">
-  {{ flash_msg }}
-</div>
-{% endif %}
+<!-- Example: Single-page layout with:
+     1) A row for Host/IP/CPU/Mem/Temp
+     2) A row with display settings on the left, preview on the right
+     3) A row with status indicators
+-->
+<div class="page-section" style="max-width:1200px;">
 
-<!-- Dashboard: 3 main cards (device overview, quick controls, real-time preview) -->
-<div class="page-section">
-  <h2>PiViewer Dashboard</h2>
-  <div class="cards-container">
-
-    <!-- Device Overview Card -->
-    <div class="card">
-      <h3>Device Overview</h3>
-      <p><strong>Hostname:</strong> {{ host }}</p>
-      <p><strong>IP:</strong> {{ ipaddr }}</p>
-      <p><strong>Model:</strong> {{ model }}</p>
-      {% if sub_info_line %}
-        <p>{{ sub_info_line }}</p>
-      {% endif %}
-      <p><strong>CPU:</strong> <span id="stat_cpu">{{ cpu }}%</span></p>
-      <p><strong>Mem:</strong> <span id="stat_mem">{{ mem_mb }}MB</span></p>
-      <p><strong>Load(1m):</strong> <span id="stat_load">{{ load1 }}</span></p>
-      <p><strong>Temp:</strong> <span id="stat_temp">{{ temp }}</span></p>
-    </div>
-
-    <!-- Quick Control Card (just a hint to user that these are below) -->
-    <div class="card">
-      <h3>Quick Controls</h3>
-      <p style="font-size: 90%;">
-        Below in <a href="#local-displays">Display Settings</a>, you can:
-        <br>- Choose random/mixed/specific for each display
-        <br>- Set intervals, rotation, or shuffle
-        <br>- Switch mode to Spotify
-      </p>
-      <p style="font-size: 90%;">
-        Changes are saved instantly when you click "Save Display Settings".
-      </p>
-    </div>
-
-    <!-- "Real-time Preview" is more conceptual, but we can show a link -->
-    <div class="card">
-      <h3>Real-time Preview</h3>
-      <p>Preview of the currently displayed media is handled by each PiViewer window. 
-         For advanced overlay or multiple monitors, see 
-         <a href="{{ url_for('main.overlay_config') }}">Overlay Config</a>.</p>
-      <p>If you want to see an actual screenshot, consider a VNC or direct monitor view.</p>
-    </div>
-
+  <!-- Top info row -->
+  <div style="display:flex; flex-wrap:wrap; gap:20px; margin-bottom:10px;">
+    <div>Hostname: {{ host }}</div>
+    <div>IP: {{ ipaddr }}</div>
+    <div>CPU: <span id="stat_cpu">{{ cpu }}%</span></div>
+    <div>Mem: <span id="stat_mem">{{ mem_mb }}MB</span></div>
+    <div>Temp: <span id="stat_temp">{{ temp }}</span></div>
+    {% if sub_info_line %}
+      <div>{{ sub_info_line }}</div>
+    {% endif %}
   </div>
-</div>
 
-<!-- Local Display Settings -->
-<div id="local-displays" class="page-section">
-  <h2>Local Display Settings</h2>
-  <form method="POST">
-    <input type="hidden" name="action" value="update_displays">
+  <!-- Middle row: left side = display settings form, right side = "preview" placeholder -->
+  <div style="display:flex; flex-wrap:wrap; gap:20px; margin-bottom:20px;">
+    <!-- Left side: form for the first (or only) display -->
+    <div style="flex:1; min-width:280px; border:1px solid var(--border-muted); border-radius:6px; padding:15px;">
+      <h3>Display Settings</h3>
+      {% if cfg.displays %}
+      <!-- For illustration, we just show the first display. 
+           If you have multiple, you could repeat or handle them in a loop. -->
+      {% set first_display = cfg.displays|list|first %}
+      {% if first_display %}
+        {% set dname, dcfg = first_display %}
+        <form method="POST">
+          <input type="hidden" name="action" value="update_displays">
 
-    <div class="cards-container">
-      {% for dname, dcfg in cfg.displays.items() %}
-      {% set mon_data = monitors[dname] if dname in monitors else None %}
-      <div class="card">
-        <h3>
-          {{ dname }}
-          {% if mon_data and mon_data.model_name %}
-            ({{ mon_data.model_name }})
-          {% else %}
-            (?)
+          <!-- We'll treat "dname" as the key -->
+          <label>Mode:</label><br>
+          <select name="{{ dname }}_mode">
+            <option value="random_image"   {% if dcfg.mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
+            <option value="specific_image" {% if dcfg.mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
+            <option value="mixed"          {% if dcfg.mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
+            <option value="spotify"        {% if dcfg.mode=="spotify" %}selected{% endif %}>Spotify Now Playing</option>
+          </select>
+          <br><br>
+
+          <!-- Interval (only for random/mixed) -->
+          {% if dcfg.mode in ["random_image","mixed"] %}
+          <label>Interval (sec):</label><br>
+          <input type="number" name="{{ dname }}_image_interval" value="{{ dcfg.image_interval }}">
+          <br><br>
           {% endif %}
-        </h3>
 
-        <!-- Mode -->
-        <label>Mode:</label><br>
-        <select name="{{ dname }}_mode">
-          <option value="random_image"   {% if dcfg.mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
-          <option value="specific_image" {% if dcfg.mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
-          <option value="mixed"          {% if dcfg.mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
-          <option value="spotify"        {% if dcfg.mode=="spotify" %}selected{% endif %}>Spotify Now Playing</option>
-        </select>
-        <br><br>
+          <!-- Rotate -->
+          <label>Rotate (degrees):</label><br>
+          <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
+          <br><br>
 
-        <!-- Interval (only for random/mixed) -->
-        {% if dcfg.mode in ["random_image","mixed"] %}
-        <label>Interval (sec):</label><br>
-        <input type="number" name="{{ dname }}_image_interval" value="{{ dcfg.image_interval }}">
-        <br><br>
-        {% endif %}
+          <!-- Shuffle (random/mixed) -->
+          {% if dcfg.mode in ["random_image","mixed"] %}
+          <label>Shuffle?</label><br>
+          <select name="{{ dname }}_shuffle_mode">
+            <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
+            <option value="no"  {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
+          </select>
+          <br><br>
+          {% endif %}
 
-        <!-- Rotate -->
-        <label>Rotate (degrees):</label><br>
-        <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
-        <br><br>
+          <!-- Category (for random/specific) -->
+          {% if dcfg.mode in ["random_image","specific_image"] %}
+          <label>Category (subfolder):</label><br>
+          <select name="{{ dname }}_image_category">
+            <option value="" {% if not dcfg.image_category %}selected{% endif %}>All</option>
+            {% for sf in subfolders %}
+              {% set count = folder_counts[sf] %}
+              <option value="{{ sf }}" {% if dcfg.image_category==sf %}selected{% endif %}>
+                {{ sf }} ({{ count }} files)
+              </option>
+            {% endfor %}
+          </select>
+          <br><br>
+          {% endif %}
 
-        <!-- Category (subfolder) for random/specific -->
-        {% if dcfg.mode in ["random_image","specific_image"] %}
-        <label>Category (subfolder):</label><br>
-        <select name="{{ dname }}_image_category">
-          <option value="" {% if not dcfg.image_category %}selected{% endif %}>All</option>
-          {% for sf in subfolders %}
-            {% set count = folder_counts[sf] %}
-            <option value="{{ sf }}" {% if dcfg.image_category==sf %}selected{% endif %}>
-              {{ sf }} ({{ count }} files)
-            </option>
-          {% endfor %}
-        </select>
-        <br><br>
-        {% endif %}
-
-        <!-- Mixed folders -->
-        {% if dcfg.mode == "mixed" %}
-        <label>Multiple Folders (drag to reorder):</label>
-        <div style="display: flex; gap: 10px; margin: 10px 0;">
-          <div>
-            <h4>Available</h4>
-            <input type="text" placeholder="Search..." id="{{ dname }}_search" style="width:90%;">
-            <ul id="{{ dname }}_availList" style="list-style:none; margin:0; padding:0; max-height:150px; overflow:auto;">
+          <!-- Mixed Folders UI (optional) -->
+          {% if dcfg.mode == "mixed" %}
+          <label>Multiple Folders:</label><br>
+          <input type="text" placeholder="Search..." id="{{ dname }}_search" style="width:90%;"><br>
+          <div style="display:flex; gap:10px; margin-top:10px;">
+            <ul id="{{ dname }}_availList" style="flex:1; list-style:none; border:1px solid var(--border-muted); padding:5px; max-height:120px; overflow:auto;">
               {% for sf in subfolders if sf not in dcfg.mixed_folders %}
-              <li draggable="true" data-folder="{{ sf }}" style="padding:4px; margin:2px; border:1px solid #666; border-radius:4px; cursor:move;">
+              <li draggable="true" data-folder="{{ sf }}" style="margin:4px; border:1px solid #666; border-radius:4px; cursor:move; padding:4px;">
                 {{ sf }} ({{ folder_counts[sf] }})
               </li>
               {% endfor %}
             </ul>
-          </div>
-          <div>
-            <h4>Selected</h4>
-            <ul id="{{ dname }}_selList" style="list-style:none; margin:0; padding:0; max-height:150px; overflow:auto;">
+            <ul id="{{ dname }}_selList" style="flex:1; list-style:none; border:1px solid var(--border-muted); padding:5px; max-height:120px; overflow:auto;">
               {% for sf in dcfg.mixed_folders %}
-              <li draggable="true" data-folder="{{ sf }}" style="padding:4px; margin:2px; border:1px solid #666; border-radius:4px; cursor:move;">
+              <li draggable="true" data-folder="{{ sf }}" style="margin:4px; border:1px solid #666; border-radius:4px; cursor:move; padding:4px;">
                 {{ sf }} ({{ folder_counts[sf]|default(0) }})
               </li>
               {% endfor %}
             </ul>
           </div>
-        </div>
-        <input type="hidden" name="{{ dname }}_mixed_order" id="{{ dname }}_mixed_order" value="{{ ','.join(dcfg.mixed_folders) }}">
-        <script>
-          document.addEventListener("DOMContentLoaded", function(){
-            initMixedUI("{{ dname }}");
-          });
-        </script>
-        <br>
-        {% endif %}
-
-        <!-- Shuffle? (only random/mixed) -->
-        {% if dcfg.mode in ["random_image","mixed"] %}
-        <label>Shuffle?</label><br>
-        <select name="{{ dname }}_shuffle_mode">
-          <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
-          <option value="no" {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
-        </select>
-        <br><br>
-        {% endif %}
-
-        <!-- Specific Image selection -->
-        {% if dcfg.mode == "specific_image" %}
-        <label>Select Image/GIF:</label><br>
-        {% set fileList = display_images[dname] %}
-        {% if fileList and fileList|length > 100 %}
-          <div id="{{ dname }}_lazyContainer" data-files='{{ fileList|tojson }}'>
-            <button type="button" onclick="loadSpecificThumbnails('{{ dname }}')">Show Thumbnails</button>
-          </div>
-        {% else %}
-          {% if fileList and fileList|length > 0 %}
-          <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:10px;">
-            {% for imgpath in fileList %}
-              {% set bn = imgpath.split('/')[-1] %}
-              <label class="thumb-label" style="text-align:center; cursor:pointer;">
-                <img src="/images/{{ imgpath }}" style="width:80px; height:80px; object-fit:cover; border:2px solid #555; border-radius:4px;">
-                <br>
-                <input type="radio" name="{{ dname }}_specific_image" value="{{ bn }}"
-                       {% if bn == dcfg.specific_image %}checked{% endif %}>
-                {{ bn }}
-              </label>
-            {% endfor %}
-          </div>
-          {% else %}
-          <p>No images found or category is empty.</p>
+          <input type="hidden" name="{{ dname }}_mixed_order" id="{{ dname }}_mixed_order" value="{{ ','.join(dcfg.mixed_folders) }}">
+          <script>
+            document.addEventListener("DOMContentLoaded", function(){
+              initMixedUI("{{ dname }}");
+            });
+          </script>
+          <br>
           {% endif %}
-        {% endif %}
-        {% endif %}
-      </div>
-      {% endfor %}
+
+          <!-- Specific Image selection -->
+          {% if dcfg.mode == "specific_image" %}
+          <label>Select Image/GIF:</label><br>
+          {% set fileList = display_images[dname] %}
+          {% if fileList and fileList|length > 100 %}
+            <div id="{{ dname }}_lazyContainer" data-files='{{ fileList|tojson }}'>
+              <button type="button" onclick="loadSpecificThumbnails('{{ dname }}')">Show Thumbnails</button>
+            </div>
+          {% else %}
+            {% if fileList and fileList|length > 0 %}
+            <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:10px;">
+              {% for imgpath in fileList %}
+                {% set bn = imgpath.split('/')[-1] %}
+                <label style="text-align:center; cursor:pointer;">
+                  <img src="/images/{{ imgpath }}" style="width:60px; height:60px; object-fit:cover; border:2px solid #555; border-radius:4px;">
+                  <br>
+                  <input type="radio" name="{{ dname }}_specific_image" value="{{ bn }}"
+                         {% if bn == dcfg.specific_image %}checked{% endif %}>
+                  {{ bn }}
+                </label>
+              {% endfor %}
+            </div>
+            {% else %}
+              <p>No images found or category is empty.</p>
+            {% endif %}
+          {% endif %}
+          <br>
+          {% endif %}
+
+          <button type="submit">Save</button>
+        </form>
+      {% endif %}
+      {% else %}
+        <p>No displays defined in config.</p>
+      {% endif %}
     </div>
 
-    <br>
-    <div style="text-align:center;">
-      <button type="submit">Save Display Settings</button>
+    <!-- Right side: "Real-time Preview" placeholder -->
+    <div style="flex:1; min-width:280px; border:1px solid var(--border-muted); border-radius:6px; padding:15px;">
+      <h3>Real-time Preview</h3>
+      <p>(Placeholder for image or slideshow preview. 
+         In practice, PiViewer runs in the separate window.)</p>
     </div>
-  </form>
-</div>
+  </div>
 
-<!-- Remote Devices summary (if main) -->
-{% if cfg.role == 'main' and remote_displays %}
-<div class="page-section" style="text-align:center;">
-  <h2>Remote Devices</h2>
-  {% for dev in remote_displays %}
-    <h3>{{ dev.name }} ({{ dev.ip }})</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Display</th>
-          <th>Resolution</th>
-          <th>Mode</th>
-          <th>Folder(s)</th>
-          <th>Shuffle</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for rd in dev.displays %}
-        <tr>
-          <td>{{ rd.dname }}</td>
-          <td>{{ rd.resolution }}</td>
-          <td>{{ rd.mode }}</td>
-          <td>{{ rd.folders }}</td>
-          <td>{{ rd.shuffle }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    <br>
-    <form action="{{ url_for('main.remote_configure', dev_index=dev.index) }}" method="GET">
-      <button type="submit">Configure</button>
-    </form>
-  {% endfor %}
+  <!-- Bottom status row (examples: Spotify, Weather, Subdevices) -->
+  <div style="border:1px solid var(--border-muted); border-radius:6px; padding:10px;">
+    <strong>Status:</strong>
+    ✅ Spotify | ✅ Weather | ✅ Subdevices Connected
+  </div>
 </div>
-{% endif %}
-
 {% endblock %}
