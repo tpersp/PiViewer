@@ -1,32 +1,27 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Upload Media</title>
-  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body class="{{ theme }}">
-<div class="container">
-  <h1>Upload New Media (GIF/PNG/JPG)</h1>
+{% extends "base.html" %}
+{% block title %}Upload Media{% endblock %}
+{% block content %}
+
+<div class="page-section">
+  <h2>Upload New Media (GIF/PNG/JPG)</h2>
   <form method="POST" enctype="multipart/form-data">
     <label>Select Subfolder:</label><br>
     <select name="subfolder">
       {% for sf in subfolders %}
-        <option value="{{ sf }}">{{ sf }}</option>
+      <option value="{{ sf }}">{{ sf }}</option>
       {% endfor %}
     </select>
     <br><br>
-    (Optional) Create new subfolder:
+
+    <label>(Optional) Create new subfolder:</label><br>
     <input type="text" name="new_subfolder" placeholder="New Folder Name">
     <br><br>
+
     <input type="file" name="mediafiles" accept=".gif,.png,.jpg,.jpeg" multiple>
     <br><br>
+
     <button type="submit">Upload</button>
   </form>
-  <br>
-  <a href="{{ url_for('main.index') }}">
-    <button>Return to Main</button>
-  </a>
 </div>
-</body>
-</html>
+
+{% endblock %}

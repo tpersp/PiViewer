@@ -1,15 +1,12 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Manage Devices</title>
-  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body class="{{ theme }}">
-<div class="container">
-  <h1>Sub-Device Manager</h1>
+{% extends "base.html" %}
+{% block title %}Manage Devices{% endblock %}
+{% block content %}
+
+<div class="page-section">
+  <h2>Sub-Device Manager</h2>
   <p>You are on the Main device. Manage sub-devices below.</p>
-  <form method="POST" style="border:1px solid #444; padding:10px; margin-bottom:20px;">
+
+  <form method="POST" style="padding:10px; border:1px solid var(--border-muted); border-radius:6px; margin-bottom:20px;">
     <h3>Add Device</h3>
     <label>Device Name:</label><br>
     <input type="text" name="dev_name" required>
@@ -20,7 +17,7 @@
     <button type="submit" name="action" value="add_device">Add Device</button>
   </form>
 
-  <table class="devmgr-table">
+  <table>
     <thead>
       <tr>
         <th>#</th>
@@ -47,11 +44,9 @@
       {% endfor %}
     </tbody>
   </table>
+
   <form method="POST" id="deviceActionForm"></form>
-  <br>
-  <a href="{{ url_for('main.index') }}">
-    <button>Back to Main</button>
-  </a>
+
 </div>
-</body>
-</html>
+
+{% endblock %}
