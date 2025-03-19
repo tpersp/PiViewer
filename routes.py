@@ -374,7 +374,24 @@ def callback():
     except Exception as e:
         log_message(f"Spotify callback error: {e}")
         return "Spotify callback error", 500
-    return redirect(url_for("main.configure_spotify"))
+
+    # If the callback is coming via localhost, instruct the user to visit the device's IP address
+    if "localhost" in request.host or "127.0.0.1" in request.host:
+        device_ip = get_ip_address()
+        redirect_url = f"http://{device_ip}:8080/configure_spotify"
+        html = f"""
+        <html>
+          <head><meta charset="utf-8"><title>Spotify Authorization Complete</title></head>
+          <body>
+            <h2>Spotify Authorization Complete</h2>
+            <p>Please click the link below to continue using Spotify on this device:</p>
+            <p><a href="{redirect_url}">{redirect_url}</a></p>
+          </body>
+        </html>
+        """
+        return html
+    else:
+        return redirect(url_for("main.configure_spotify"))
 
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
