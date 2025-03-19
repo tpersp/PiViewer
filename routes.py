@@ -859,3 +859,11 @@ def restart_services():
         log_message(f"Failed to restart services: {e}")
         return "Failed to restart services. Check logs.", 500
     return "Services are restarting now..."
+
+# --- New live preview route ---
+@main_bp.route("/live_preview")
+def live_preview():
+    live_preview_path = os.path.join(VIEWER_HOME, "live_preview.jpg")
+    if os.path.exists(live_preview_path):
+        return send_file(live_preview_path)
+    return "", 404
