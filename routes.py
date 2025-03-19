@@ -375,17 +375,23 @@ def callback():
         log_message(f"Spotify callback error: {e}")
         return "Spotify callback error", 500
 
-    # If the callback is coming via localhost, instruct the user to visit the device's IP address
+    # Auto redirect if the callback is coming via localhost
     if "localhost" in request.host or "127.0.0.1" in request.host:
         device_ip = get_ip_address()
         redirect_url = f"http://{device_ip}:8080/configure_spotify"
         html = f"""
         <html>
-          <head><meta charset="utf-8"><title>Spotify Authorization Complete</title></head>
+          <head>
+            <meta charset="utf-8">
+            <meta http-equiv="refresh" content="0; url={redirect_url}">
+            <title>Spotify Authorization Complete</title>
+            <script type="text/javascript">
+              window.location.href = "{redirect_url}";
+            </script>
+          </head>
           <body>
             <h2>Spotify Authorization Complete</h2>
-            <p>Please click the link below to continue using Spotify on this device:</p>
-            <p><a href="{redirect_url}">{redirect_url}</a></p>
+            <p>If you are not redirected automatically, <a href="{redirect_url}">click here</a>.</p>
           </body>
         </html>
         """
