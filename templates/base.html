@@ -3,21 +3,20 @@
 <head>
   <meta charset="utf-8">
   <title>{% block title %}PiViewer{% endblock %}</title>
+  <!-- Set tab icon to icon.png -->
+  <link rel="icon" href="{{ url_for('static', filename='icon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="{{ theme }}-theme">
 
 <!-- Top Navigation Bar -->
 <nav class="top-nav">
-  <!-- Viewer Controller -->
+  <!-- Left favicon -->
   <div class="nav-item">
-    <a href="{{ url_for('main.index') }}"
-       class="{% if request.endpoint == 'main.index' %}active{% endif %}">
-      🌐 Viewer Controller
-    </a>
+    <img src="{{ url_for('static', filename='favicon.png') }}" alt="Favicon" style="height:40px;">
   </div>
 
-  <!-- Display Settings (we'll anchor to #local-displays on index) -->
+  <!-- Display Settings -->
   <div class="nav-item">
     <a href="{{ url_for('main.index') }}#local-displays"
        class="{% if request.endpoint == 'main.index' %}active{% endif %}">
@@ -38,6 +37,14 @@
     <a href="{{ url_for('main.configure_spotify') }}"
        class="{% if request.endpoint == 'main.configure_spotify' %}active{% endif %}">
       🎶 Spotify
+    </a>
+  </div>
+
+  <!-- Overlay Settings -->
+  <div class="nav-item">
+    <a href="{{ url_for('main.overlay_config') }}"
+       class="{% if request.endpoint == 'main.overlay_config' %}active{% endif %}">
+      🖥️ Overlay
     </a>
   </div>
 
@@ -64,6 +71,11 @@
         🔄 Restart Viewer
       </button>
     </form>
+  </div>
+
+  <!-- Right favicon -->
+  <div class="nav-item">
+    <img src="{{ url_for('static', filename='favicon.png') }}" alt="Favicon" style="height:40px;">
   </div>
 </nav>
 

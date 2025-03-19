@@ -122,6 +122,11 @@ class DisplayWindow(QMainWindow):
         self.weather_timer.start(60000)
         self.update_weather()
 
+        # NEW: Live Preview Timer to update the live preview file every second.
+        self.live_preview_timer = QTimer(self)
+        self.live_preview_timer.timeout.connect(self.save_live_preview)
+        self.live_preview_timer.start(1000)
+
         # Load config and start
         self.cfg = load_config()
         self.reload_settings()
