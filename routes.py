@@ -17,14 +17,11 @@ from utils import (
     get_hostname, get_ip_address, get_pi_model
 )
 
-main_bp = Blueprint("main", __name__, static_folder="static")
-
-
 def detect_monitors_extended():
     """
     Calls xrandr --props to find connected monitors, their preferred/current resolution,
     plus a list of possible modes, plus a 'monitor name' from EDID if available.
-    We do NOT use these to change resolution, only to identify monitors.
+    We do NOT use these to change resolution.
     """
     result = {}
     try:
@@ -37,7 +34,6 @@ def detect_monitors_extended():
     for line in xout.splitlines():
         line = line.strip()
         if " connected " in line:
-            # e.g. "HDMI-1 connected primary 1920x1080+0+0 ..."
             parts = line.split()
             name = parts[0]
             if "connected" in line:
@@ -48,7 +44,6 @@ def detect_monitors_extended():
                     "current_mode": None,
                     "modes": []
                 }
-                # Attempt to parse the actual "current_mode" from the line
                 for p in parts:
                     if "x" in p and "+" in p:
                         mode_part = p.split("+")[0]
@@ -62,7 +57,6 @@ def detect_monitors_extended():
                 result[current_monitor]["model"] = name_str
 
         elif current_monitor:
-            # If there's a token that looks like 1920x1080, treat it as a possible mode
             tokens = line.split()
             if tokens:
                 mode_candidate = tokens[0]
@@ -72,11 +66,9 @@ def detect_monitors_extended():
 
     return result
 
-
 def get_local_monitors_from_config(cfg):
     """
     Return a dict for referencing each monitor's resolution in overlays, etc.
-    We do NOT change resolution; we only store & display what's detected.
     """
     out = {}
     for dname, dcfg in cfg.get("displays", {}).items():
@@ -92,10 +84,9 @@ def get_local_monitors_from_config(cfg):
                 out[dname] = {"resolution": "?"}
     return out
 
-
 def compute_overlay_preview(overlay_cfg, monitors_dict):
     """
-    Used for overlay preview, only. Does not do resolution changes.
+    Used for overlay preview, only.
     """
     selection = overlay_cfg.get("monitor_selection", "All")
     if selection == "All":
@@ -146,12 +137,9 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
     }
     return (preview_width, preview_height, preview_overlay)
 
-
 # We keep rotation logic for images but remove any function to change resolution.
 
-
 main_bp = Blueprint("main", __name__, static_folder="static")
-
 
 @main_bp.route("/stats")
 def stats_json():
@@ -163,22 +151,17 @@ def stats_json():
         "temp": temp
     })
 
-
 @main_bp.route("/list_monitors")
 def list_monitors():
-    # Not used often, just a placeholder
     return jsonify({"Display0": {"resolution": "1920x1080", "offset_x": 0, "offset_y": 0}})
-
 
 @main_bp.route("/list_folders")
 def list_folders():
     return jsonify(get_subfolders())
 
-
 @main_bp.route("/images/<path:filename>")
 def serve_image(filename):
     return send_from_directory(IMAGE_DIR, filename)
-
 
 @main_bp.route("/bg_image")
 def bg_image():
@@ -186,13 +169,11 @@ def bg_image():
         return send_file(WEB_BG)
     return "", 404
 
-
 @main_bp.route("/download_log")
 def download_log():
     if os.path.exists(LOG_PATH):
         return send_file(LOG_PATH, as_attachment=True)
     return "No log file found", 404
-
 
 @main_bp.route("/upload_media", methods=["GET", "POST"])
 def upload_media():
@@ -228,7 +209,6 @@ def upload_media():
 
     return redirect(url_for("main.index"))
 
-
 @main_bp.route("/restart_viewer", methods=["POST"])
 def restart_viewer():
     try:
@@ -237,13 +217,8 @@ def restart_viewer():
     except subprocess.CalledProcessError as e:
         return f"Failed to restart service: {e}", 500
 
-
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
-    """
-    Settings page, but DOES NOT allow changing resolution.
-    We only keep the theme, weather, etc.
-    """
     cfg = load_config()
     if "weather" not in cfg:
         cfg["weather"] = {}
@@ -320,7 +295,6 @@ def settings():
         return redirect(url_for("main.settings"))
 
     else:
-        # GET request: just render the Settings page
         cfg = load_config()
         theme = cfg.get("theme", "dark")
         return render_template(
@@ -329,7 +303,6 @@ def settings():
             cfg=cfg,
             update_branch=UPDATE_BRANCH
         )
-
 
 @main_bp.route("/configure_spotify", methods=["GET", "POST"])
 def configure_spotify():
@@ -356,7 +329,6 @@ def configure_spotify():
             theme=cfg.get("theme", "dark")
         )
 
-
 @main_bp.route("/spotify_auth")
 def spotify_auth():
     from spotipy.oauth2 import SpotifyOAuth
@@ -377,7 +349,6 @@ def spotify_auth():
     )
     auth_url = sp_oauth.get_authorize_url()
     return redirect(auth_url)
-
 
 @main_bp.route("/callback")
 def callback():
@@ -405,12 +376,8 @@ def callback():
         return "Spotify callback error", 500
     return redirect(url_for("main.configure_spotify"))
 
-
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
-    """
-    Configure overlay (clock, weather, etc.). Not related to resolution changes.
-    """
     cfg = load_config()
     if "overlay" not in cfg:
         cfg["overlay"] = {}
@@ -486,7 +453,6 @@ def overlay_config():
 
             return redirect(url_for("main.overlay_config"))
 
-    # For preview
     monitors_dict = get_local_monitors_from_config(cfg)
     pw, ph, preview_overlay = compute_overlay_preview(cfg["overlay"], monitors_dict)
 
@@ -499,17 +465,16 @@ def overlay_config():
         preview_overlay=preview_overlay
     )
 
-
 @main_bp.route("/", methods=["GET", "POST"])
 def index():
     cfg = load_config()
 
-    # Re-detect extended monitors, just to show their current resolution, not to change it
+    # Re-detect extended monitors, just to show their current resolution
     ext_mons = detect_monitors_extended()
     if "displays" not in cfg:
         cfg["displays"] = {}
 
-    # remove old Display0, etc., if they no longer appear in xrandr
+    # Remove old displays that no longer appear
     to_remove = []
     for dname in cfg["displays"]:
         if dname not in ext_mons and dname.startswith("Display"):
@@ -550,7 +515,7 @@ def index():
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_displays":
-            # Just update display modes, categories, etc. No resolution changes
+            # Update display modes, categories, etc.
             for dname in cfg["displays"]:
                 pre = dname + "_"
                 dcfg = cfg["displays"][dname]
@@ -591,7 +556,7 @@ def index():
                 pass
             return redirect(url_for("main.index"))
 
-    # Build the folder counts for each subfolder
+    # Build folder counts for each subfolder
     folder_counts = {}
     for sf in get_subfolders():
         folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
@@ -623,6 +588,34 @@ def index():
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
+    # Compute dynamic status for main devices
+    if cfg.get("role") == "main":
+        sp_cfg = cfg.get("spotify", {})
+        if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
+            spotify_cache_path = os.path.join(VIEWER_HOME, ".spotify_cache")
+            if os.path.exists(spotify_cache_path):
+                spotify_status = "✅"
+            else:
+                spotify_status = "⚠️"
+        else:
+            spotify_status = "❌"
+
+        w_cfg = cfg.get("weather", {})
+        if w_cfg.get("api_key") and (w_cfg.get("zip_code") or (w_cfg.get("lat") is not None and w_cfg.get("lon") is not None)):
+            weather_status = "✅"
+        else:
+            weather_status = "❌"
+
+        devices = cfg.get("devices", [])
+        if devices:
+            subdevices_status = "✅ " + ", ".join([d.get("name", d.get("ip", "Unknown")) for d in devices])
+        else:
+            subdevices_status = "❌"
+    else:
+        spotify_status = ""
+        weather_status = ""
+        subdevices_status = sub_info_line
+
     final_monitors = {}
     for mon_name, minfo in ext_mons.items():
         chosen = cfg["displays"][mon_name].get("chosen_mode", minfo["current_mode"])
@@ -650,9 +643,11 @@ def index():
         version=APP_VERSION,
         sub_info_line=sub_info_line,
         monitors=final_monitors,
-        flash_msg=flash_msg
+        flash_msg=flash_msg,
+        spotify_status=spotify_status,
+        weather_status=weather_status,
+        subdevices_status=subdevices_status
     )
-
 
 @main_bp.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
 def remote_configure(dev_index):
@@ -724,11 +719,9 @@ def remote_configure(dev_index):
         remote_folders=remote_folders
     )
 
-
 @main_bp.route("/sync_config", methods=["GET"])
 def sync_config():
     return jsonify(load_config())
-
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
@@ -743,7 +736,6 @@ def update_config():
     save_config(cfg)
     log_message("Local config partially updated via /update_config")
     return "Config updated", 200
-
 
 @main_bp.route("/device_manager", methods=["GET", "POST"])
 def device_manager():
@@ -811,13 +803,8 @@ def device_manager():
         theme=cfg.get("theme", "dark")
     )
 
-
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():
-    """
-    Pull latest code from GitHub, run setup.sh in --auto-update mode,
-    and forcibly reboot so we don't require manual restarts.
-    """
     cfg = load_config()
     log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
 
@@ -861,7 +848,6 @@ def update_app():
       </body>
     </html>
     """
-
 
 @main_bp.route("/restart_services", methods=["POST", "GET"])
 def restart_services():
