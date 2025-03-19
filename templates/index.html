@@ -51,6 +51,7 @@
           });
         });
       }
+
       let dragSrcEl=null;
       function handleDragStart(e){
         dragSrcEl = this;
@@ -94,6 +95,7 @@
         }
         updateHiddenOrder();
       }
+
       if(availList){
         availList.addEventListener("click", e=>{
           if(e.target.tagName==="LI"){
@@ -108,12 +110,14 @@
           }
         });
       }
+
       function updateHiddenOrder(){
         let items = selList.querySelectorAll("li");
         let arr=[];
         items.forEach(li=> arr.push(li.getAttribute("data-folder")));
         hiddenOrder.value = arr.join(",");
       }
+
       if(selList){
         let selItems = selList.querySelectorAll("li");
         selItems.forEach(li => addDnDHandlers(li));
@@ -155,6 +159,12 @@
 <body class="{{ theme }}">
 <div class="container">
 
+  {% if flash_msg %}
+  <div style="text-align:center; display:flex; align-items:center; justify-content:center; margin: 10px; border: 2px dashed rgb(59, 27, 0); padding: 10px; background: #161004;">
+    {{ flash_msg }}
+  </div>
+  {% endif %}
+
   <!-- Title row -->
   <h1 style="text-align:center; display:flex; align-items:center; justify-content:center; gap:20px;">
     <img src="{{ url_for('static', filename='icon.png') }}" alt="Left Icon" style="height:48px;">
@@ -165,6 +175,7 @@
   <div style="text-align:center; font-size:12px; color:#888;">
     Version {{ version }}
   </div>
+
   <p style="text-align:center;">
     <strong>Hostname:</strong> {{ host }} |
     <strong>IP:</strong> {{ ipaddr }} |
@@ -177,6 +188,7 @@
     <strong>Load(1m):</strong> <span id="stat_load">{{ load1 }}</span> |
     <strong>Temp:</strong> <span id="stat_temp">{{ temp }}</span>
   </p>
+
   <div class="button-row">
     <a href="{{ url_for('main.settings') }}">
       <button style="font-size:14px;">Settings</button>
@@ -199,12 +211,15 @@
 
   <section>
     <h2 style="text-align:center;">Local Display Settings</h2>
+
     <form method="POST">
       <input type="hidden" name="action" value="update_displays">
       <div class="display-grid">
+
         {% for dname, dcfg in cfg.displays.items() %}
-        {% set resolution = monitors[dname].resolution if dname in monitors else "?" %}
+        {% set mon_data = monitors[dname] if dname in monitors else None %}
         <div class="display-card">
+
           <div class="help-icon" onclick="toggleHelpBox('help_{{dname}}')">?</div>
           <div class="help-box" id="help_{{dname}}">
             <p><strong>Display Info</strong></p>
@@ -215,7 +230,12 @@
             <p>- Specific: pick exactly 1 file from a chosen folder</p>
             <p>- Spotify: show album art of currently playing track</p>
           </div>
-          <h3>{{ dname }} ({{ resolution }})</h3>
+
+          {% if mon_data %}
+            <h3>{{ dname }} ({{ mon_data.resolution }})</h3>
+          {% else %}
+            <h3>{{ dname }} (?)</h3>
+          {% endif %}
 
           <!-- Mode dropdown -->
           <div class="field-block">
@@ -228,7 +248,6 @@
             </select>
           </div>
 
-          <!-- Interval only if random or mixed -->
           {% if dcfg.mode in ["random_image","mixed"] %}
           <div class="field-block">
             <label>Interval (seconds):</label><br>
@@ -236,13 +255,13 @@
           </div>
           {% endif %}
 
-          <!-- Rotate is always shown for now -->
           <div class="field-block">
             <label>Rotate (degrees):</label><br>
             <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
           </div>
 
-          <!-- Category if random_image or specific_image -->
+          <!-- No resolution-change dropdown here! -->
+
           {% if dcfg.mode in ["random_image","specific_image"] %}
           <div class="field-block">
             <label>Category (subfolder):</label><br>
@@ -258,7 +277,6 @@
           </div>
           {% endif %}
 
-          <!-- If mode == mixed, show multi-folder UI -->
           {% if dcfg.mode == "mixed" %}
           <div class="field-block">
             <label>Multiple Folders (drag to reorder):</label><br>
@@ -290,18 +308,16 @@
           </div>
           {% endif %}
 
-          <!-- Shuffle only if random or mixed -->
           {% if dcfg.mode in ["random_image","mixed"] %}
           <div class="field-block">
             <label>Shuffle?</label><br>
             <select name="{{ dname }}_shuffle_mode">
               <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
-              <option value="no"  {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
+              <option value="no" {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
             </select>
           </div>
           {% endif %}
 
-          <!-- If mode == specific_image, show file selection -->
           {% if dcfg.mode == "specific_image" %}
           <div class="field-block">
             <h4>Select Image/GIF</h4>
@@ -313,25 +329,27 @@
                 </button>
               </div>
             {% else %}
-              <div class="image-gallery">
-                {% for imgpath in fileList %}
-                  {% set bn = imgpath.split('/')[-1] %}
-                  <label class="thumb-label">
-                    <img src="/images/{{ imgpath }}" class="thumb-img"><br>
-                    <input type="radio" name="{{ dname }}_specific_image" value="{{ bn }}"
-                      {% if bn == dcfg.specific_image %}checked{% endif %}>
-                    {{ bn }}
-                  </label>
-                {% else %}
-                  <p>No images found or category is empty.</p>
-                {% endfor %}
-              </div>
+              {% if fileList and fileList|length > 0 %}
+                <div class="image-gallery">
+                  {% for imgpath in fileList %}
+                    {% set bn = imgpath.split('/')[-1] %}
+                    <label class="thumb-label">
+                      <img src="/images/{{ imgpath }}" class="thumb-img"><br>
+                      <input type="radio" name="{{ dname }}_specific_image" value="{{ bn }}"
+                        {% if bn == dcfg.specific_image %}checked{% endif %}>
+                      {{ bn }}
+                    </label>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p>No images found or category is empty.</p>
+              {% endif %}
             {% endif %}
           </div>
           {% endif %}
-
         </div>
         {% endfor %}
+
       </div>
       <div class="centered-btn">
         <button type="submit">Save Display Settings</button>

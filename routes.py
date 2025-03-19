@@ -20,56 +20,94 @@ from utils import (
 main_bp = Blueprint("main", __name__, static_folder="static")
 
 
-################################################################################
-# For the overlay page, we show actual monitors from the config (instead of "fake" ones).
-################################################################################
+def detect_monitors_extended():
+    """
+    Calls xrandr --props to find connected monitors, their preferred/current resolution,
+    plus a list of possible modes, plus a 'monitor name' from EDID if available.
+    We do NOT use these to change resolution, only to identify monitors.
+    """
+    result = {}
+    try:
+        xout = subprocess.check_output(["xrandr", "--props"], stderr=subprocess.STDOUT).decode("utf-8", "ignore")
+    except Exception as e:
+        log_message(f"Monitor detection error: {e}")
+        return {}
+
+    current_monitor = None
+    for line in xout.splitlines():
+        line = line.strip()
+        if " connected " in line:
+            # e.g. "HDMI-1 connected primary 1920x1080+0+0 ..."
+            parts = line.split()
+            name = parts[0]
+            if "connected" in line:
+                current_monitor = name
+                result[current_monitor] = {
+                    "model": None,
+                    "connected": True,
+                    "current_mode": None,
+                    "modes": []
+                }
+                # Attempt to parse the actual "current_mode" from the line
+                for p in parts:
+                    if "x" in p and "+" in p:
+                        mode_part = p.split("+")[0]
+                        result[current_monitor]["current_mode"] = mode_part
+                        break
+
+        elif current_monitor and "Monitor name:" in line:
+            idx = line.find("Monitor name:")
+            name_str = line[idx + len("Monitor name:"):].strip()
+            if name_str:
+                result[current_monitor]["model"] = name_str
+
+        elif current_monitor:
+            # If there's a token that looks like 1920x1080, treat it as a possible mode
+            tokens = line.split()
+            if tokens:
+                mode_candidate = tokens[0]
+                if "x" in mode_candidate and mode_candidate[0].isdigit():
+                    if mode_candidate not in result[current_monitor]["modes"]:
+                        result[current_monitor]["modes"].append(mode_candidate)
+
+    return result
+
+
 def get_local_monitors_from_config(cfg):
     """
-    Return a dict that shows each display name + its actual resolution from config (if known).
-    If no 'screen_name' is set, we use "?" or 0x0.
-    Example:
-      {
-        "HDMI-2": {"resolution":"1024x600"},
-        "Fallback": {"resolution":"1920x1080"}
-      }
+    Return a dict for referencing each monitor's resolution in overlays, etc.
+    We do NOT change resolution; we only store & display what's detected.
     """
     out = {}
-    displays = cfg.get("displays", {})
-    for dname, dcfg in displays.items():
-        sn = dcfg.get("screen_name", "")
-        if sn and ":" in sn:
-            # e.g. "HDMI-2: 1024x600"
-            # parse after the colon
-            part = sn.split(":")[-1].strip()
-            if "x" in part:
-                out[dname] = {"resolution": part}
-            else:
-                # fallback
-                out[dname] = {"resolution": "?"}
+    for dname, dcfg in cfg.get("displays", {}).items():
+        chosen = dcfg.get("chosen_mode")
+        if chosen:
+            out[dname] = {"resolution": chosen}
         else:
-            out[dname] = {"resolution": "?"}
+            sn = dcfg.get("screen_name", "")
+            if sn and ":" in sn:
+                part = sn.split(":")[-1].strip()
+                out[dname] = {"resolution": part if "x" in part else "?"}
+            else:
+                out[dname] = {"resolution": "?"}
     return out
 
 
 def compute_overlay_preview(overlay_cfg, monitors_dict):
     """
-    Return (preview_size, preview_overlay) for the overlay drag UI.
-    We combine them with the monitors_dict for the template.
+    Used for overlay preview, only. Does not do resolution changes.
     """
     selection = overlay_cfg.get("monitor_selection", "All")
-    # We'll figure out total_width/total_height by scanning monitors_dict
-    # if "All," pick largest W/H
-    # if a single chosen, parse that one
-
     if selection == "All":
-        maxw = 0
-        maxh = 0
+        maxw, maxh = 0, 0
         for dname, minfo in monitors_dict.items():
             try:
                 w_str, h_str = minfo["resolution"].split("x")
                 w, h = int(w_str), int(h_str)
-                if w > maxw: maxw = w
-                if h > maxh: maxh = h
+                if w > maxw:
+                    maxw = w
+                if h > maxh:
+                    maxh = h
             except:
                 pass
         if maxw == 0 or maxh == 0:
@@ -106,8 +144,13 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
         "left": int(ox * scale_factor),
         "top": int(oy * scale_factor),
     }
-
     return (preview_width, preview_height, preview_overlay)
+
+
+# We keep rotation logic for images but remove any function to change resolution.
+
+
+main_bp = Blueprint("main", __name__, static_folder="static")
 
 
 @main_bp.route("/stats")
@@ -123,7 +166,7 @@ def stats_json():
 
 @main_bp.route("/list_monitors")
 def list_monitors():
-    # older remote logic
+    # Not used often, just a placeholder
     return jsonify({"Display0": {"resolution": "1920x1080", "offset_x": 0, "offset_y": 0}})
 
 
@@ -162,10 +205,12 @@ def upload_media():
     files = request.files.getlist("mediafiles")
     if not files:
         return "No files selected", 400
+
     subfolder = request.form.get("subfolder", "")
     new_subfolder = request.form.get("new_subfolder", "").strip()
     if new_subfolder:
         subfolder = new_subfolder
+
     target_dir = os.path.join(IMAGE_DIR, subfolder)
     if not os.path.exists(target_dir):
         os.makedirs(target_dir)
@@ -195,6 +240,10 @@ def restart_viewer():
 
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
+    """
+    Settings page, but DOES NOT allow changing resolution.
+    We only keep the theme, weather, etc.
+    """
     cfg = load_config()
     if "weather" not in cfg:
         cfg["weather"] = {}
@@ -204,6 +253,7 @@ def settings():
         new_role = request.form.get("role", "main")
         cfg["theme"] = new_theme
         cfg["role"] = new_role
+
         if new_role == "sub":
             cfg["main_ip"] = request.form.get("main_ip", "").strip()
         else:
@@ -218,7 +268,6 @@ def settings():
         w_api = request.form.get("weather_api_key", "").strip()
         w_zip = request.form.get("weather_zip_code", "").strip()
         w_cc = request.form.get("weather_country_code", "").strip()
-        # Automatically fetch latitude and longitude if API key, zip code, and country code are provided
         if w_api and w_zip and w_cc:
             try:
                 weather_url = f"http://api.openweathermap.org/data/2.5/weather?zip={w_zip},{w_cc}&appid={w_api}"
@@ -250,12 +299,33 @@ def settings():
         except:
             cfg["weather"]["lon"] = None
 
+        if "gui" not in cfg:
+            cfg["gui"] = {}
+        try:
+            cfg["gui"]["background_blur_radius"] = int(request.form.get("background_blur_radius", "20"))
+        except:
+            cfg["gui"]["background_blur_radius"] = 20
+
+        try:
+            cfg["gui"]["background_scale_percent"] = int(request.form.get("background_scale_percent", "100"))
+        except:
+            cfg["gui"]["background_scale_percent"] = 100
+
+        try:
+            cfg["gui"]["foreground_scale_percent"] = int(request.form.get("foreground_scale_percent", "100"))
+        except:
+            cfg["gui"]["foreground_scale_percent"] = 100
+
         save_config(cfg)
         return redirect(url_for("main.settings"))
+
     else:
+        # GET request: just render the Settings page
+        cfg = load_config()
+        theme = cfg.get("theme", "dark")
         return render_template(
             "settings.html",
-            theme=cfg.get("theme", "dark"),
+            theme=theme,
             cfg=cfg,
             update_branch=UPDATE_BRANCH
         )
@@ -308,6 +378,7 @@ def spotify_auth():
     auth_url = sp_oauth.get_authorize_url()
     return redirect(auth_url)
 
+
 @main_bp.route("/callback")
 def callback():
     from spotipy.oauth2 import SpotifyOAuth
@@ -337,6 +408,9 @@ def callback():
 
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
+    """
+    Configure overlay (clock, weather, etc.). Not related to resolution changes.
+    """
     cfg = load_config()
     if "overlay" not in cfg:
         cfg["overlay"] = {}
@@ -378,7 +452,6 @@ def overlay_config():
             over["show_feels_like"] = ("show_feels_like" in request.form)
             over["show_humidity"] = ("show_humidity" in request.form)
 
-            # X/Y
             try:
                 over["offset_x"] = int(request.form.get("offset_x", "20"))
             except:
@@ -388,7 +461,6 @@ def overlay_config():
             except:
                 over["offset_y"] = 20
 
-            # W/H
             try:
                 wval = int(request.form.get("overlay_width", "300"))
                 over["overlay_width"] = wval
@@ -414,9 +486,8 @@ def overlay_config():
 
             return redirect(url_for("main.overlay_config"))
 
-    # Build the monitors dict from config
+    # For preview
     monitors_dict = get_local_monitors_from_config(cfg)
-    # Then compute scaled preview
     pw, ph, preview_overlay = compute_overlay_preview(cfg["overlay"], monitors_dict)
 
     return render_template(
@@ -432,23 +503,54 @@ def overlay_config():
 @main_bp.route("/", methods=["GET", "POST"])
 def index():
     cfg = load_config()
+
+    # Re-detect extended monitors, just to show their current resolution, not to change it
+    ext_mons = detect_monitors_extended()
     if "displays" not in cfg:
         cfg["displays"] = {}
-    if not cfg["displays"]:
-        cfg["displays"]["Display0"] = {
-            "mode": "random_image",
-            "image_interval": 60,
-            "image_category": "",
-            "specific_image": "",
-            "shuffle_mode": False,
-            "mixed_folders": [],
-            "rotate": 0
-        }
-        save_config(cfg)
+
+    # remove old Display0, etc., if they no longer appear in xrandr
+    to_remove = []
+    for dname in cfg["displays"]:
+        if dname not in ext_mons and dname.startswith("Display"):
+            to_remove.append(dname)
+        elif dname not in ext_mons and dname.startswith("HDMI"):
+            to_remove.append(dname)
+    for dr in to_remove:
+        del cfg["displays"][dr]
+
+    # Update or add each known monitor for reference only
+    for mon_name, minfo in ext_mons.items():
+        if mon_name not in cfg["displays"]:
+            cfg["displays"][mon_name] = {
+                "mode": "random_image",
+                "image_interval": 60,
+                "image_category": "",
+                "specific_image": "",
+                "shuffle_mode": False,
+                "mixed_folders": [],
+                "rotate": 0,
+                "screen_name": f"{mon_name}: {minfo['current_mode']}",
+                "chosen_mode": minfo["current_mode"]
+            }
+            log_message(f"Detected new monitor {mon_name} with current mode {minfo['current_mode']}")
+        else:
+            dcfg = cfg["displays"][mon_name]
+            dcfg["screen_name"] = f"{mon_name}: {minfo['current_mode']}"
+            if minfo.get("model"):
+                dcfg["monitor_model"] = minfo["model"]
+
+    save_config(cfg)
+
+    flash_msg = (
+      "If you experience lower performance or framerate than expected, "
+      "please consider using a physically lower resolution monitor."
+    )
 
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_displays":
+            # Just update display modes, categories, etc. No resolution changes
             for dname in cfg["displays"]:
                 pre = dname + "_"
                 dcfg = cfg["displays"][dname]
@@ -489,28 +591,25 @@ def index():
                 pass
             return redirect(url_for("main.index"))
 
-    # Now we compute folder_counts
+    # Build the folder counts for each subfolder
     folder_counts = {}
     for sf in get_subfolders():
         folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
 
-    # Build a dictionary of actual images to show for "specific_image" UI.
-    # We'll replicate the logic so that if "image_category" is set,
-    # we gather them from that subfolder. If none set, gather from entire IMAGE_DIR.
+    # Collect images for "specific_image" selection
     display_images = {}
     for dname, dcfg in cfg["displays"].items():
-        # gather all images from the chosen category or "All"
         cat = dcfg.get("image_category", "")
         base_dir = os.path.join(IMAGE_DIR, cat) if cat else IMAGE_DIR
-        image_list = []
+        img_list = []
         if os.path.isdir(base_dir):
             for fname in os.listdir(base_dir):
                 lf = fname.lower()
                 if lf.endswith((".jpg", ".jpeg", ".png", ".gif")):
-                    rel_path = fname  # relative in that folder
-                    image_list.append(os.path.join(cat, rel_path) if cat else rel_path)
-        image_list.sort()
-        display_images[dname] = image_list
+                    rel_path = fname
+                    img_list.append(os.path.join(cat, rel_path) if cat else rel_path)
+        img_list.sort()
+        display_images[dname] = img_list
 
     cpu, mem_mb, load1, temp = get_system_stats()
     host = get_hostname()
@@ -524,16 +623,15 @@ def index():
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
-    # We'll also gather a dictionary of monitors from config for the "Local Display Settings" headings
-    # e.g. so we can show "HDMI-2 (1024x600)"
-    monitors = {}
-    for dname, dcfg in cfg["displays"].items():
-        sn = dcfg.get("screen_name", "")
-        if sn and ":" in sn:
-            # e.g. "HDMI-2: 1024x600"
-            monitors[dname] = {"resolution": sn.split(":", 1)[1].strip()}
-        else:
-            monitors[dname] = {"resolution": "?"}
+    final_monitors = {}
+    for mon_name, minfo in ext_mons.items():
+        chosen = cfg["displays"][mon_name].get("chosen_mode", minfo["current_mode"])
+        model_name = minfo["model"] or "?"
+        final_monitors[mon_name] = {
+            "resolution": chosen,
+            "available_modes": minfo["modes"],
+            "model_name": model_name
+        }
 
     return render_template(
         "index.html",
@@ -551,7 +649,8 @@ def index():
         theme=theme,
         version=APP_VERSION,
         sub_info_line=sub_info_line,
-        monitors=monitors
+        monitors=final_monitors,
+        flash_msg=flash_msg
     )
 
 
@@ -715,6 +814,10 @@ def device_manager():
 
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():
+    """
+    Pull latest code from GitHub, run setup.sh in --auto-update mode,
+    and forcibly reboot so we don't require manual restarts.
+    """
     cfg = load_config()
     log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
 
@@ -746,7 +849,18 @@ def update_app():
             log_message(f"Re-running setup.sh failed: {e}")
 
     log_message("Update completed successfully.")
-    return render_template("update_complete.html")
+    subprocess.Popen(["sudo", "reboot"])
+
+    return """
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+      </head>
+      <body style="text-align:center; margin-top:50px;">
+        <h2>Update is complete. The system is now rebooting...</h2>
+      </body>
+    </html>
+    """
 
 
 @main_bp.route("/restart_services", methods=["POST", "GET"])

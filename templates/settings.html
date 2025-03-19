@@ -19,6 +19,10 @@
 <body class="{{ theme }}">
 <div class="container">
   <h1>Settings</h1>
+
+  <!-- We have removed all resolution-changing code. -->
+
+  <!-- ============== General Settings Form ============== -->
   <form method="POST" enctype="multipart/form-data">
     <label>Role:</label><br>
     <select name="role" id="roleSelect" onchange="toggleMainIP()">
@@ -46,7 +50,27 @@
     <input type="file" name="bg_image" accept="image/*"><br><br>
     {% endif %}
 
-    <!-- Weather Settings Moved Here -->
+    <!-- GUI Settings -->
+    <fieldset style="border:1px solid #444; padding:10px; margin:20px 0;">
+      <legend style="font-weight:bold;">GUI Settings</legend>
+      <label>Background Blur Radius:</label><br>
+      <input type="number" name="background_blur_radius"
+             value="{{ cfg.gui.background_blur_radius|default('20') }}" min="0">
+      <br><br>
+
+      <label>Background Resolution Scale (%):</label><br>
+      <input type="number" name="background_scale_percent"
+             value="{{ cfg.gui.background_scale_percent|default('100') }}"
+             step="1" min="1" max="100">
+      <br><br>
+
+      <label>Foreground Resolution Scale (%):</label><br>
+      <input type="number" name="foreground_scale_percent"
+             value="{{ cfg.gui.foreground_scale_percent|default('100') }}"
+             step="1" min="1" max="100">
+    </fieldset>
+
+    <!-- Weather Settings -->
     <fieldset style="border:1px solid #444; padding:10px; margin:20px 0;">
       <legend style="font-weight:bold;">Weather Settings</legend>
 
@@ -82,12 +106,13 @@
 
   <br>
   <hr>
+  <!-- We removed the entire "Resolution Settings" section. -->
 
   <!-- Update Section -->
   <form method="POST" action="{{ url_for('main.update_app') }}">
     <p><strong>Update from GitHub:</strong></p>
     <p>
-      Branch: <em>{{ update_branch }}</em>  
+      Branch: <em>{{ update_branch }}</em>
       (Configured in <code>config.py</code>)
     </p>
     <button type="submit">Update Now</button>
