@@ -389,7 +389,6 @@ def overlay_config():
             over["monitor_selection"] = request.form.get("monitor_selection", "All")
             save_config(cfg)
             return redirect(url_for("main.overlay_config"))
-
         elif action == "save_overlay":
             over["overlay_enabled"] = ("overlay_enabled" in request.form)
             over["clock_enabled"] = ("clock_enabled" in request.form)
@@ -444,6 +443,9 @@ def overlay_config():
                 over["bg_opacity"] = float(request.form.get("bg_opacity", "0.4"))
             except:
                 over["bg_opacity"] = 0.4
+
+            # NEW: Store the auto scale option.
+            over["auto_scale"] = ("auto_scale" in request.form)
 
             save_config(cfg)
             try:
@@ -586,7 +588,7 @@ def index():
     if cfg.get("role") == "sub":
         sub_info_line = "This device is SUB"
         if cfg["main_ip"]:
-            sub_info_line += f" - Main IP: {cfg['main_ip']}"
+            sub_info_line += f" - Main IP: {cfg['main_ip']}" 
 
     # Compute dynamic status for main devices
     if cfg.get("role") == "main":
