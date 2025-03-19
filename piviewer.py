@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from spotipy.oauth2 import SpotifyOAuth
-from config import APP_VERSION, IMAGE_DIR, LOG_PATH
+from config import APP_VERSION, IMAGE_DIR, LOG_PATH, VIEWER_HOME
 from utils import load_config, save_config, log_message
 
 
@@ -121,6 +121,11 @@ class DisplayWindow(QMainWindow):
         self.weather_timer.timeout.connect(self.update_weather)
         self.weather_timer.start(60000)
         self.update_weather()
+
+        # NEW: Live Preview Timer to update the live preview file every second.
+        self.live_preview_timer = QTimer(self)
+        self.live_preview_timer.timeout.connect(self.save_live_preview)
+        self.live_preview_timer.start(1000)
 
         # Load config and start
         self.cfg = load_config()
@@ -298,6 +303,7 @@ class DisplayWindow(QMainWindow):
 
         self.show_foreground_image(new_path)
         self.preload_next_images()
+        self.save_live_preview()
 
     def clear_foreground_label(self, message):
         if self.current_movie:
@@ -614,6 +620,13 @@ class DisplayWindow(QMainWindow):
             log_message(f"Spotify error: {e}")
             return None
         return None
+
+    def save_live_preview(self):
+        screen = self.screen()
+        if screen:
+            live_preview_path = os.path.join(VIEWER_HOME, "live_preview.jpg")
+            preview = screen.grabWindow(self.winId())
+            preview.save(live_preview_path, "JPG")
 
 
 class PiViewerGUI:

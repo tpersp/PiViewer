@@ -1,69 +1,68 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Configure Spotify Integration</title>
-  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body class="{{ theme }}">
-<div class="container">
-  <h1>Configure Spotify Integration</h1>
-  
-  <!-- How to Set Up Spotify Integration Section -->
-  <section>
-    <h2>How to Set Up Spotify Integration</h2>
-    <p>Follow these steps to configure Spotify integration for your PiViewer:</p>
-    <ol>
-      <li>
-        Visit the <a href="https://developer.spotify.com/dashboard/" target="_blank">Spotify Developer Dashboard</a> and log in (or sign up if you don't have an account).
-      </li>
-      <li>
-        Create a new application. After creation, note down your <strong>Client ID</strong> and <strong>Client Secret</strong>.
-      </li>
-      <li>
-        In your app settings, set the <strong>Redirect URI</strong> to <code>http://localhost:8080/callback</code> (or adjust it as needed for your setup).
-      </li>
-      <li>
-        Enter your <strong>Client ID</strong>, <strong>Client Secret</strong>, <strong>Redirect URI</strong>, and the desired <strong>Scope</strong> in the form below.
-      </li>
-      <li>
-        Click <strong>Save Spotify Settings</strong> to store your configuration.
-      </li>
-      <li>
-        Then click the <strong>Authorize Spotify</strong> button (added below) to begin the OAuth flow.
-      </li>
-      <li>
-        Once authorized, your token will be cached (in <code>.spotify_cache</code>) and the viewer will use Spotify’s API to fetch and display the currently playing track’s album art.
-      </li>
-    </ol>
-  </section>
-  
-  <form method="POST">
-    <div class="field-block">
+{% extends "base.html" %}
+{% block title %}Configure Spotify{% endblock %}
+{% block content %}
+
+<div class="page-section">
+  <h2>Configure Spotify Integration</h2>
+
+  <!-- Collapsible Steps (should now expand/collapse when clicked) -->
+  <div class="collapsible-header">1. Spotify Developer Dashboard</div>
+  <div class="collapsible-content">
+    <p>
+      Visit the <a href="https://developer.spotify.com/dashboard/" target="_blank">Spotify Developer Dashboard</a>
+      and log in (or sign up if you don't have an account).
+    </p>
+  </div>
+
+  <div class="collapsible-header">2. Create a New Application</div>
+  <div class="collapsible-content">
+    <p>
+      After creation, note down your <strong>Client ID</strong> and <strong>Client Secret</strong>.
+      In your app settings, set the <strong>Redirect URI</strong> to something like
+      <code>http://localhost:8080/callback</code> (or your Pi's IP).
+    </p>
+  </div>
+
+  <div class="collapsible-header">3. Enter Your Config Below</div>
+  <div class="collapsible-content">
+    <p>
+      Fill in Client ID, Client Secret, Redirect URI, and the desired Scope,
+      then click "Save Spotify Settings".
+    </p>
+  </div>
+
+  <div class="collapsible-header">4. Authorize & Use</div>
+  <div class="collapsible-content">
+    <p>
+      Click <strong>Authorize Spotify</strong> to begin the OAuth flow.
+      Once authorized, your token is cached in <code>.spotify_cache</code>,
+      and PiViewer can fetch your currently playing track’s album art.
+    </p>
+  </div>
+
+  <!-- Actual Form -->
+  <form method="POST" style="margin-top:15px;">
+    <div style="margin-bottom:10px;">
       <label>Spotify Client ID:</label><br>
-      <!-- Using type="password" to hide sensitive info -->
       <input type="password" name="client_id" value="{{ spotify.client_id|default('') }}" required>
     </div>
-    <div class="field-block">
+    <div style="margin-bottom:10px;">
       <label>Spotify Client Secret:</label><br>
       <input type="password" name="client_secret" value="{{ spotify.client_secret|default('') }}" required>
     </div>
-    <div class="field-block">
+    <div style="margin-bottom:10px;">
       <label>Redirect URI:</label><br>
-      <input type="text" name="redirect_uri" value="{{ spotify.redirect_uri|default('http://*device-IP*:8080/callback') }}" required>
+      <input type="text" name="redirect_uri" value="{{ spotify.redirect_uri|default('http://localhost:8080/callback') }}" required>
     </div>
-    <div class="field-block">
+    <div style="margin-bottom:10px;">
       <label>Scope:</label><br>
       <input type="text" name="scope" value="{{ spotify.scope|default('user-read-currently-playing user-read-playback-state') }}">
     </div>
-    <div class="centered-btn">
-      <button type="submit">Save Spotify Settings</button>
-    </div>
+    <button type="submit">Save Spotify Settings</button>
   </form>
+
   <br>
   <a href="{{ url_for('main.spotify_auth') }}"><button>Authorize Spotify</button></a>
-  <br><br>
-  <a href="{{ url_for('main.index') }}"><button>Back to Main</button></a>
 </div>
-</body>
-</html>
+
+{% endblock %}

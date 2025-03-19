@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}PiViewer{% endblock %}</title>
+  <!-- Set tab icon to icon.png -->
+  <link rel="icon" href="{{ url_for('static', filename='icon.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="{{ theme }}-theme">
+
+<!-- Top Navigation Bar -->
+<nav class="top-nav">
+  <!-- Left icon -->
+  <div class="nav-item">
+    <img src="{{ url_for('static', filename='icon.png') }}" alt="Icon" style="height:40px;">
+  </div>
+
+  <!-- Display Settings -->
+  <div class="nav-item">
+    <a href="{{ url_for('main.index') }}#local-displays"
+       class="{% if request.endpoint == 'main.index' %}active{% endif %}">
+      ⚙️ Display Settings
+    </a>
+  </div>
+
+  <!-- Media Management -->
+  <div class="nav-item">
+    <a href="{{ url_for('main.upload_media') }}"
+       class="{% if request.endpoint == 'main.upload_media' %}active{% endif %}">
+      📷 Media
+    </a>
+  </div>
+
+  <!-- Spotify -->
+  <div class="nav-item">
+    <a href="{{ url_for('main.configure_spotify') }}"
+       class="{% if request.endpoint == 'main.configure_spotify' %}active{% endif %}">
+      🎶 Spotify
+    </a>
+  </div>
+
+  <!-- Overlay Settings -->
+  <div class="nav-item">
+    <a href="{{ url_for('main.overlay_config') }}"
+       class="{% if request.endpoint == 'main.overlay_config' %}active{% endif %}">
+      🖥️ Overlay
+    </a>
+  </div>
+
+  <!-- Devices -->
+  <div class="nav-item">
+    <a href="{{ url_for('main.device_manager') }}"
+       class="{% if request.endpoint == 'main.device_manager' or request.endpoint == 'main.remote_configure' %}active{% endif %}">
+      📱 Devices
+    </a>
+  </div>
+
+  <!-- Settings -->
+  <div class="nav-item">
+    <a href="{{ url_for('main.settings') }}"
+       class="{% if request.endpoint == 'main.settings' %}active{% endif %}">
+      🛠️ Settings
+    </a>
+  </div>
+
+  <!-- Restart Viewer -->
+  <div class="nav-item">
+    <form action="{{ url_for('main.restart_viewer') }}" method="post">
+      <button type="submit" style="background:transparent; color:inherit;">
+        🔄 Restart Viewer
+      </button>
+    </form>
+  </div>
+
+  <!-- Right icon (flipped) -->
+  <div class="nav-item">
+    <img src="{{ url_for('static', filename='icon.png') }}" alt="Icon" style="height:40px; transform: scaleX(-1);">
+  </div>
+</nav>
+
+<main class="content">
+  {% block content %}{% endblock %}
+</main>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

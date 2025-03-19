@@ -1,216 +1,111 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Configure Remote Device</title>
-  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script>
-    function initMixedUI(dispName){
-      let searchBox = document.getElementById(dispName + "_search");
-      let availList = document.getElementById(dispName + "_availList");
-      let selList = document.getElementById(dispName + "_selList");
-      let hiddenOrder = document.getElementById(dispName + "_mixed_order");
+{% extends "base.html" %}
+{% block title %}Configure Remote Device{% endblock %}
+{% block content %}
 
-      function sortAvailable(){
-        let items = Array.from(availList.querySelectorAll("li"));
-        items.sort((a,b)=>{
-          let fa = a.getAttribute("data-folder").toLowerCase();
-          let fb = b.getAttribute("data-folder").toLowerCase();
-          return fa.localeCompare(fb);
-        });
-        items.forEach(li => availList.appendChild(li));
-      }
-      if(searchBox){
-        searchBox.addEventListener("input", ()=> {
-          let txt = searchBox.value.toLowerCase();
-          let items = availList.querySelectorAll("li");
-          items.forEach(li => {
-            if(li.getAttribute("data-folder").toLowerCase().includes(txt)){
-              li.style.display="";
-            } else {
-              li.style.display="none";
-            }
-          });
-        });
-      }
-      let dragSrcEl=null;
-      function handleDragStart(e){
-        dragSrcEl = this;
-        e.dataTransfer.effectAllowed="move";
-        e.dataTransfer.setData("text/html", this.innerHTML);
-      }
-      function handleDragOver(e){
-        if(e.preventDefault) e.preventDefault();
-        return false;
-      }
-      function handleDragEnter(e){ this.classList.add("selected"); }
-      function handleDragLeave(e){ this.classList.remove("selected"); }
-      function handleDrop(e){
-        if(e.stopPropagation) e.stopPropagation();
-        if(dragSrcEl!=this){
-          let oldHTML = dragSrcEl.innerHTML;
-          this.innerHTML = e.dataTransfer.getData("text/html");
-          dragSrcEl.innerHTML = oldHTML;
-        }
-        return false;
-      }
-      function handleDragEnd(e){
-        let items = selList.querySelectorAll("li");
-        items.forEach(li => li.classList.remove("selected"));
-        updateHiddenOrder();
-      }
-      function addDnDHandlers(item){
-        item.addEventListener("dragstart", handleDragStart);
-        item.addEventListener("dragenter", handleDragEnter);
-        item.addEventListener("dragover", handleDragOver);
-        item.addEventListener("dragleave", handleDragLeave);
-        item.addEventListener("drop", handleDrop);
-        item.addEventListener("dragend", handleDragEnd);
-      }
-      function moveItem(li, sourceUL, targetUL){
-        targetUL.appendChild(li);
-        if(targetUL === selList){
-          addDnDHandlers(li);
-        } else {
-          sortAvailable();
-        }
-        updateHiddenOrder();
-      }
-      if(availList){
-        availList.addEventListener("click", e=>{
-          if(e.target.tagName==="LI"){
-            moveItem(e.target, availList, selList);
-          }
-        });
-      }
-      if(selList){
-        selList.addEventListener("click", e=>{
-          if(e.target.tagName==="LI"){
-            moveItem(e.target, selList, availList);
-          }
-        });
-      }
-      function updateHiddenOrder(){
-        let items = selList.querySelectorAll("li");
-        let arr=[];
-        items.forEach(li=> arr.push(li.getAttribute("data-folder")));
-        hiddenOrder.value = arr.join(",");
-      }
-      if(selList){
-        let selItems = selList.querySelectorAll("li");
-        selItems.forEach(li => addDnDHandlers(li));
-      }
-      if(availList){
-        sortAvailable();
-      }
-    }
-  </script>
-</head>
-<body class="dark">
-<div class="container">
-  <h1>Configure Remote Device</h1>
+<div class="page-section">
+  <h2>Configure Remote Device</h2>
   <p>Device: <strong>{{ dev_name }}</strong> ({{ dev_ip }})</p>
-  <p style="font-size:90%; color:#aaa;">
+  <p style="font-size:90%; color:var(--text-normal);">
     {% if remote_cfg.role == "sub" and remote_cfg.main_ip %}
       This device is a sub device; main device: {{ remote_cfg.main_ip }}
     {% elif remote_cfg.role == "main" %}
       This device is itself a main device.
     {% endif %}
   </p>
+
   <form method="POST">
     <input type="hidden" name="action" value="update_remote">
-    <div class="display-grid">
-    {% for dname, dcfg in remote_cfg.displays.items() %}
+
+    <div class="cards-container">
+      {% for dname, dcfg in remote_cfg.displays.items() %}
       {% set moninfo = remote_mons[dname] if dname in remote_mons else None %}
       {% set resolution = moninfo.resolution if moninfo else "unknown" %}
-      <div class="display-card">
+      <div class="card">
         <h3>{{ dname }} ({{ resolution }})</h3>
-        <div class="field-block">
-          <label>Mode:</label><br>
-          <select name="{{ dname }}_mode">
-            <option value="random_image"   {% if dcfg.mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
-            <option value="specific_image" {% if dcfg.mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
-            <option value="mixed"          {% if dcfg.mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
-            <option value="spotify"        {% if dcfg.mode=="spotify" %}selected{% endif %}>Spotify Now Playing</option>
-          </select>
-        </div>
-        <div class="field-block">
-          <label>Interval (seconds):</label><br>
-          <input type="number" name="{{ dname }}_image_interval" value="{{ dcfg.image_interval }}">
-        </div>
-        <div class="field-block">
-          <label>Rotate (degrees):</label><br>
-          <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
-        </div>
-        {% if dcfg.mode != "mixed" and dcfg.mode != "specific_image" and dcfg.mode != "spotify" %}
-          <div class="field-block">
-            <label>Category (subfolder):</label><br>
-            <select name="{{ dname }}_image_category">
-              <option value="" {% if not dcfg.image_category %}selected{% endif %}>All</option>
-              {% for sf in remote_folders %}
-                <option value="{{ sf }}" {% if dcfg.image_category==sf %}selected{% endif %}>{{ sf }}</option>
-              {% endfor %}
-            </select>
-          </div>
+
+        <label>Mode:</label><br>
+        <select name="{{ dname }}_mode">
+          <option value="random_image"   {% if dcfg.mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
+          <option value="specific_image" {% if dcfg.mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
+          <option value="mixed"          {% if dcfg.mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
+          <option value="spotify"        {% if dcfg.mode=="spotify" %}selected{% endif %}>Spotify Now Playing</option>
+        </select>
+        <br><br>
+
+        <label>Interval (sec):</label><br>
+        <input type="number" name="{{ dname }}_image_interval" value="{{ dcfg.image_interval }}">
+        <br><br>
+
+        <label>Rotate (degrees):</label><br>
+        <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
+        <br><br>
+
+        {% if dcfg.mode not in ["mixed","specific_image","spotify"] %}
+        <label>Category (subfolder):</label><br>
+        <select name="{{ dname }}_image_category">
+          <option value="" {% if not dcfg.image_category %}selected{% endif %}>All</option>
+          {% for sf in remote_folders %}
+            <option value="{{ sf }}" {% if dcfg.image_category==sf %}selected{% endif %}>{{ sf }}</option>
+          {% endfor %}
+        </select>
+        <br><br>
         {% endif %}
+
         {% if dcfg.mode == "mixed" %}
-          <div class="field-block">
-            <label>Multiple Folders (drag to reorder):</label><br>
-            <div style="display:flex; flex-direction:row; gap:20px; justify-content:center; margin-top:10px;">
-              <div class="dnd-column">
-                <h4>Available</h4>
-                <input type="text" placeholder="Search..." id="{{ dname }}_search" class="search-box" style="width:90%;">
-                <ul class="mixed-list" id="{{ dname }}_availList" style="list-style:none; margin:0; padding:0;">
-                  {% for sf in remote_folders if sf not in dcfg.mixed_folders %}
-                  <li draggable="true" data-folder="{{ sf }}">{{ sf }}</li>
-                  {% endfor %}
-                </ul>
-              </div>
-              <div class="dnd-column">
-                <h4>Selected</h4>
-                <ul class="mixed-list" id="{{ dname }}_selList" style="list-style:none; margin:0; padding:0;">
-                  {% for sf in dcfg.mixed_folders %}
-                  <li draggable="true" data-folder="{{ sf }}">{{ sf }}</li>
-                  {% endfor %}
-                </ul>
-              </div>
-            </div>
-            <input type="hidden" name="{{ dname }}_mixed_order" id="{{ dname }}_mixed_order" value="{{ ','.join(dcfg.mixed_folders) }}">
-            <script>
-              document.addEventListener("DOMContentLoaded", function(){
-                initMixedUI("{{ dname }}");
-              });
-            </script>
+        <label>Multiple Folders (drag to reorder):</label><br>
+        <div style="display:flex; gap: 10px; margin: 10px 0;">
+          <div>
+            <h4>Available</h4>
+            <input type="text" placeholder="Search..." id="{{ dname }}_search" style="width:90%;">
+            <ul id="{{ dname }}_availList" style="list-style:none; margin:0; padding:0; max-height:150px; overflow:auto;">
+              {% for sf in remote_folders if sf not in dcfg.mixed_folders %}
+              <li draggable="true" data-folder="{{ sf }}" style="padding:4px; margin:2px; border:1px solid #666; border-radius:4px; cursor:move;">
+                {{ sf }}
+              </li>
+              {% endfor %}
+            </ul>
           </div>
-        {% endif %}
-        <div class="field-block">
-          <label>Shuffle?</label><br>
-          <select name="{{ dname }}_shuffle_mode">
-            <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
-            <option value="no" {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
-          </select>
+          <div>
+            <h4>Selected</h4>
+            <ul id="{{ dname }}_selList" style="list-style:none; margin:0; padding:0; max-height:150px; overflow:auto;">
+              {% for sf in dcfg.mixed_folders %}
+              <li draggable="true" data-folder="{{ sf }}" style="padding:4px; margin:2px; border:1px solid #666; border-radius:4px; cursor:move;">
+                {{ sf }}
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
         </div>
+        <input type="hidden" name="{{ dname }}_mixed_order" id="{{ dname }}_mixed_order" value="{{ ','.join(dcfg.mixed_folders) }}">
+        <script>
+          document.addEventListener("DOMContentLoaded", function(){
+            initMixedUI("{{ dname }}");
+          });
+        </script>
+        <br>
+        {% endif %}
+
+        <label>Shuffle?</label><br>
+        <select name="{{ dname }}_shuffle_mode">
+          <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
+          <option value="no"  {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
+        </select>
+        <br><br>
+
         {% if dcfg.mode == "specific_image" %}
-          <div class="field-block">
-            <h4>Select Image/GIF</h4>
-            <p style="font-size:90%; color:#888;">(Remote images not listed. Type exact filename if needed.)</p>
-            <input type="text" name="{{ dname }}_specific_image" value="{{ dcfg.specific_image }}" placeholder="Exact filename...">
-          </div>
+        <label>Select Image/GIF:</label><br>
+        <p style="font-size:90%;">(Remote images not listed. Type exact filename if needed.)</p>
+        <input type="text" name="{{ dname }}_specific_image" value="{{ dcfg.specific_image }}" placeholder="Exact filename...">
         {% endif %}
       </div>
-    {% endfor %}
+      {% endfor %}
     </div>
-    <div style="margin-top:20px; text-align:center;">
+
+    <br>
+    <div style="text-align:center;">
       <button type="submit">Save Remote Settings</button>
     </div>
   </form>
-  <br>
-  <a href="{{ url_for('main.index') }}">
-    <button>Back to Main</button>
-  </a>
-  <a href="{{ url_for('main.device_manager') }}">
-    <button>Back to Device Manager</button>
-  </a>
 </div>
-</body>
-</html>
+
+{% endblock %}

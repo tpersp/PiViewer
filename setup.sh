@@ -259,7 +259,7 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
       echo "Creating mount dir: $IMAGE_DIR"
       mkdir -p "$IMAGE_DIR"
 
-      FSTAB_LINE="$SERVER_SHARE  $IMAGE_DIR  cifs  $MOUNT_OPTS  0  0"
+      FSTAB_LINE="$SERVER_SHARE  $IMAGE_DIR  cifs  $MOUNT_OPTS,x-systemd.automount  0  0"
       if grep -qs "$SERVER_SHARE" /etc/fstab; then
         echo "Share already in /etc/fstab; skipping append."
       else
