@@ -63,10 +63,11 @@ def detect_monitors():
 
 
 class DisplayWindow(QMainWindow):
-    def __init__(self, disp_name, disp_cfg):
+    def __init__(self, disp_name, disp_cfg, assigned_screen=None):
         super().__init__()
         self.disp_name = disp_name
         self.disp_cfg = disp_cfg
+        self.assigned_screen = assigned_screen
         self.running = True
 
         # Caching
@@ -78,10 +79,13 @@ class DisplayWindow(QMainWindow):
         self.current_movie = None   # GIFs
         self.handling_gif_frames = False
 
-        # Fullscreen on this monitor
-        screen = self.screen()
-        if screen:
-            self.setGeometry(screen.geometry())
+        # Set window geometry based on the assigned screen (if provided)
+        if self.assigned_screen:
+            self.setGeometry(self.assigned_screen.geometry())
+        else:
+            screen = self.screen()
+            if screen:
+                self.setGeometry(screen.geometry())
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.showFullScreen()
 
@@ -137,9 +141,13 @@ class DisplayWindow(QMainWindow):
     def setup_layout(self):
         if not self.isVisible():
             return
-        screen = self.screen()
-        if screen:
-            self.setGeometry(screen.geometry())
+        # Use assigned screen geometry if available
+        if self.assigned_screen:
+            self.setGeometry(self.assigned_screen.geometry())
+        else:
+            screen = self.screen()
+            if screen:
+                self.setGeometry(screen.geometry())
         rect = self.main_widget.rect()
 
         self.bg_label.setGeometry(rect)
@@ -634,7 +642,7 @@ class PiViewerGUI:
         self.cfg = load_config()
         self.app = QApplication(sys.argv)
 
-        # fallback detect
+        # fallback detect via xrandr (if available)
         fallback_mons = detect_monitors()
         if fallback_mons:
             if "displays" not in self.cfg:
@@ -657,8 +665,12 @@ class PiViewerGUI:
             save_config(self.cfg)
 
         self.windows = []
+        screens = self.app.screens()
+        # Create a window for each display in config, assigning a QScreen (if available)
+        i = 0
         for dname, dcfg in self.cfg.get("displays", {}).items():
-            w = DisplayWindow(dname, dcfg)
+            assigned_screen = screens[i] if i < len(screens) else None
+            w = DisplayWindow(dname, dcfg, assigned_screen)
             if "monitor_model" in dcfg and dcfg["monitor_model"]:
                 t = f"{dname} ({dcfg['monitor_model']})"
             else:
@@ -666,6 +678,7 @@ class PiViewerGUI:
             w.setWindowTitle(t)
             w.show()
             self.windows.append(w)
+            i += 1
 
     def run(self):
         sys.exit(self.app.exec())
