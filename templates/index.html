@@ -81,17 +81,19 @@
               <input type="text" placeholder="Search..." id="{{ dname }}_search" style="width:90%;"><br>
               <div style="display:flex; gap:10px; margin-top:10px;">
                 <ul id="{{ dname }}_availList" style="flex:1; list-style:none; border:1px solid var(--border-muted); padding:5px; max-height:120px; overflow:auto;">
-                  {% for sf in subfolders if sf not in dcfg.mixed_folders %}
-                  <li draggable="true" data-folder="{{ sf }}" style="margin:4px; border:1px solid #666; border-radius:4px; cursor:move; padding:4px;">
-                    {{ sf }} ({{ folder_counts[sf] }})
-                  </li>
+                  {% for sf in subfolders %}
+                    {% if sf not in dcfg.mixed_folders %}
+                      <li draggable="true" data-folder="{{ sf }}" style="margin:4px; border:1px solid #666; border-radius:4px; cursor:move; padding:4px;">
+                        {{ sf }} ({{ folder_counts[sf] }})
+                      </li>
+                    {% endif %}
                   {% endfor %}
                 </ul>
                 <ul id="{{ dname }}_selList" style="flex:1; list-style:none; border:1px solid var(--border-muted); padding:5px; max-height:120px; overflow:auto;">
                   {% for sf in dcfg.mixed_folders %}
-                  <li draggable="true" data-folder="{{ sf }}" style="margin:4px; border:1px solid #666; border-radius:4px; cursor:move; padding:4px;">
-                    {{ sf }} ({{ folder_counts[sf]|default(0) }})
-                  </li>
+                      <li draggable="true" data-folder="{{ sf }}" style="margin:4px; border:1px solid #666; border-radius:4px; cursor:move; padding:4px;">
+                        {{ sf }} ({{ folder_counts[sf]|default(0) }})
+                      </li>
                   {% endfor %}
                 </ul>
               </div>
@@ -131,6 +133,7 @@
                 {% endif %}
               {% endif %}
               <br>
+              {% endif %}
             </div>
           {% endfor %}
           <button type="submit">Save All</button>
