@@ -4,6 +4,7 @@
 import os
 import subprocess
 import requests
+from datetime import datetime
 from flask import (
     Blueprint, request, redirect, url_for, render_template,
     send_from_directory, send_file, jsonify
@@ -86,7 +87,8 @@ def get_local_monitors_from_config(cfg):
 
 def compute_overlay_preview(overlay_cfg, monitors_dict):
     """
-    Used for overlay preview, only.
+    Used for overlay preview. Returns (preview_width, preview_height, preview_overlay, scale_factor)
+    where scale_factor = preview_width / total monitor width.
     """
     selection = overlay_cfg.get("monitor_selection", "All")
     if selection == "All":
@@ -135,7 +137,35 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
         "left": int(ox * scale_factor),
         "top": int(oy * scale_factor),
     }
-    return (preview_width, preview_height, preview_overlay)
+    return preview_width, preview_height, preview_overlay, scale_factor
+
+def deg_to_cardinal(deg):
+    dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+    ix = round(deg / 45) % 8
+    return dirs[ix]
+
+def get_weather_info(wcfg):
+    weather_info = None
+    try:
+        weather_url = f"http://api.openweathermap.org/data/2.5/weather?zip={wcfg['zip_code']},{wcfg['country_code']}&appid={wcfg['api_key']}&units=metric"
+        r = requests.get(weather_url, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            # Convert sunrise/sunset
+            sunrise = datetime.fromtimestamp(data["sys"]["sunrise"]).strftime("%H:%M")
+            sunset = datetime.fromtimestamp(data["sys"]["sunset"]).strftime("%H:%M")
+            # Compute timezone offset in hours
+            tz_offset = data.get("timezone", 0) / 3600
+            data["sys"]["sunrise_str"] = sunrise
+            data["sys"]["sunset_str"] = sunset
+            data["timezone_str"] = f"UTC{'+' if tz_offset>=0 else ''}{tz_offset:g}"
+            # Wind cardinal direction
+            if "wind" in data and "deg" in data["wind"]:
+                data["wind"]["cardinal"] = deg_to_cardinal(data["wind"]["deg"])
+            weather_info = data
+    except Exception as e:
+        log_message(f"Error fetching weather info: {e}")
+    return weather_info
 
 main_bp = Blueprint("main", __name__, static_folder="static")
 
@@ -180,20 +210,16 @@ def upload_media():
     subfolders = get_subfolders()
     if request.method == "GET":
         return render_template("upload_media.html", theme=theme, subfolders=subfolders)
-
     files = request.files.getlist("mediafiles")
     if not files:
         return "No files selected", 400
-
     subfolder = request.form.get("subfolder", "")
     new_subfolder = request.form.get("new_subfolder", "").strip()
     if new_subfolder:
         subfolder = new_subfolder
-
     target_dir = os.path.join(IMAGE_DIR, subfolder)
     if not os.path.exists(target_dir):
         os.makedirs(target_dir)
-
     for f in files:
         if not f.filename:
             continue
@@ -204,7 +230,6 @@ def upload_media():
         final_path = os.path.join(target_dir, f.filename)
         f.save(final_path)
         log_message(f"Uploaded file: {final_path}")
-
     return redirect(url_for("main.index"))
 
 @main_bp.route("/restart_viewer", methods=["POST"])
@@ -225,19 +250,15 @@ def settings():
         new_role = request.form.get("role", "main")
         cfg["theme"] = new_theme
         cfg["role"] = new_role
-
         if new_role == "sub":
             cfg["main_ip"] = request.form.get("main_ip", "").strip()
         else:
             cfg["main_ip"] = ""
-
         if new_theme == "custom":
             if "bg_image" in request.files:
                 f = request.files["bg_image"]
                 if f and f.filename:
                     f.save(WEB_BG)
-
-        # Updated weather settings using zip code API call only
         w_api = request.form.get("weather_api_key", "").strip()
         w_zip = request.form.get("weather_zip_code", "").strip()
         w_cc = request.form.get("weather_country_code", "").strip()
@@ -250,35 +271,34 @@ def settings():
         cfg["weather"]["api_key"] = w_api
         cfg["weather"]["zip_code"] = w_zip
         cfg["weather"]["country_code"] = w_cc
-
         if "gui" not in cfg:
             cfg["gui"] = {}
         try:
             cfg["gui"]["background_blur_radius"] = int(request.form.get("background_blur_radius", "20"))
         except:
             cfg["gui"]["background_blur_radius"] = 20
-
         try:
             cfg["gui"]["background_scale_percent"] = int(request.form.get("background_scale_percent", "100"))
         except:
             cfg["gui"]["background_scale_percent"] = 100
-
         try:
             cfg["gui"]["foreground_scale_percent"] = int(request.form.get("foreground_scale_percent", "100"))
         except:
             cfg["gui"]["foreground_scale_percent"] = 100
-
         save_config(cfg)
         return redirect(url_for("main.settings"))
-
     else:
-        cfg = load_config()
+        weather_info = None
+        wcfg = cfg.get("weather", {})
+        if wcfg.get("api_key") and wcfg.get("zip_code") and wcfg.get("country_code"):
+            weather_info = get_weather_info(wcfg)
         theme = cfg.get("theme", "dark")
         return render_template(
             "settings.html",
             theme=theme,
             cfg=cfg,
-            update_branch=UPDATE_BRANCH
+            update_branch=UPDATE_BRANCH,
+            weather_info=weather_info
         )
 
 @main_bp.route("/configure_spotify", methods=["GET", "POST"])
@@ -351,8 +371,6 @@ def callback():
     except Exception as e:
         log_message(f"Spotify callback error: {e}")
         return "Spotify callback error", 500
-
-    # Auto redirect if the callback is coming via localhost
     if "localhost" in request.host or "127.0.0.1" in request.host:
         device_ip = get_ip_address()
         redirect_url = f"http://{device_ip}:8080/configure_spotify"
@@ -398,13 +416,17 @@ def overlay_config():
             "show_temp": ("show_temp" in request.form),
             "show_feels_like": ("show_feels_like" in request.form),
             "show_humidity": ("show_humidity" in request.form),
+            "show_wind_speed": ("show_wind_speed" in request.form),
+            "show_wind_direction": ("show_wind_direction" in request.form),
+            "show_location_info": ("show_location_info" in request.form),
             "offset_x": int(request.form.get("offset_x", "20")),
             "offset_y": int(request.form.get("offset_y", "20")),
             "overlay_width": int(request.form.get("overlay_width", "300")),
             "overlay_height": int(request.form.get("overlay_height", "150")),
             "bg_color": request.form.get("bg_color", "#000000"),
             "bg_opacity": float(request.form.get("bg_opacity", "0.4")),
-            "auto_scale": ("auto_scale" in request.form)
+            "auto_scale": ("auto_scale" in request.form),
+            "monitor_selection": selected_monitor
         }
         if selected_monitor == "All":
             cfg["overlay"] = new_overlay
@@ -428,7 +450,6 @@ def overlay_config():
                 overlay_cfg = cfg.get("overlay", {})
         preview_mon = {}
         if selected_monitor == "All":
-            # Use a default resolution for preview when all monitors are combined
             max_res = "1920x1080"
             for m in monitors_dict.values():
                 max_res = m.get("resolution", "1920x1080")
@@ -436,7 +457,7 @@ def overlay_config():
             preview_mon["All"] = {"resolution": max_res}
         else:
             preview_mon[selected_monitor] = monitors_dict.get(selected_monitor, {"resolution": "1920x1080"})
-        pw, ph, preview_overlay = compute_overlay_preview(overlay_cfg, preview_mon)
+        pw, ph, preview_overlay, scale_factor = compute_overlay_preview(overlay_cfg, preview_mon)
         return render_template(
             "overlay.html",
             theme=cfg.get("theme", "dark"),
@@ -444,19 +465,16 @@ def overlay_config():
             monitors=monitors_dict,
             selected_monitor=selected_monitor,
             preview_size={"width": pw, "height": ph},
-            preview_overlay=preview_overlay
+            preview_overlay=preview_overlay,
+            scale_factor=scale_factor
         )
 
 @main_bp.route("/", methods=["GET", "POST"])
 def index():
     cfg = load_config()
-
-    # Re-detect extended monitors, just to show their current resolution
     ext_mons = detect_monitors_extended()
     if "displays" not in cfg:
         cfg["displays"] = {}
-
-    # Remove old displays that no longer appear
     to_remove = []
     for dname in cfg["displays"]:
         if dname not in ext_mons and dname.startswith("Display"):
@@ -465,8 +483,6 @@ def index():
             to_remove.append(dname)
     for dr in to_remove:
         del cfg["displays"][dr]
-
-    # Update or add each known monitor
     for mon_name, minfo in ext_mons.items():
         if mon_name not in cfg["displays"]:
             cfg["displays"][mon_name] = {
@@ -486,18 +502,14 @@ def index():
             dcfg["screen_name"] = f"{mon_name}: {minfo['current_mode']}"
             if minfo.get("model"):
                 dcfg["monitor_model"] = minfo["model"]
-
     save_config(cfg)
-
     flash_msg = (
       "If you experience lower performance or framerate than expected, "
       "please consider using a physically lower resolution monitor."
     )
-
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_displays":
-            # Update display modes, categories, etc.
             for dname in cfg["displays"]:
                 pre = dname + "_"
                 dcfg = cfg["displays"][dname]
@@ -509,7 +521,6 @@ def index():
                 rotate_str = request.form.get(pre + "rotate", "0")
                 mixed_str = request.form.get(pre + "mixed_order", "")
                 mixed_list = [x for x in mixed_str.split(",") if x]
-
                 try:
                     new_interval = int(new_interval_s)
                 except:
@@ -518,32 +529,25 @@ def index():
                     new_rotate = int(rotate_str)
                 except:
                     new_rotate = 0
-
                 dcfg["mode"] = new_mode
                 dcfg["image_interval"] = new_interval
                 dcfg["image_category"] = new_cat
                 dcfg["shuffle_mode"] = (shuffle_val == "yes")
                 dcfg["specific_image"] = new_spec
                 dcfg["rotate"] = new_rotate
-
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list
                 else:
                     dcfg["mixed_folders"] = []
-
             save_config(cfg)
             try:
                 subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
             except:
                 pass
             return redirect(url_for("main.index"))
-
-    # Build folder counts
     folder_counts = {}
     for sf in get_subfolders():
         folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
-
-    # Collect images for "specific_image" selection
     display_images = {}
     for dname, dcfg in cfg["displays"].items():
         cat = dcfg.get("image_category", "")
@@ -557,20 +561,16 @@ def index():
                     img_list.append(os.path.join(cat, rel_path) if cat else rel_path)
         img_list.sort()
         display_images[dname] = img_list
-
     cpu, mem_mb, load1, temp = get_system_stats()
     host = get_hostname()
     ipaddr = get_ip_address()
     model = get_pi_model()
     theme = cfg.get("theme", "dark")
-
     sub_info_line = ""
     if cfg.get("role") == "sub":
         sub_info_line = "This device is SUB"
         if cfg["main_ip"]:
-            sub_info_line += f" - Main IP: {cfg['main_ip']}" 
-
-    # Dynamic status for main devices
+            sub_info_line += f" - Main IP: {cfg['main_ip']}"
     if cfg.get("role") == "main":
         sp_cfg = cfg.get("spotify", {})
         if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
@@ -581,13 +581,11 @@ def index():
                 spotify_status = "⚠️"
         else:
             spotify_status = "❌"
-
         w_cfg = cfg.get("weather", {})
         if w_cfg.get("api_key") and w_cfg.get("zip_code") and w_cfg.get("country_code"):
             weather_status = "✅"
         else:
             weather_status = "❌"
-
         devices = cfg.get("devices", [])
         if devices:
             subdevices_status = "✅ " + ", ".join([d.get("name", d.get("ip", "Unknown")) for d in devices])
@@ -597,7 +595,6 @@ def index():
         spotify_status = ""
         weather_status = ""
         subdevices_status = sub_info_line
-
     final_monitors = {}
     for mon_name, minfo in ext_mons.items():
         chosen = cfg["displays"][mon_name].get("chosen_mode", minfo["current_mode"])
@@ -607,7 +604,6 @@ def index():
             "available_modes": minfo["modes"],
             "model_name": model_name
         }
-
     return render_template(
         "index.html",
         cfg=cfg,
@@ -636,14 +632,11 @@ def remote_configure(dev_index):
     cfg = load_config()
     if cfg.get("role") != "main":
         return "This device is not 'main'.", 403
-
     if dev_index < 0 or dev_index >= len(cfg.get("devices", [])):
         return "Invalid device index", 404
-
     dev_info = cfg["devices"][dev_index]
     dev_ip = dev_info.get("ip")
     dev_name = dev_info.get("name")
-
     remote_cfg = get_remote_config(dev_ip) or {"displays": {}}
     remote_mons = get_remote_monitors(dev_ip)
     remote_folders = []
@@ -653,7 +646,6 @@ def remote_configure(dev_index):
             remote_folders = r.json()
     except:
         pass
-
     if request.method == "POST":
         action = request.form.get("action", "")
         if action == "update_remote":
@@ -668,7 +660,6 @@ def remote_configure(dev_index):
                 new_rot_s = request.form.get(pre + "rotate", str(dc.get("rotate", 0)))
                 mixed_str = request.form.get(pre + "mixed_order", "")
                 mixed_list = [x for x in mixed_str.split(",") if x]
-
                 try:
                     ni = int(new_int_s)
                 except:
@@ -677,7 +668,6 @@ def remote_configure(dev_index):
                     nr = int(new_rot_s)
                 except:
                     nr = 0
-
                 subdict = {
                     "mode": new_mode,
                     "image_interval": ni,
@@ -688,10 +678,8 @@ def remote_configure(dev_index):
                     "rotate": nr
                 }
                 new_disp[dname] = subdict
-
             push_displays_to_remote(dev_ip, new_disp)
             return redirect(url_for("main.remote_configure", dev_index=dev_index))
-
     return render_template(
         "remote_configure.html",
         dev_name=dev_name,
@@ -699,7 +687,7 @@ def remote_configure(dev_index):
         remote_cfg=remote_cfg,
         remote_mons=remote_mons,
         remote_folders=remote_folders,
-        theme=cfg.get("theme", "dark")  # <--- pass the local theme
+        theme=cfg.get("theme", "dark")
     )
 
 @main_bp.route("/sync_config", methods=["GET"])
@@ -708,7 +696,6 @@ def sync_config():
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
-    # Called by push_displays_to_remote from a "main" device
     incoming = request.get_json()
     if not incoming:
         return "No JSON received", 400
@@ -719,7 +706,6 @@ def update_config():
         cfg["theme"] = incoming["theme"]
     save_config(cfg)
     log_message("Local config partially updated via /update_config")
-    # Force remote piviewer to reload new config
     try:
         subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
     except subprocess.CalledProcessError as e:
@@ -731,7 +717,6 @@ def device_manager():
     cfg = load_config()
     if cfg.get("role") != "main":
         return "This device is not 'main'.", 403
-
     local_ip = get_ip_address()
     if request.method == "POST":
         action = request.form.get("action", "")
@@ -785,7 +770,6 @@ def device_manager():
             except Exception as e:
                 log_message(f"Pull error: {e}")
         return redirect(url_for("main.device_manager"))
-
     return render_template(
         "device_manager.html",
         cfg=cfg,
@@ -796,13 +780,11 @@ def device_manager():
 def update_app():
     cfg = load_config()
     log_message(f"Starting update: forced reset to origin/{UPDATE_BRANCH}")
-
     old_hash = ""
     try:
         old_hash = subprocess.check_output(["git", "rev-parse", "HEAD:setup.sh"], cwd=VIEWER_HOME).decode().strip()
     except Exception as e:
         log_message(f"Could not get old setup.sh hash: {e}")
-
     try:
         subprocess.check_call(["git", "fetch"], cwd=VIEWER_HOME)
         subprocess.check_call(["git", "checkout", UPDATE_BRANCH], cwd=VIEWER_HOME)
@@ -810,23 +792,19 @@ def update_app():
     except subprocess.CalledProcessError as e:
         log_message(f"Git update failed: {e}")
         return "Git update failed. Check logs.", 500
-
     new_hash = ""
     try:
         new_hash = subprocess.check_output(["git", "rev-parse", "HEAD:setup.sh"], cwd=VIEWER_HOME).decode().strip()
     except Exception as e:
         log_message(f"Could not get new setup.sh hash: {e}")
-
     if old_hash and new_hash and (old_hash != new_hash):
         log_message("setup.sh changed. Re-running it in --auto-update mode...")
         try:
             subprocess.check_call(["sudo", "bash", "setup.sh", "--auto-update"], cwd=VIEWER_HOME)
         except subprocess.CalledProcessError as e:
             log_message(f"Re-running setup.sh failed: {e}")
-
     log_message("Update completed successfully.")
     subprocess.Popen(["sudo", "reboot"])
-
     return """
     <html>
       <head>

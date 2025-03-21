@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-section">
   <h2>Overlay Configuration</h2>
-  <form method="GET" action="{{ url_for('main.overlay_config') }}">
+  <form method="GET" action="{{ url_for('main.overlay_config') }}" id="monitorSelectForm">
     <label for="monitorSelect">Select Monitor:</label>
     <select id="monitorSelect" name="monitor" onchange="this.form.submit()">
       <option value="All" {% if selected_monitor == "All" %}selected{% endif %}>All Monitors (Global Settings)</option>
@@ -44,10 +44,19 @@
       <label><input type="checkbox" name="show_temp" {% if overlay.show_temp %}checked{% endif %}> Show Temperature</label>
     </div>
     <div class="form-group">
-      <label><input type="checkbox" name="show_feels_like" {% if overlay.show_feels_like %}checked{% endif %}> Show Feels Like Temperature</label>
+      <label><input type="checkbox" name="show_feels_like" {% if overlay.show_feels_like %}checked{% endif %}> Show <span style="font-size:inherit;">🌡️</span></label>
     </div>
     <div class="form-group">
-      <label><input type="checkbox" name="show_humidity" {% if overlay.show_humidity %}checked{% endif %}> Show Humidity</label>
+      <label><input type="checkbox" name="show_humidity" {% if overlay.show_humidity %}checked{% endif %}> Show <span style="font-size:inherit;">💧</span></label>
+    </div>
+    <div class="form-group">
+      <label><input type="checkbox" name="show_wind_speed" {% if overlay.show_wind_speed %}checked{% endif %}> Show Wind Speed <span style="font-size:inherit;">💨</span></label>
+    </div>
+    <div class="form-group">
+      <label><input type="checkbox" name="show_wind_direction" {% if overlay.show_wind_direction %}checked{% endif %}> Show Wind Direction</label>
+    </div>
+    <div class="form-group">
+      <label><input type="checkbox" name="show_location_info" {% if overlay.show_location_info %}checked{% endif %}> Show Location Info (Name, Timezone, Sunrise, Sunset)</label>
     </div>
     <div class="form-group">
       <label>Font Color:</label>
@@ -74,19 +83,19 @@
     <div id="manual_size_fields" {% if overlay.auto_scale %}style="display:none;"{% endif %}>
       <div class="form-group">
         <label>Offset X:</label>
-        <input type="number" name="offset_x" value="{{ overlay.offset_x|default(20) }}">
+        <input type="number" name="offset_x" id="offset_x" value="{{ overlay.offset_x|default(20) }}">
       </div>
       <div class="form-group">
         <label>Offset Y:</label>
-        <input type="number" name="offset_y" value="{{ overlay.offset_y|default(20) }}">
+        <input type="number" name="offset_y" id="offset_y" value="{{ overlay.offset_y|default(20) }}">
       </div>
       <div class="form-group">
         <label>Overlay Width:</label>
-        <input type="number" name="overlay_width" value="{{ overlay.overlay_width|default(300) }}">
+        <input type="number" name="overlay_width" id="overlay_width" value="{{ overlay.overlay_width|default(300) }}">
       </div>
       <div class="form-group">
         <label>Overlay Height:</label>
-        <input type="number" name="overlay_height" value="{{ overlay.overlay_height|default(150) }}">
+        <input type="number" name="overlay_height" id="overlay_height" value="{{ overlay.overlay_height|default(150) }}">
       </div>
     </div>
     <div class="form-group">
@@ -102,12 +111,16 @@
   </form>
   <hr>
   <h3>Preview</h3>
-  <div class="overlay-preview-container" style="border:1px solid #ccc; padding:10px; display:inline-block;">
+  <div class="overlay-preview-container" id="overlayPreviewBox" style="border:1px solid #ccc; padding:10px; display:inline-block;">
     <p>Monitor Preview (Scaled to {{ preview_size.width }}x{{ preview_size.height }})</p>
     <div style="position: relative; width: {{ preview_size.width }}px; height: {{ preview_size.height }}px; background: #333;">
-      <div style="position: absolute; left: {{ preview_overlay.left }}px; top: {{ preview_overlay.top }}px; width: {{ preview_overlay.width }}px; height: {{ preview_overlay.height }}px; border: 2px dashed lime;"></div>
+      <div id="overlayDraggable" class="overlay-draggable-box" style="width: {{ preview_overlay.width }}px; height: {{ preview_overlay.height }}px; left: {{ preview_overlay.left }}px; top: {{ preview_overlay.top }}px;"></div>
     </div>
   </div>
+  <!-- Pass scaleFactor from server to JS for overlay drag calculations -->
+  <script>
+    var scaleFactor = {{ scale_factor }};
+  </script>
 </div>
 <script>
 document.getElementById("auto_scale").addEventListener("change", function(){

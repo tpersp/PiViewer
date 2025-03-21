@@ -21,7 +21,7 @@ function fetchStats() {
     })
     .catch(e => console.log("Stats fetch error:", e));
 }
-// We'll poll stats every 10s
+// Poll stats every 10s
 setInterval(fetchStats, 10000);
 window.addEventListener("load", fetchStats);
 
@@ -48,7 +48,7 @@ function initMixedUI(dispName) {
 
   function sortAvailable() {
     const items = Array.from(availList.querySelectorAll("li"));
-    items.sort((a,b)=>{
+    items.sort((a, b) => {
       let fa = a.getAttribute("data-folder").toLowerCase();
       let fb = b.getAttribute("data-folder").toLowerCase();
       return fa.localeCompare(fb);
@@ -179,13 +179,6 @@ function loadSpecificThumbnails(dispName) {
 }
 
 // ---- Overlay Dragging (for overlay.html) ----
-let isDragging = false;
-let dragOffsetX = 0;
-let dragOffsetY = 0;
-let startMouseX = 0;
-let startMouseY = 0;
-let scaleFactor = 1.0;
-
 function initOverlayDragUI() {
   const previewBox = document.getElementById("overlayPreviewBox");
   const dragBox = document.getElementById("overlayDraggable");
@@ -193,6 +186,11 @@ function initOverlayDragUI() {
 
   const xInput = document.getElementById("offset_x");
   const yInput = document.getElementById("offset_y");
+
+  // Use scaleFactor provided from server; default to 1 if not set.
+  if (typeof scaleFactor === "undefined") {
+    scaleFactor = 1.0;
+  }
 
   dragBox.addEventListener("mousedown", (e) => {
     e.preventDefault();
@@ -233,13 +231,11 @@ function initOverlayDragUI() {
     isDragging = false;
   });
 }
+let isDragging = false, dragOffsetX = 0, dragOffsetY = 0, startMouseX = 0, startMouseY = 0;
+window.addEventListener("DOMContentLoaded", initOverlayDragUI);
 
 // A helper to auto-submit the overlay form on monitor change
 function onMonitorChange() {
   const selForm = document.getElementById("monitorSelectForm");
   if (selForm) selForm.submit();
 }
-
-// Initialize overlay UI
-window.addEventListener("DOMContentLoaded", initOverlayDragUI);
-
