@@ -126,8 +126,6 @@ class DisplayWindow(QMainWindow):
         self.weather_timer.start(60000)
         self.update_weather()
 
-        # (Live preview timer removed)
-
         # Load config and start
         self.cfg = load_config()
         self.reload_settings()
@@ -171,7 +169,11 @@ class DisplayWindow(QMainWindow):
     @Slot()
     def reload_settings(self):
         self.cfg = load_config()
-        over = self.cfg.get("overlay", {})
+        # Use per-display overlay settings if available; otherwise fallback to global
+        if "overlay" in self.disp_cfg:
+            over = self.disp_cfg["overlay"]
+        else:
+            over = self.cfg.get("overlay", {})
         if not over.get("overlay_enabled", False):
             self.clock_label.hide()
             self.weather_label.hide()
@@ -308,7 +310,6 @@ class DisplayWindow(QMainWindow):
 
         self.show_foreground_image(new_path)
         self.preload_next_images()
-        # Removed call to save_live_preview()
 
     def clear_foreground_label(self, message):
         if self.current_movie:
@@ -365,7 +366,6 @@ class DisplayWindow(QMainWindow):
                 self.current_movie.start()
 
         else:
-            # static or Spotify
             if data["type"] == "static":
                 self.current_pixmap = data["pixmap"]
             else:
@@ -554,7 +554,11 @@ class DisplayWindow(QMainWindow):
 
     def update_weather(self):
         cfg = load_config()
-        over = cfg.get("overlay", {})
+        # Check if per-display overlay settings exist; use those if available.
+        if "overlay" in self.disp_cfg:
+            over = self.disp_cfg["overlay"]
+        else:
+            over = cfg.get("overlay", {})
         if not over.get("weather_enabled", False):
             return
         wcfg = cfg.get("weather", {})
@@ -626,8 +630,6 @@ class DisplayWindow(QMainWindow):
             return None
         return None
 
-    # Removed save_live_preview method
-
 class PiViewerGUI:
     def __init__(self):
         self.cfg = load_config()
@@ -683,6 +685,7 @@ def main():
     except Exception as e:
         log_message(f"Exception in main: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
