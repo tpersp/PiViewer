@@ -126,10 +126,7 @@ class DisplayWindow(QMainWindow):
         self.weather_timer.start(60000)
         self.update_weather()
 
-        # NEW: Live Preview Timer to update the live preview file every second.
-        self.live_preview_timer = QTimer(self)
-        self.live_preview_timer.timeout.connect(self.save_live_preview)
-        self.live_preview_timer.start(1000)
+        # (Live preview timer removed)
 
         # Load config and start
         self.cfg = load_config()
@@ -311,7 +308,7 @@ class DisplayWindow(QMainWindow):
 
         self.show_foreground_image(new_path)
         self.preload_next_images()
-        self.save_live_preview()
+        # Removed call to save_live_preview()
 
     def clear_foreground_label(self, message):
         if self.current_movie:
@@ -629,13 +626,7 @@ class DisplayWindow(QMainWindow):
             return None
         return None
 
-    def save_live_preview(self):
-        screen = self.screen()
-        if screen:
-            live_preview_path = os.path.join(VIEWER_HOME, "live_preview_" + self.disp_name + ".jpg")
-            preview = screen.grabWindow(self.winId())
-            preview.save(live_preview_path, "JPG")
-
+    # Removed save_live_preview method
 
 class PiViewerGUI:
     def __init__(self):

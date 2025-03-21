@@ -888,11 +888,3 @@ def restart_services():
         log_message(f"Failed to restart services: {e}")
         return "Failed to restart services. Check logs.", 500
     return "Services are restarting now..."
-
-# --- Multi-monitor live preview route ---
-@main_bp.route("/live_preview/<monitor>")
-def live_preview(monitor):
-    live_preview_path = os.path.join(VIEWER_HOME, f"live_preview_{monitor}.jpg")
-    if os.path.exists(live_preview_path):
-        return send_file(live_preview_path)
-    return "", 404

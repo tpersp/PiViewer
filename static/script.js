@@ -243,12 +243,3 @@ function onMonitorChange() {
 // Initialize overlay UI
 window.addEventListener("DOMContentLoaded", initOverlayDragUI);
 
-/* ---- Live Preview Refresh ---- */
-window.addEventListener("DOMContentLoaded", function(){
-  setInterval(function(){
-    var img = document.getElementById("livePreviewImage");
-    if(img) {
-      img.src = "/live_preview?t=" + new Date().getTime();
-    }
-  }, 1000); // Reduced from 5000ms to 1000ms for more frequent refresh
-});
