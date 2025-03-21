@@ -137,8 +137,6 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
     }
     return (preview_width, preview_height, preview_overlay)
 
-# We keep rotation logic for images but remove any function to change resolution.
-
 main_bp = Blueprint("main", __name__, static_folder="static")
 
 @main_bp.route("/stats")
@@ -467,7 +465,6 @@ def overlay_config():
             except:
                 over["bg_opacity"] = 0.4
 
-            # NEW: Store the auto scale option.
             over["auto_scale"] = ("auto_scale" in request.form)
 
             save_config(cfg)
@@ -509,7 +506,7 @@ def index():
     for dr in to_remove:
         del cfg["displays"][dr]
 
-    # Update or add each known monitor for reference only
+    # Update or add each known monitor
     for mon_name, minfo in ext_mons.items():
         if mon_name not in cfg["displays"]:
             cfg["displays"][mon_name] = {
@@ -581,7 +578,7 @@ def index():
                 pass
             return redirect(url_for("main.index"))
 
-    # Build folder counts for each subfolder
+    # Build folder counts
     folder_counts = {}
     for sf in get_subfolders():
         folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
@@ -613,7 +610,7 @@ def index():
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}" 
 
-    # Compute dynamic status for main devices
+    # Dynamic status for main devices
     if cfg.get("role") == "main":
         sp_cfg = cfg.get("spotify", {})
         if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
@@ -741,7 +738,8 @@ def remote_configure(dev_index):
         dev_ip=dev_ip,
         remote_cfg=remote_cfg,
         remote_mons=remote_mons,
-        remote_folders=remote_folders
+        remote_folders=remote_folders,
+        theme=cfg.get("theme", "dark")  # <--- pass the local theme
     )
 
 @main_bp.route("/sync_config", methods=["GET"])
@@ -750,6 +748,7 @@ def sync_config():
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
+    # Called by push_displays_to_remote from a "main" device
     incoming = request.get_json()
     if not incoming:
         return "No JSON received", 400
@@ -760,6 +759,11 @@ def update_config():
         cfg["theme"] = incoming["theme"]
     save_config(cfg)
     log_message("Local config partially updated via /update_config")
+    # Force remote piviewer to reload new config
+    try:
+        subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
+    except subprocess.CalledProcessError as e:
+        log_message(f"Failed to restart piviewer after config update: {e}")
     return "Config updated", 200
 
 @main_bp.route("/device_manager", methods=["GET", "POST"])
@@ -885,7 +889,7 @@ def restart_services():
         return "Failed to restart services. Check logs.", 500
     return "Services are restarting now..."
 
-# --- Modified live preview route supporting multi-monitor ---
+# --- Multi-monitor live preview route ---
 @main_bp.route("/live_preview/<monitor>")
 def live_preview(monitor):
     live_preview_path = os.path.join(VIEWER_HOME, f"live_preview_{monitor}.jpg")
