@@ -274,11 +274,29 @@ def settings():
     else:
         cfg = load_config()
         theme = cfg.get("theme", "dark")
+        weather_info = None
+        w_api = cfg.get("weather", {}).get("api_key", "").strip()
+        w_zip = cfg.get("weather", {}).get("zip_code", "").strip()
+        w_cc = cfg.get("weather", {}).get("country_code", "").strip()
+        if w_api and w_zip and w_cc:
+            try:
+                weather_url = f"http://api.openweathermap.org/data/2.5/weather?zip={w_zip},{w_cc}&appid={w_api}&units=metric"
+                r = requests.get(weather_url, timeout=5)
+                if r.status_code == 200:
+                    data = r.json()
+                    weather_info = {
+                        "name": data.get("name", "Unknown"),
+                        "timezone": data.get("timezone", "Unknown"),
+                        "country": data.get("sys", {}).get("country", "Unknown")
+                    }
+            except Exception as e:
+                weather_info = None
         return render_template(
             "settings.html",
             theme=theme,
             cfg=cfg,
-            update_branch=UPDATE_BRANCH
+            update_branch=UPDATE_BRANCH,
+            weather_info=weather_info
         )
 
 @main_bp.route("/configure_spotify", methods=["GET", "POST"])

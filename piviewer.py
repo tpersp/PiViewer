@@ -153,11 +153,17 @@ class DisplayWindow(QMainWindow):
         self.clock_label.raise_()
         self.weather_label.raise_()
 
-        self.clock_label.adjustSize()
-        self.clock_label.move(20, 20)
-
-        self.weather_label.adjustSize()
-        self.weather_label.move(20, self.clock_label.y() + self.clock_label.height() + 10)
+        # Position overlay labels based on layout style
+        if self.overlay_config.get("layout_style", "stacked") == "inline":
+            self.clock_label.adjustSize()
+            self.clock_label.move(20, 20)
+            self.weather_label.adjustSize()
+            self.weather_label.move(self.clock_label.x() + self.clock_label.width() + 10, 20)
+        else:
+            self.clock_label.adjustSize()
+            self.clock_label.move(20, 20)
+            self.weather_label.adjustSize()
+            self.weather_label.move(20, self.clock_label.y() + self.clock_label.height() + 10)
 
         if self.current_pixmap and not self.handling_gif_frames:
             self.updateForegroundScaled()
@@ -189,6 +195,8 @@ class DisplayWindow(QMainWindow):
             self.weather_label.setStyleSheet(
                 f"color: {fcolor}; font-size: {wfsize}px; background: transparent;"
             )
+        # Save overlay config for use in layout adjustments
+        self.overlay_config = over
 
         gui_cfg = self.cfg.get("gui", {})
         try:
@@ -676,7 +684,6 @@ class PiViewerGUI:
     def run(self):
         sys.exit(self.app.exec())
 
-
 def main():
     try:
         log_message(f"Starting PiViewer GUI (v{APP_VERSION}).")
@@ -685,7 +692,6 @@ def main():
     except Exception as e:
         log_message(f"Exception in main: {e}")
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()

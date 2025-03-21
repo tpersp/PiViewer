@@ -104,8 +104,8 @@
   <h3>Preview</h3>
   <div class="overlay-preview-container" style="border:1px solid #ccc; padding:10px; display:inline-block;">
     <p>Monitor Preview (Scaled to {{ preview_size.width }}x{{ preview_size.height }})</p>
-    <div style="position: relative; width: {{ preview_size.width }}px; height: {{ preview_size.height }}px; background: #333;">
-      <div style="position: absolute; left: {{ preview_overlay.left }}px; top: {{ preview_overlay.top }}px; width: {{ preview_overlay.width }}px; height: {{ preview_overlay.height }}px; border: 2px dashed lime;"></div>
+    <div id="overlayPreviewBox" style="position: relative; width: {{ preview_size.width }}px; height: {{ preview_size.height }}px; background: #333;">
+      <div id="overlayDraggable" style="position: absolute; left: {{ preview_overlay.left }}px; top: {{ preview_overlay.top }}px; width: {{ preview_overlay.width }}px; height: {{ preview_overlay.height }}px; border: 2px dashed lime; cursor: move;"></div>
     </div>
   </div>
 </div>

@@ -102,6 +102,16 @@
     </div>
   </div>
 
+  <!-- New Weather Info Confirmation Card -->
+  {% if weather_info %}
+  <div class="card" style="margin-top:20px;">
+    <h3>Weather Location Confirmation</h3>
+    <p><strong>Location Name:</strong> {{ weather_info.name }}</p>
+    <p><strong>Timezone:</strong> {{ weather_info.timezone }}</p>
+    <p><strong>Country:</strong> {{ weather_info.country }}</p>
+  </div>
+  {% endif %}
+
   <!-- Update from GitHub, logs, etc. as a final separate card -->
   <div class="card" style="margin-top:20px;">
     <form method="POST" action="{{ url_for('main.update_app') }}">
