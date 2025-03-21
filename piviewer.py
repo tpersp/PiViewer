@@ -632,7 +632,7 @@ class DisplayWindow(QMainWindow):
     def save_live_preview(self):
         screen = self.screen()
         if screen:
-            live_preview_path = os.path.join(VIEWER_HOME, "live_preview.jpg")
+            live_preview_path = os.path.join(VIEWER_HOME, "live_preview_" + self.disp_name + ".jpg")
             preview = screen.grabWindow(self.winId())
             preview.save(live_preview_path, "JPG")
 

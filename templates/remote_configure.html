@@ -5,7 +5,7 @@
 <div class="page-section">
   <h2>Configure Remote Device</h2>
   <p>Device: <strong>{{ dev_name }}</strong> ({{ dev_ip }})</p>
-  <p style="font-size:90%; color:var(--text-normal);">
+  <p>
     {% if remote_cfg.role == "sub" and remote_cfg.main_ip %}
       This device is a sub device; main device: {{ remote_cfg.main_ip }}
     {% elif remote_cfg.role == "main" %}
@@ -20,7 +20,7 @@
       {% for dname, dcfg in remote_cfg.displays.items() %}
       {% set moninfo = remote_mons[dname] if dname in remote_mons else None %}
       {% set resolution = moninfo.resolution if moninfo else "unknown" %}
-      <div class="card">
+      <div class="card" style="position: relative; z-index: 1;">
         <h3>{{ dname }} ({{ resolution }})</h3>
 
         <label>Mode:</label><br>
@@ -94,7 +94,7 @@
 
         {% if dcfg.mode == "specific_image" %}
         <label>Select Image/GIF:</label><br>
-        <p style="font-size:90%;">(Remote images not listed. Type exact filename if needed.)</p>
+        <p>(Remote images not listed. Type exact filename if needed.)</p>
         <input type="text" name="{{ dname }}_specific_image" value="{{ dcfg.specific_image }}" placeholder="Exact filename...">
         {% endif %}
       </div>

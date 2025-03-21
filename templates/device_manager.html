@@ -29,7 +29,7 @@
     <tbody>
       {% for dev in cfg.devices|default([]) %}
       <tr>
-        <td>{{ loop.index0 }}</td>
+        <td>{{ loop.index }}</td>
         <td>{{ dev.name }}</td>
         <td>{{ dev.ip }}</td>
         <td>
