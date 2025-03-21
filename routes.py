@@ -422,7 +422,7 @@ def overlay_config():
             "overlay_height": int(request.form.get("overlay_height", "150")),
             "bg_color": request.form.get("bg_color", "#000000"),
             "bg_opacity": float(request.form.get("bg_opacity", "0.4")),
-            "auto_scale": ("auto_scale" in request.form)
+            "auto_negative_font": ("auto_negative_font" in request.form)
         }
         if selected_monitor == "All":
             cfg["overlay"] = new_overlay
