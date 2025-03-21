@@ -26,8 +26,8 @@
     <input type="hidden" name="action" value="save_overlay">
     <div class="cards-container">
       <!-- Left Card: Toggles and Layout -->
-      <div class="card" style="flex:1;">
-        <fieldset style="margin-bottom:15px;">
+      <div class="card">
+        <fieldset class="overlay-fieldset">
           <legend>Overlay Toggles & Layout</legend>
           <label>
             <input type="checkbox" name="overlay_enabled" {% if overlay.overlay_enabled %}checked{% endif %}>
@@ -73,8 +73,8 @@
       </div>
 
       <!-- Right Card: Box Settings and Dynamic Scaling -->
-      <div class="card" style="flex:1;">
-        <fieldset style="margin-bottom:15px;">
+      <div class="card">
+        <fieldset class="overlay-fieldset">
           <legend>Box Position &amp; Size</legend>
           <label>
             <input type="checkbox" id="auto_scale" name="auto_scale" {% if overlay.auto_scale %}checked{% endif %}>

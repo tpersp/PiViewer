@@ -565,7 +565,7 @@ class DisplayWindow(QMainWindow):
             self.weather_label.setText("Weather: config missing")
             return
         try:
-            url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={api_key}"
+            url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={api_key}"
             r = requests.get(url, timeout=5)
             if r.status_code == 200:
                 data = r.json()
