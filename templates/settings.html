@@ -14,11 +14,13 @@
         <option value="sub"  {% if cfg.role=="sub"  %}selected{% endif %}>sub</option>
       </select>
       <br><br>
+
       <div id="mainIPField" style="{% if cfg.role!="sub" %}display:none;{% endif %}">
         <label>Main Device IP:</label><br>
         <input type="text" name="main_ip" value="{{ cfg.main_ip }}">
         <br><br>
       </div>
+
       <label>Theme:</label><br>
       <select name="theme">
         <option value="dark"   {% if cfg.theme=="dark"   %}selected{% endif %}>Dark</option>
@@ -26,17 +28,21 @@
         <option value="custom" {% if cfg.theme=="custom" %}selected{% endif %}>Custom</option>
       </select>
       <br><br>
+
       {% if cfg.theme=="custom" %}
         <label>Upload Custom BG:</label><br>
         <input type="file" name="bg_image" accept="image/*">
         <br><br>
       {% endif %}
+
+      <!-- We'll save other settings below, so let's let user know to see next form. -->
       <button type="submit">Save Role/Theme</button>
     </form>
   </div>
 
   <!-- Two side-by-side cards: GUI Settings and Weather Settings -->
   <div class="cards-container">
+
     <!-- GUI card -->
     <div class="card">
       <h3>GUI Settings</h3>
@@ -45,19 +51,28 @@
           <input type="hidden" name="role" value="{{ cfg.role }}">
           <input type="hidden" name="main_ip" value="{{ cfg.main_ip }}">
           <input type="hidden" name="theme" value="{{ cfg.theme }}">
+          <!-- Only re-save if user wants to update everything in one go -->
           <label>Background Blur Radius:</label><br>
-          <input type="number" name="background_blur_radius" value="{{ cfg.gui.background_blur_radius|default('20') }}" min="0">
+          <input type="number" name="background_blur_radius"
+                 value="{{ cfg.gui.background_blur_radius|default('20') }}" min="0">
           <br><br>
+
           <label>Background Resolution Scale (%):</label><br>
-          <input type="number" name="background_scale_percent" value="{{ cfg.gui.background_scale_percent|default('100') }}" step="1" min="1" max="100">
+          <input type="number" name="background_scale_percent"
+                 value="{{ cfg.gui.background_scale_percent|default('100') }}"
+                 step="1" min="1" max="100">
           <br><br>
+
           <label>Foreground Resolution Scale (%):</label><br>
-          <input type="number" name="foreground_scale_percent" value="{{ cfg.gui.foreground_scale_percent|default('100') }}" step="1" min="1" max="100">
+          <input type="number" name="foreground_scale_percent"
+                 value="{{ cfg.gui.foreground_scale_percent|default('100') }}"
+                 step="1" min="1" max="100">
           <br><br>
         </fieldset>
         <button type="submit">Save GUI Settings</button>
       </form>
     </div>
+
     <!-- Weather card -->
     <div class="card">
       <h3>Weather Settings</h3>
@@ -67,39 +82,27 @@
           <input type="hidden" name="main_ip" value="{{ cfg.main_ip }}">
           <input type="hidden" name="theme" value="{{ cfg.theme }}">
           <label>OpenWeatherMap API Key:</label><br>
-          <input type="text" name="weather_api_key" value="{{ cfg.weather.api_key|default('') }}" style="width:300px;">
+          <input type="text" name="weather_api_key"
+                 value="{{ cfg.weather.api_key|default('') }}"
+                 style="width:300px;">
           <br><br>
+
           <label>Zip Code:</label><br>
-          <input type="text" name="weather_zip_code" value="{{ cfg.weather.zip_code|default('') }}">
+          <input type="text" name="weather_zip_code"
+                 value="{{ cfg.weather.zip_code|default('') }}">
           <br><br>
+
           <label>Country Code (2-letter):</label><br>
-          <input type="text" name="weather_country_code" value="{{ cfg.weather.country_code|default('') }}">
+          <input type="text" name="weather_country_code"
+                 value="{{ cfg.weather.country_code|default('') }}">
           <br><br>
         </fieldset>
         <button type="submit">Save Weather Settings</button>
       </form>
-      {% if weather_info %}
-      <hr>
-      <h4>Weather Preview:</h4>
-      <p>
-        📍 <strong>{{ weather_info.name }}</strong> &nbsp;
-        🌍 {{ weather_info.sys.country }} &nbsp;
-        ⌚ {{ weather_info.timezone_str }}<br>
-        🌡️ {{ weather_info.main.temp }}°C (Feels: {{ weather_info.main.feels_like }}°C) &nbsp;
-        💧 {{ weather_info.main.humidity }}%<br>
-        {% if weather_info.wind %}
-          💨 {{ weather_info.wind.speed }} m/s
-          {% if cfg.get("overlay", {}).get("show_wind_direction", False) %}
-             ({{ weather_info.wind.cardinal }})
-          {% endif %}
-        {% endif %}<br>
-        🌅 {{ weather_info.sys.sunrise_str }} &nbsp; 🌇 {{ weather_info.sys.sunset_str }}
-      </p>
-      {% endif %}
     </div>
   </div>
 
-  <!-- Update from GitHub, logs, etc. -->
+  <!-- Update from GitHub, logs, etc. as a final separate card -->
   <div class="card" style="margin-top:20px;">
     <form method="POST" action="{{ url_for('main.update_app') }}">
       <p><strong>Update from GitHub</strong></p>
