@@ -559,13 +559,13 @@ class DisplayWindow(QMainWindow):
             return
         wcfg = cfg.get("weather", {})
         api_key = wcfg.get("api_key", "")
-        lat = wcfg.get("lat")
-        lon = wcfg.get("lon")
-        if not (api_key and lat is not None and lon is not None):
+        zip_code = wcfg.get("zip_code", "")
+        country_code = wcfg.get("country_code", "")
+        if not (api_key and zip_code and country_code):
             self.weather_label.setText("Weather: config missing")
             return
         try:
-            url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={api_key}"
+            url = f"https://api.openweathermap.org/data/2.5/weather?zip={zip_code},{country_code}&units=metric&appid={api_key}"
             r = requests.get(url, timeout=5)
             if r.status_code == 200:
                 data = r.json()
@@ -683,7 +683,6 @@ def main():
     except Exception as e:
         log_message(f"Exception in main: {e}")
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
