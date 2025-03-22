@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+#-- coding: utf-8 --
 '''
 piviewer.py
 Shows images in random/mixed/specific/spotify mode on each connected monitor,
@@ -198,6 +198,10 @@ class DisplayWindow(QMainWindow):
                     f"color: {over.get('font_color', '#FFFFFF')}; font-size: {wfsize}px; background: transparent;"
                 )
         self.overlay_config = over
+
+        # Update font color if auto-negative is enabled
+        if over.get("auto_negative_font", False):
+            self.update_overlay_font_color()
 
         gui_cfg = self.cfg.get("gui", {})
         try:
@@ -432,8 +436,10 @@ class DisplayWindow(QMainWindow):
         else:
             bounding_h = fh
             bounding_w = int(bounding_h * image_aspect)
-        if bounding_w < 1: bounding_w = 1
-        if bounding_h < 1: bounding_h = 1
+        if bounding_w < 1:
+            bounding_w = 1
+        if bounding_h < 1:
+            bounding_h = 1
         return (bounding_w, bounding_h)
 
     def updateForegroundScaled(self):
@@ -479,8 +485,10 @@ class DisplayWindow(QMainWindow):
         else:
             new_h = fh
             new_w = int(new_h * image_aspect)
-        if new_w < 1: new_w = 1
-        if new_h < 1: new_h = 1
+        if new_w < 1:
+            new_w = 1
+        if new_h < 1:
+            new_h = 1
         return (new_w, new_h)
 
     def degrade_foreground(self, src_pm, bounding):
@@ -617,8 +625,10 @@ class DisplayWindow(QMainWindow):
         w = geom.width()
         h = geom.height()
         img = self.last_scaled_foreground_image
-        if x < 0: x = 0
-        if y < 0: y = 0
+        if x < 0:
+            x = 0
+        if y < 0:
+            y = 0
         if x + w > img.width():
             w = img.width() - x
         if y + h > img.height():
@@ -689,6 +699,7 @@ class DisplayWindow(QMainWindow):
             return None
         return None
 
+
 class PiViewerGUI:
     def __init__(self):
         self.cfg = load_config()
@@ -735,6 +746,7 @@ class PiViewerGUI:
     def run(self):
         sys.exit(self.app.exec())
 
+
 def main():
     try:
         log_message(f"Starting PiViewer GUI (v{APP_VERSION}).")
@@ -744,5 +756,6 @@ def main():
         log_message(f"Exception in main: {e}")
         sys.exit(1)
 
-if __name__ == "__main__":
+
+if name == "main":
     main()
