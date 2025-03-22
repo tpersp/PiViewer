@@ -216,12 +216,12 @@ class DisplayWindow(QMainWindow):
             if over.get("auto_negative_font", False):
                 self.clock_label.useDifference = True
                 self.weather_label.useDifference = True
-                # Set font sizes using QFont when using difference mode.
-                font_clock = self.clock_label.font()
-                font_clock.setPointSize(cfsize)
+                # Use setPixelSize so that the configured font sizes (in pixels) are used.
+                font_clock = QFont(self.clock_label.font())
+                font_clock.setPixelSize(cfsize)
                 self.clock_label.setFont(font_clock)
-                font_weather = self.weather_label.font()
-                font_weather.setPointSize(wfsize)
+                font_weather = QFont(self.weather_label.font())
+                font_weather.setPixelSize(wfsize)
                 self.weather_label.setFont(font_weather)
             else:
                 self.clock_label.useDifference = False
