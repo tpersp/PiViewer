@@ -2,7 +2,7 @@
 {% block title %}Settings{% endblock %}
 {% block content %}
 
-<div class="page-section">
+<div class="page-section" style="max-width:1200px;">
   <h2>Settings</h2>
 
   <!-- Role + Theme in a top card -->
@@ -35,7 +35,6 @@
         <br><br>
       {% endif %}
 
-      <!-- We'll save other settings below, so let's let user know to see next form. -->
       <button type="submit">Save Role/Theme</button>
     </form>
   </div>
@@ -51,7 +50,6 @@
           <input type="hidden" name="role" value="{{ cfg.role }}">
           <input type="hidden" name="main_ip" value="{{ cfg.main_ip }}">
           <input type="hidden" name="theme" value="{{ cfg.theme }}">
-          <!-- Only re-save if user wants to update everything in one go -->
           <label>Background Blur Radius:</label><br>
           <input type="number" name="background_blur_radius"
                  value="{{ cfg.gui.background_blur_radius|default('20') }}" min="0">

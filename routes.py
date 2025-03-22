@@ -217,6 +217,22 @@ def restart_viewer():
     except subprocess.CalledProcessError as e:
         return f"Failed to restart service: {e}", 500
 
+@main_bp.route("/restart_device", methods=["POST"])
+def restart_device():
+    try:
+        subprocess.check_output(["sudo", "reboot"])
+        return redirect(url_for("main.index"))
+    except subprocess.CalledProcessError as e:
+        return f"Failed to restart device: {e}", 500
+
+@main_bp.route("/power_off", methods=["POST"])
+def power_off():
+    try:
+        subprocess.check_output(["sudo", "poweroff"])
+        return "Device is powering off...", 200
+    except subprocess.CalledProcessError as e:
+        return f"Failed to power off: {e}", 500
+
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
     cfg = load_config()
@@ -581,7 +597,7 @@ def index():
     if cfg.get("role") == "sub":
         sub_info_line = "This device is SUB"
         if cfg["main_ip"]:
-            sub_info_line += f" - Main IP: {cfg['main_ip']}" 
+            sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
     # Dynamic status for main devices
     if cfg.get("role") == "main":
@@ -712,7 +728,7 @@ def remote_configure(dev_index):
         remote_cfg=remote_cfg,
         remote_mons=remote_mons,
         remote_folders=remote_folders,
-        theme=cfg.get("theme", "dark")  # <--- pass the local theme
+        theme=cfg.get("theme", "dark")
     )
 
 @main_bp.route("/sync_config", methods=["GET"])
@@ -840,13 +856,61 @@ def update_app():
     log_message("Update completed successfully.")
     subprocess.Popen(["sudo", "reboot"])
 
-    return """
+    # Match the theme and add an auto-redirect/button:
+    theme = cfg.get("theme", "dark")
+    if theme == "dark":
+        page_bg = "#121212"
+        text_color = "#ECECEC"
+        button_bg = "#444"
+        button_color = "#FFF"
+        link_hover_bg = "#666"
+    else:
+        page_bg = "#FFFFFF"
+        text_color = "#222"
+        button_bg = "#ddd"
+        button_color = "#111"
+        link_hover_bg = "#bbb"
+
+    return f"""
     <html>
       <head>
         <meta charset="utf-8"/>
+        <title>PiViewer Update</title>
+        <style>
+          body {{
+            background-color: {page_bg};
+            color: {text_color};
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+          }}
+          a.button {{
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: {button_bg};
+            color: {button_color};
+            border: none;
+            border-radius: 6px;
+            text-decoration: none;
+            cursor: pointer;
+          }}
+          a.button:hover {{
+            background-color: {link_hover_bg};
+          }}
+        </style>
       </head>
-      <body style="text-align:center; margin-top:50px;">
+      <body>
         <h2>Update is complete. The system is now rebooting...</h2>
+        <p>Please wait for the device to come back online.</p>
+        <p>If the device does not redirect automatically, click below
+            <br>
+           <a href="/" class="button">Return to Home Page</a></p>
+        <script>
+          setTimeout(function() {{
+            window.location.href = "/";
+          }}, 10000);
+        </script>
       </body>
     </html>
     """
