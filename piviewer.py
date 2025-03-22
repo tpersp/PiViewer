@@ -19,7 +19,7 @@ from datetime import datetime
 from collections import OrderedDict
 
 from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRect, QRectF
-from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader, QTransform
+from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader, QTransform, QFont
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel,
     QGraphicsScene, QGraphicsPixmapItem, QGraphicsBlurEffect
@@ -216,6 +216,13 @@ class DisplayWindow(QMainWindow):
             if over.get("auto_negative_font", False):
                 self.clock_label.useDifference = True
                 self.weather_label.useDifference = True
+                # Set font sizes using QFont when using difference mode.
+                font_clock = self.clock_label.font()
+                font_clock.setPointSize(cfsize)
+                self.clock_label.setFont(font_clock)
+                font_weather = self.weather_label.font()
+                font_weather.setPointSize(wfsize)
+                self.weather_label.setFont(font_weather)
             else:
                 self.clock_label.useDifference = False
                 self.weather_label.useDifference = False
