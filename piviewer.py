@@ -18,8 +18,8 @@ import subprocess
 from datetime import datetime
 from collections import OrderedDict
 
-from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRectF
-from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader, QTransform
+from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRect, QRectF
+from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader, QTransform, QFont
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel,
     QGraphicsScene, QGraphicsPixmapItem, QGraphicsBlurEffect
@@ -28,6 +28,27 @@ from PySide6.QtWidgets import (
 from spotipy.oauth2 import SpotifyOAuth
 from config import APP_VERSION, IMAGE_DIR, LOG_PATH, VIEWER_HOME
 from utils import load_config, save_config, log_message
+
+
+# --- New custom label for negative (difference) text drawing ---
+class NegativeTextLabel(QLabel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # When useDifference is True, the text is drawn using difference mode.
+        self.useDifference = False
+
+    def paintEvent(self, event):
+        if self.useDifference:
+            # Draw text using difference blend mode so that it inverts the background.
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setCompositionMode(QPainter.CompositionMode_Difference)
+            # Always draw using white so that the difference produces an inversion.
+            painter.setPen(Qt.white)
+            painter.setFont(self.font())
+            painter.drawText(self.rect(), self.alignment(), self.text())
+        else:
+            super().paintEvent(event)
 
 
 def detect_monitors():
@@ -63,10 +84,11 @@ def detect_monitors():
 
 
 class DisplayWindow(QMainWindow):
-    def __init__(self, disp_name, disp_cfg):
+    def __init__(self, disp_name, disp_cfg, assigned_screen=None):
         super().__init__()
         self.disp_name = disp_name
         self.disp_cfg = disp_cfg
+        self.assigned_screen = assigned_screen
         self.running = True
 
         # Caching
@@ -77,11 +99,19 @@ class DisplayWindow(QMainWindow):
         self.current_pixmap = None  # static images
         self.current_movie = None   # GIFs
         self.handling_gif_frames = False
+        self.last_scaled_foreground_image = None  # Cached scaled image for computing auto-negative
 
-        # Fullscreen on this monitor
-        screen = self.screen()
-        if screen:
-            self.setGeometry(screen.geometry())
+        # Variables for auto-negative sampling (no longer used for difference mode)
+        self.current_drawn_image = None
+        self.foreground_drawn_rect = None
+
+        # Set window geometry based on the assigned screen (if provided)
+        if self.assigned_screen:
+            self.setGeometry(self.assigned_screen.geometry())
+        else:
+            screen = self.screen()
+            if screen:
+                self.setGeometry(screen.geometry())
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.showFullScreen()
 
@@ -95,19 +125,22 @@ class DisplayWindow(QMainWindow):
         self.bg_label.setScaledContents(False)
         self.bg_label.setStyleSheet("background-color: black;")
 
-        # Foreground label
+        # Foreground label (for showing the main image)
         self.foreground_label = QLabel(self.main_widget)
         self.foreground_label.setScaledContents(False)
         self.foreground_label.setAlignment(Qt.AlignCenter)
-        self.foreground_label.setStyleSheet("background-color: transparent; color: white;")
+        self.foreground_label.setStyleSheet("background-color: transparent;")
 
-        # Overlay labels
-        self.clock_label = QLabel(self.main_widget)
+        # Use custom NegativeTextLabel for overlay text.
+        self.clock_label = NegativeTextLabel(self.main_widget)
         self.clock_label.setText("00:00:00")
-        self.clock_label.setStyleSheet("color: white; font-size: 24px; background: transparent;")
+        self.clock_label.setAlignment(Qt.AlignCenter)
+        # Initially set a default style; will be overridden in reload_settings()
+        self.clock_label.setStyleSheet("background: transparent;")
 
-        self.weather_label = QLabel(self.main_widget)
-        self.weather_label.setStyleSheet("color: white; font-size: 18px; background: transparent;")
+        self.weather_label = NegativeTextLabel(self.main_widget)
+        self.weather_label.setAlignment(Qt.AlignCenter)
+        self.weather_label.setStyleSheet("background: transparent;")
 
         # Timers
         self.slideshow_timer = QTimer(self)
@@ -122,11 +155,6 @@ class DisplayWindow(QMainWindow):
         self.weather_timer.start(60000)
         self.update_weather()
 
-        # NEW: Live Preview Timer to update the live preview file every second.
-        self.live_preview_timer = QTimer(self)
-        self.live_preview_timer.timeout.connect(self.save_live_preview)
-        self.live_preview_timer.start(1000)
-
         # Load config and start
         self.cfg = load_config()
         self.reload_settings()
@@ -137,9 +165,12 @@ class DisplayWindow(QMainWindow):
     def setup_layout(self):
         if not self.isVisible():
             return
-        screen = self.screen()
-        if screen:
-            self.setGeometry(screen.geometry())
+        if self.assigned_screen:
+            self.setGeometry(self.assigned_screen.geometry())
+        else:
+            screen = self.screen()
+            if screen:
+                self.setGeometry(screen.geometry())
         rect = self.main_widget.rect()
 
         self.bg_label.setGeometry(rect)
@@ -150,11 +181,16 @@ class DisplayWindow(QMainWindow):
         self.clock_label.raise_()
         self.weather_label.raise_()
 
-        self.clock_label.adjustSize()
-        self.clock_label.move(20, 20)
-
-        self.weather_label.adjustSize()
-        self.weather_label.move(20, self.clock_label.y() + self.clock_label.height() + 10)
+        if self.overlay_config.get("layout_style", "stacked") == "inline":
+            self.clock_label.adjustSize()
+            self.clock_label.move(20, 20)
+            self.weather_label.adjustSize()
+            self.weather_label.move(self.clock_label.x() + self.clock_label.width() + 10, 20)
+        else:
+            self.clock_label.adjustSize()
+            self.clock_label.move(20, 20)
+            self.weather_label.adjustSize()
+            self.weather_label.move(20, self.clock_label.y() + self.clock_label.height() + 10)
 
         if self.current_pixmap and not self.handling_gif_frames:
             self.updateForegroundScaled()
@@ -166,22 +202,37 @@ class DisplayWindow(QMainWindow):
     @Slot()
     def reload_settings(self):
         self.cfg = load_config()
-        over = self.cfg.get("overlay", {})
+        if "overlay" in self.disp_cfg:
+            over = self.disp_cfg["overlay"]
+        else:
+            over = self.cfg.get("overlay", {})
         if not over.get("overlay_enabled", False):
             self.clock_label.hide()
             self.weather_label.hide()
         else:
-            self.clock_label.setVisible(over.get("clock_enabled", True))
-            self.weather_label.setVisible(over.get("weather_enabled", False))
+            self.clock_label.show()
+            self.weather_label.show()
             cfsize = over.get("clock_font_size", 24)
             wfsize = over.get("weather_font_size", 18)
-            fcolor = over.get("font_color", "#ffffff")
-            self.clock_label.setStyleSheet(
-                f"color: {fcolor}; font-size: {cfsize}px; background: transparent;"
-            )
-            self.weather_label.setStyleSheet(
-                f"color: {fcolor}; font-size: {wfsize}px; background: transparent;"
-            )
+            if over.get("auto_negative_font", False):
+                self.clock_label.useDifference = True
+                self.weather_label.useDifference = True
+                # Clear any style sheet font-size so that the QFont takes precedence.
+                self.clock_label.setStyleSheet("background: transparent;")
+                self.weather_label.setStyleSheet("background: transparent;")
+                font_clock = QFont(self.clock_label.font())
+                font_clock.setPixelSize(cfsize)
+                self.clock_label.setFont(font_clock)
+                font_weather = QFont(self.weather_label.font())
+                font_weather.setPixelSize(wfsize)
+                self.weather_label.setFont(font_weather)
+            else:
+                self.clock_label.useDifference = False
+                self.weather_label.useDifference = False
+                fcolor = over.get("font_color", "#FFFFFF")
+                self.clock_label.setStyleSheet(f"color: {fcolor}; font-size: {cfsize}px; background: transparent;")
+                self.weather_label.setStyleSheet(f"color: {fcolor}; font-size: {wfsize}px; background: transparent;")
+        self.overlay_config = over
 
         gui_cfg = self.cfg.get("gui", {})
         try:
@@ -303,7 +354,9 @@ class DisplayWindow(QMainWindow):
 
         self.show_foreground_image(new_path)
         self.preload_next_images()
-        self.save_live_preview()
+        if self.overlay_config.get("auto_negative_font", False):
+            self.clock_label.update()
+            self.weather_label.update()
 
     def clear_foreground_label(self, message):
         if self.current_movie:
@@ -360,7 +413,6 @@ class DisplayWindow(QMainWindow):
                 self.current_movie.start()
 
         else:
-            # static or Spotify
             if data["type"] == "static":
                 self.current_pixmap = data["pixmap"]
             else:
@@ -394,6 +446,11 @@ class DisplayWindow(QMainWindow):
         painter.end()
 
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
+        self.last_scaled_foreground_image = final_img
+
+        if self.overlay_config.get("auto_negative_font", False):
+            self.clock_label.update()
+            self.weather_label.update()
 
     def calc_bounding_for_window(self, first_frame):
         fw = self.foreground_label.width()
@@ -433,6 +490,8 @@ class DisplayWindow(QMainWindow):
         degraded = self.degrade_foreground(self.current_pixmap, (bw, bh))
         rotated = self.apply_rotation_if_any(degraded)
 
+        self.current_drawn_image = rotated.toImage()
+
         final_img = QImage(fw, fh, QImage.Format_ARGB32)
         final_img.fill(Qt.transparent)
         painter = QPainter(final_img)
@@ -444,7 +503,13 @@ class DisplayWindow(QMainWindow):
         painter.drawPixmap(xoff, yoff, rotated)
         painter.end()
 
+        self.foreground_drawn_rect = QRect(xoff, yoff, rw, rh)
+
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
+        self.last_scaled_foreground_image = final_img
+        if self.overlay_config.get("auto_negative_font", False):
+            self.clock_label.update()
+            self.weather_label.update()
 
     def calc_fill_size(self, iw, ih, fw, fh):
         if iw <= 0 or ih <= 0 or fw <= 0 or fh <= 0:
@@ -549,18 +614,21 @@ class DisplayWindow(QMainWindow):
 
     def update_weather(self):
         cfg = load_config()
-        over = cfg.get("overlay", {})
+        if "overlay" in self.disp_cfg:
+            over = self.disp_cfg["overlay"]
+        else:
+            over = cfg.get("overlay", {})
         if not over.get("weather_enabled", False):
             return
         wcfg = cfg.get("weather", {})
         api_key = wcfg.get("api_key", "")
-        lat = wcfg.get("lat")
-        lon = wcfg.get("lon")
-        if not (api_key and lat is not None and lon is not None):
+        zip_code = wcfg.get("zip_code", "")
+        country_code = wcfg.get("country_code", "")
+        if not (api_key and zip_code and country_code):
             self.weather_label.setText("Weather: config missing")
             return
         try:
-            url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={api_key}"
+            url = f"https://api.openweathermap.org/data/2.5/weather?zip={zip_code},{country_code}&units=metric&appid={api_key}"
             r = requests.get(url, timeout=5)
             if r.status_code == 200:
                 data = r.json()
@@ -621,20 +689,13 @@ class DisplayWindow(QMainWindow):
             return None
         return None
 
-    def save_live_preview(self):
-        screen = self.screen()
-        if screen:
-            live_preview_path = os.path.join(VIEWER_HOME, "live_preview.jpg")
-            preview = screen.grabWindow(self.winId())
-            preview.save(live_preview_path, "JPG")
-
 
 class PiViewerGUI:
     def __init__(self):
         self.cfg = load_config()
         self.app = QApplication(sys.argv)
 
-        # fallback detect
+        # fallback detect via xrandr (if available)
         fallback_mons = detect_monitors()
         if fallback_mons:
             if "displays" not in self.cfg:
@@ -657,8 +718,11 @@ class PiViewerGUI:
             save_config(self.cfg)
 
         self.windows = []
+        screens = self.app.screens()
+        i = 0
         for dname, dcfg in self.cfg.get("displays", {}).items():
-            w = DisplayWindow(dname, dcfg)
+            assigned_screen = screens[i] if i < len(screens) else None
+            w = DisplayWindow(dname, dcfg, assigned_screen)
             if "monitor_model" in dcfg and dcfg["monitor_model"]:
                 t = f"{dname} ({dcfg['monitor_model']})"
             else:
@@ -666,6 +730,7 @@ class PiViewerGUI:
             w.setWindowTitle(t)
             w.show()
             self.windows.append(w)
+            i += 1
 
     def run(self):
         sys.exit(self.app.exec())

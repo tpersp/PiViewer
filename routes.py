@@ -87,6 +87,8 @@ def get_local_monitors_from_config(cfg):
 def compute_overlay_preview(overlay_cfg, monitors_dict):
     """
     Used for overlay preview, only.
+    This new version ignores manual sizing settings (removed) and
+    computes a preview overlay box automatically.
     """
     selection = overlay_cfg.get("monitor_selection", "All")
     if selection == "All":
@@ -124,20 +126,18 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
     preview_width = int(total_w * scale_factor)
     preview_height = int(total_h * scale_factor)
 
-    ow = overlay_cfg.get("overlay_width", 300)
-    oh = overlay_cfg.get("overlay_height", 150)
-    ox = overlay_cfg.get("offset_x", 20)
-    oy = overlay_cfg.get("offset_y", 20)
-
+    # Auto-compute overlay preview box as a fixed proportion of preview size
+    overlay_box_width = int(preview_width * 0.3)
+    overlay_box_height = int(preview_height * 0.2)
+    overlay_box_left = int(preview_width * 0.05)
+    overlay_box_top = int(preview_height * 0.05)
     preview_overlay = {
-        "width": int(ow * scale_factor),
-        "height": int(oh * scale_factor),
-        "left": int(ox * scale_factor),
-        "top": int(oy * scale_factor),
+         "width": overlay_box_width,
+         "height": overlay_box_height,
+         "left": overlay_box_left,
+         "top": overlay_box_top,
     }
     return (preview_width, preview_height, preview_overlay)
-
-# We keep rotation logic for images but remove any function to change resolution.
 
 main_bp = Blueprint("main", __name__, static_folder="static")
 
@@ -222,7 +222,6 @@ def settings():
     cfg = load_config()
     if "weather" not in cfg:
         cfg["weather"] = {}
-
     if request.method == "POST":
         new_theme = request.form.get("theme", "dark")
         new_role = request.form.get("role", "main")
@@ -240,39 +239,19 @@ def settings():
                 if f and f.filename:
                     f.save(WEB_BG)
 
+        # Updated weather settings using zip code API call only
         w_api = request.form.get("weather_api_key", "").strip()
         w_zip = request.form.get("weather_zip_code", "").strip()
         w_cc = request.form.get("weather_country_code", "").strip()
         if w_api and w_zip and w_cc:
             try:
-                weather_url = f"http://api.openweathermap.org/data/2.5/weather?zip={w_zip},{w_cc}&appid={w_api}"
+                weather_url = f"http://api.openweathermap.org/data/2.5/weather?zip={w_zip},{w_cc}&appid={w_api}&units=metric"
                 r = requests.get(weather_url, timeout=5)
-                if r.status_code == 200:
-                    data = r.json()
-                    coord = data.get("coord", {})
-                    w_lat = str(coord.get("lat", ""))
-                    w_lon = str(coord.get("lon", ""))
-                else:
-                    w_lat = request.form.get("weather_lat", "").strip()
-                    w_lon = request.form.get("weather_lon", "").strip()
             except Exception as e:
-                w_lat = request.form.get("weather_lat", "").strip()
-                w_lon = request.form.get("weather_lon", "").strip()
-        else:
-            w_lat = request.form.get("weather_lat", "").strip()
-            w_lon = request.form.get("weather_lon", "").strip()
-
+                pass
         cfg["weather"]["api_key"] = w_api
         cfg["weather"]["zip_code"] = w_zip
         cfg["weather"]["country_code"] = w_cc
-        try:
-            cfg["weather"]["lat"] = float(w_lat)
-        except:
-            cfg["weather"]["lat"] = None
-        try:
-            cfg["weather"]["lon"] = float(w_lon)
-        except:
-            cfg["weather"]["lon"] = None
 
         if "gui" not in cfg:
             cfg["gui"] = {}
@@ -297,11 +276,29 @@ def settings():
     else:
         cfg = load_config()
         theme = cfg.get("theme", "dark")
+        weather_info = None
+        w_api = cfg.get("weather", {}).get("api_key", "").strip()
+        w_zip = cfg.get("weather", {}).get("zip_code", "").strip()
+        w_cc = cfg.get("weather", {}).get("country_code", "").strip()
+        if w_api and w_zip and w_cc:
+            try:
+                weather_url = f"http://api.openweathermap.org/data/2.5/weather?zip={w_zip},{w_cc}&appid={w_api}&units=metric"
+                r = requests.get(weather_url, timeout=5)
+                if r.status_code == 200:
+                    data = r.json()
+                    weather_info = {
+                        "name": data.get("name", "Unknown"),
+                        "timezone": data.get("timezone", "Unknown"),
+                        "country": data.get("sys", {}).get("country", "Unknown")
+                    }
+            except Exception as e:
+                weather_info = None
         return render_template(
             "settings.html",
             theme=theme,
             cfg=cfg,
-            update_branch=UPDATE_BRANCH
+            update_branch=UPDATE_BRANCH,
+            weather_info=weather_info
         )
 
 @main_bp.route("/configure_spotify", methods=["GET", "POST"])
@@ -402,93 +399,66 @@ def callback():
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
     cfg = load_config()
-    if "overlay" not in cfg:
-        cfg["overlay"] = {}
-    over = cfg["overlay"]
-
-    if request.method == "POST":
-        action = request.form.get("action", "")
-        if action == "select_monitor":
-            over["monitor_selection"] = request.form.get("monitor_selection", "All")
-            save_config(cfg)
-            return redirect(url_for("main.overlay_config"))
-        elif action == "save_overlay":
-            over["overlay_enabled"] = ("overlay_enabled" in request.form)
-            over["clock_enabled"] = ("clock_enabled" in request.form)
-            over["weather_enabled"] = ("weather_enabled" in request.form)
-            over["background_enabled"] = ("background_enabled" in request.form)
-            try:
-                over["clock_font_size"] = int(request.form.get("clock_font_size", "26"))
-            except:
-                over["clock_font_size"] = 26
-            try:
-                over["weather_font_size"] = int(request.form.get("weather_font_size", "22"))
-            except:
-                over["weather_font_size"] = 22
-            over["font_color"] = request.form.get("font_color", "#FFFFFF")
-            over["layout_style"] = request.form.get("layout_style", "stacked")
-            try:
-                over["padding_x"] = int(request.form.get("padding_x", "8"))
-            except:
-                over["padding_x"] = 8
-            try:
-                over["padding_y"] = int(request.form.get("padding_y", "6"))
-            except:
-                over["padding_y"] = 6
-
-            over["show_desc"] = ("show_desc" in request.form)
-            over["show_temp"] = ("show_temp" in request.form)
-            over["show_feels_like"] = ("show_feels_like" in request.form)
-            over["show_humidity"] = ("show_humidity" in request.form)
-
-            try:
-                over["offset_x"] = int(request.form.get("offset_x", "20"))
-            except:
-                over["offset_x"] = 20
-            try:
-                over["offset_y"] = int(request.form.get("offset_y", "20"))
-            except:
-                over["offset_y"] = 20
-
-            try:
-                wval = int(request.form.get("overlay_width", "300"))
-                over["overlay_width"] = wval
-            except:
-                over["overlay_width"] = 300
-            try:
-                hval = int(request.form.get("overlay_height", "150"))
-                over["overlay_height"] = hval
-            except:
-                over["overlay_height"] = 150
-
-            over["bg_color"] = request.form.get("bg_color", "#000000")
-            try:
-                over["bg_opacity"] = float(request.form.get("bg_opacity", "0.4"))
-            except:
-                over["bg_opacity"] = 0.4
-
-            # NEW: Store the auto scale option.
-            over["auto_scale"] = ("auto_scale" in request.form)
-
-            save_config(cfg)
-            try:
-                subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
-            except subprocess.CalledProcessError as e:
-                log_message(f"Failed to restart piviewer.service: {e}")
-
-            return redirect(url_for("main.overlay_config"))
-
     monitors_dict = get_local_monitors_from_config(cfg)
-    pw, ph, preview_overlay = compute_overlay_preview(cfg["overlay"], monitors_dict)
-
-    return render_template(
-        "overlay.html",
-        theme=cfg.get("theme", "dark"),
-        overlay=cfg["overlay"],
-        monitors=monitors_dict,
-        preview_size={"width": pw, "height": ph},
-        preview_overlay=preview_overlay
-    )
+    selected_monitor = request.args.get("monitor", "All")
+    if request.method == "POST":
+        selected_monitor = request.form.get("selected_monitor", "All")
+        new_overlay = {
+            "overlay_enabled": ("overlay_enabled" in request.form),
+            "clock_enabled": ("clock_enabled" in request.form),
+            "weather_enabled": ("weather_enabled" in request.form),
+            "clock_font_size": int(request.form.get("clock_font_size", "26")),
+            "weather_font_size": int(request.form.get("weather_font_size", "22")),
+            "font_color": request.form.get("font_color", "#FFFFFF"),
+            "layout_style": request.form.get("layout_style", "stacked"),
+            "padding_x": int(request.form.get("padding_x", "8")),
+            "padding_y": int(request.form.get("padding_y", "6")),
+            "show_desc": ("show_desc" in request.form),
+            "show_temp": ("show_temp" in request.form),
+            "show_feels_like": ("show_feels_like" in request.form),
+            "show_humidity": ("show_humidity" in request.form),
+            "auto_negative_font": ("auto_negative_font" in request.form)
+        }
+        if selected_monitor == "All":
+            cfg["overlay"] = new_overlay
+        else:
+            if "displays" in cfg and selected_monitor in cfg["displays"]:
+                cfg["displays"][selected_monitor]["overlay"] = new_overlay
+        save_config(cfg)
+        try:
+            subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
+        except subprocess.CalledProcessError as e:
+            log_message(f"Failed to restart piviewer.service: {e}")
+        return redirect(url_for("main.overlay_config", monitor=selected_monitor))
+    else:
+        if selected_monitor == "All":
+            overlay_cfg = cfg.get("overlay", {})
+        else:
+            overlay_cfg = {}
+            if "displays" in cfg and selected_monitor in cfg["displays"]:
+                overlay_cfg = cfg["displays"][selected_monitor].get("overlay", {})
+            if not overlay_cfg:
+                overlay_cfg = cfg.get("overlay", {})
+        preview_mon = {}
+        if selected_monitor == "All":
+            # Use a default resolution for preview when all monitors are combined
+            max_res = "1920x1080"
+            for m in monitors_dict.values():
+                max_res = m.get("resolution", "1920x1080")
+                break
+            preview_mon["All"] = {"resolution": max_res}
+        else:
+            preview_mon[selected_monitor] = monitors_dict.get(selected_monitor, {"resolution": "1920x1080"})
+        pw, ph, preview_overlay = compute_overlay_preview(overlay_cfg, preview_mon)
+        return render_template(
+            "overlay.html",
+            theme=cfg.get("theme", "dark"),
+            overlay=overlay_cfg,
+            monitors=monitors_dict,
+            selected_monitor=selected_monitor,
+            preview_size={"width": pw, "height": ph},
+            preview_overlay=preview_overlay
+        )
 
 @main_bp.route("/", methods=["GET", "POST"])
 def index():
@@ -509,7 +479,7 @@ def index():
     for dr in to_remove:
         del cfg["displays"][dr]
 
-    # Update or add each known monitor for reference only
+    # Update or add each known monitor
     for mon_name, minfo in ext_mons.items():
         if mon_name not in cfg["displays"]:
             cfg["displays"][mon_name] = {
@@ -581,7 +551,7 @@ def index():
                 pass
             return redirect(url_for("main.index"))
 
-    # Build folder counts for each subfolder
+    # Build folder counts
     folder_counts = {}
     for sf in get_subfolders():
         folder_counts[sf] = count_files_in_folder(os.path.join(IMAGE_DIR, sf))
@@ -613,7 +583,7 @@ def index():
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}" 
 
-    # Compute dynamic status for main devices
+    # Dynamic status for main devices
     if cfg.get("role") == "main":
         sp_cfg = cfg.get("spotify", {})
         if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
@@ -626,7 +596,7 @@ def index():
             spotify_status = "❌"
 
         w_cfg = cfg.get("weather", {})
-        if w_cfg.get("api_key") and (w_cfg.get("zip_code") or (w_cfg.get("lat") is not None and w_cfg.get("lon") is not None)):
+        if w_cfg.get("api_key") and w_cfg.get("zip_code") and w_cfg.get("country_code"):
             weather_status = "✅"
         else:
             weather_status = "❌"
@@ -741,7 +711,8 @@ def remote_configure(dev_index):
         dev_ip=dev_ip,
         remote_cfg=remote_cfg,
         remote_mons=remote_mons,
-        remote_folders=remote_folders
+        remote_folders=remote_folders,
+        theme=cfg.get("theme", "dark")  # <--- pass the local theme
     )
 
 @main_bp.route("/sync_config", methods=["GET"])
@@ -750,6 +721,7 @@ def sync_config():
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
+    # Called by push_displays_to_remote from a "main" device
     incoming = request.get_json()
     if not incoming:
         return "No JSON received", 400
@@ -760,6 +732,11 @@ def update_config():
         cfg["theme"] = incoming["theme"]
     save_config(cfg)
     log_message("Local config partially updated via /update_config")
+    # Force remote piviewer to reload new config
+    try:
+        subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
+    except subprocess.CalledProcessError as e:
+        log_message(f"Failed to restart piviewer after config update: {e}")
     return "Config updated", 200
 
 @main_bp.route("/device_manager", methods=["GET", "POST"])
@@ -884,11 +861,3 @@ def restart_services():
         log_message(f"Failed to restart services: {e}")
         return "Failed to restart services. Check logs.", 500
     return "Services are restarting now..."
-
-# --- New live preview route ---
-@main_bp.route("/live_preview")
-def live_preview():
-    live_preview_path = os.path.join(VIEWER_HOME, "live_preview.jpg")
-    if os.path.exists(live_preview_path):
-        return send_file(live_preview_path)
-    return "", 404

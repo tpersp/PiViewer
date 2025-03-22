@@ -96,21 +96,21 @@
           <input type="text" name="weather_country_code"
                  value="{{ cfg.weather.country_code|default('') }}">
           <br><br>
-
-          <label>Latitude:</label><br>
-          <input type="text" name="weather_lat"
-                 value="{{ cfg.weather.lat|default('') }}">
-          <br><br>
-
-          <label>Longitude:</label><br>
-          <input type="text" name="weather_lon"
-                 value="{{ cfg.weather.lon|default('') }}">
-          <br><br>
         </fieldset>
         <button type="submit">Save Weather Settings</button>
       </form>
     </div>
   </div>
+
+  <!-- New Weather Info Confirmation Card -->
+  {% if weather_info %}
+  <div class="card" style="margin-top:20px;">
+    <h3>Weather Location Confirmation</h3>
+    <p><strong>Location Name:</strong> {{ weather_info.name }}</p>
+    <p><strong>Timezone:</strong> {{ weather_info.timezone }}</p>
+    <p><strong>Country:</strong> {{ weather_info.country }}</p>
+  </div>
+  {% endif %}
 
   <!-- Update from GitHub, logs, etc. as a final separate card -->
   <div class="card" style="margin-top:20px;">
