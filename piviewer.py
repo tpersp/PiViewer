@@ -78,7 +78,7 @@ class DisplayWindow(QMainWindow):
         self.current_pixmap = None  # static images
         self.current_movie = None   # GIFs
         self.handling_gif_frames = False
-        self.last_scaled_foreground_image = None
+        self.last_scaled_foreground_image = None  # Cached scaled image for computing auto-negative
 
         # Set window geometry based on the assigned screen (if provided)
         if self.assigned_screen:
@@ -190,7 +190,7 @@ class DisplayWindow(QMainWindow):
             cfsize = over.get("clock_font_size", 24)
             wfsize = over.get("weather_font_size", 18)
             fcolor = over.get("font_color", "#ffffff")
-            # If auto negative is enabled, the font color will be computed dynamically
+            # Only set manual color if auto_negative_font is not enabled
             if not over.get("auto_negative_font", False):
                 self.clock_label.setStyleSheet(
                     f"color: {fcolor}; font-size: {cfsize}px; background: transparent;"
@@ -411,6 +411,9 @@ class DisplayWindow(QMainWindow):
         painter.end()
 
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
+        self.last_scaled_foreground_image = final_img
+        if self.overlay_config.get("auto_negative_font", False):
+            self.update_overlay_font_color()
 
     def calc_bounding_for_window(self, first_frame):
         fw = self.foreground_label.width()
@@ -480,7 +483,6 @@ class DisplayWindow(QMainWindow):
         if new_w < 1: new_w = 1
         if new_h < 1: new_h = 1
         return (new_w, new_h)
-
     def degrade_foreground(self, src_pm, bounding):
         bw, bh = bounding
         if bw < 1 or bh < 1:
@@ -609,13 +611,11 @@ class DisplayWindow(QMainWindow):
         # Compute the average color of the region beneath the clock_label and set its negative as the text color.
         if self.last_scaled_foreground_image is None:
             return
-        # Use clock_label geometry relative to main_widget
         geom = self.clock_label.geometry()
         x = geom.x()
         y = geom.y()
         w = geom.width()
         h = geom.height()
-        # Ensure region is within bounds of the scaled image
         img = self.last_scaled_foreground_image
         if x < 0: x = 0
         if y < 0: y = 0
@@ -783,8 +783,8 @@ class DisplayWindow(QMainWindow):
         self.clock_label.setText(now_str)
 
     def update_weather(self):
+        # Use local overlay settings rather than self.overlay_config to avoid attribute errors.
         cfg = load_config()
-        # Check if per-display overlay settings exist; use those if available.
         if "overlay" in self.disp_cfg:
             over = self.disp_cfg["overlay"]
         else:
@@ -804,13 +804,13 @@ class DisplayWindow(QMainWindow):
             if r.status_code == 200:
                 data = r.json()
                 parts = []
-                if self.overlay_config.get("show_desc", True):
+                if over.get("show_desc", True):
                     parts.append(data["weather"][0]["description"].title())
-                if self.overlay_config.get("show_temp", True):
+                if over.get("show_temp", True):
                     parts.append(f"{data['main']['temp']}\u00B0C")
-                if self.overlay_config.get("show_feels_like", False):
+                if over.get("show_feels_like", False):
                     parts.append(f"Feels: {data['main']['feels_like']}\u00B0C")
-                if self.overlay_config.get("show_humidity", False):
+                if over.get("show_humidity", False):
                     parts.append(f"Humidity: {data['main']['humidity']}%")
                 weather_text = " | ".join(parts)
                 self.weather_label.setText(weather_text)
