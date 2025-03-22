@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#-- coding: utf-8 --
+# -*- coding: utf-8 -*-
 '''
 piviewer.py
 Shows images in random/mixed/specific/spotify mode on each connected monitor,
@@ -18,7 +18,7 @@ import subprocess
 from datetime import datetime
 from collections import OrderedDict
 
-from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRectF
+from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRect, QRectF
 from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader, QTransform
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel,
@@ -79,6 +79,10 @@ class DisplayWindow(QMainWindow):
         self.current_movie = None   # GIFs
         self.handling_gif_frames = False
         self.last_scaled_foreground_image = None  # Cached scaled image for computing auto-negative
+
+        # Variables for auto-negative sampling
+        self.current_drawn_image = None
+        self.foreground_drawn_rect = None
 
         # Set window geometry based on the assigned screen (if provided)
         if self.assigned_screen:
@@ -198,10 +202,6 @@ class DisplayWindow(QMainWindow):
                     f"color: {over.get('font_color', '#FFFFFF')}; font-size: {wfsize}px; background: transparent;"
                 )
         self.overlay_config = over
-
-        # Update font color if auto-negative is enabled
-        if over.get("auto_negative_font", False):
-            self.update_overlay_font_color()
 
         gui_cfg = self.cfg.get("gui", {})
         try:
@@ -415,6 +415,11 @@ class DisplayWindow(QMainWindow):
 
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
         self.last_scaled_foreground_image = final_img
+
+        # Store the drawn image and its rectangle for auto-negative calculation
+        self.current_drawn_image = rotated.toImage()
+        self.foreground_drawn_rect = QRect(xoff, yoff, rotated.width(), rotated.height())
+
         if self.overlay_config.get("auto_negative_font", False):
             self.update_overlay_font_color()
 
@@ -436,10 +441,8 @@ class DisplayWindow(QMainWindow):
         else:
             bounding_h = fh
             bounding_w = int(bounding_h * image_aspect)
-        if bounding_w < 1:
-            bounding_w = 1
-        if bounding_h < 1:
-            bounding_h = 1
+        if bounding_w < 1: bounding_w = 1
+        if bounding_h < 1: bounding_h = 1
         return (bounding_w, bounding_h)
 
     def updateForegroundScaled(self):
@@ -458,6 +461,9 @@ class DisplayWindow(QMainWindow):
         degraded = self.degrade_foreground(self.current_pixmap, (bw, bh))
         rotated = self.apply_rotation_if_any(degraded)
 
+        # Store the drawn image (rotated) for auto-negative calculation
+        self.current_drawn_image = rotated.toImage()
+
         final_img = QImage(fw, fh, QImage.Format_ARGB32)
         final_img.fill(Qt.transparent)
         painter = QPainter(final_img)
@@ -468,6 +474,9 @@ class DisplayWindow(QMainWindow):
         yoff = (fh - rh) // 2
         painter.drawPixmap(xoff, yoff, rotated)
         painter.end()
+
+        # Store the area where the image is drawn
+        self.foreground_drawn_rect = QRect(xoff, yoff, rw, rh)
 
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
         self.last_scaled_foreground_image = final_img
@@ -485,10 +494,8 @@ class DisplayWindow(QMainWindow):
         else:
             new_h = fh
             new_w = int(new_h * image_aspect)
-        if new_w < 1:
-            new_w = 1
-        if new_h < 1:
-            new_h = 1
+        if new_w < 1: new_w = 1
+        if new_h < 1: new_h = 1
         return (new_w, new_h)
 
     def degrade_foreground(self, src_pm, bounding):
@@ -616,26 +623,30 @@ class DisplayWindow(QMainWindow):
             log_message(f"Error updating weather: {e}")
 
     def update_overlay_font_color(self):
-        # Compute the average color of the region beneath the clock_label and set its negative as the text color.
-        if self.last_scaled_foreground_image is None:
+        # Compute the average color of the region of the drawn image that is beneath the clock_label.
+        if not hasattr(self, "current_drawn_image") or self.current_drawn_image is None:
             return
-        geom = self.clock_label.geometry()
-        x = geom.x()
-        y = geom.y()
-        w = geom.width()
-        h = geom.height()
-        img = self.last_scaled_foreground_image
-        if x < 0:
-            x = 0
-        if y < 0:
-            y = 0
-        if x + w > img.width():
-            w = img.width() - x
-        if y + h > img.height():
-            h = img.height() - y
-        if w <= 0 or h <= 0:
+        if not hasattr(self, "foreground_drawn_rect") or self.foreground_drawn_rect is None:
             return
-        region = img.copy(x, y, w, h)
+
+        clock_rect = self.clock_label.geometry()
+        image_rect = self.foreground_drawn_rect
+
+        # Compute intersection of clock label and drawn image area
+        intersection = clock_rect.intersected(image_rect)
+        if intersection.width() <= 0 or intersection.height() <= 0:
+            return
+
+        # Calculate the region in the current_drawn_image corresponding to the intersection.
+        # Since current_drawn_image is the image that was drawn at image_rect,
+        # its coordinate system starts at (0,0) for the drawn image.
+        sample_x = intersection.x() - image_rect.x()
+        sample_y = intersection.y() - image_rect.y()
+        sample_width = intersection.width()
+        sample_height = intersection.height()
+
+        region = self.current_drawn_image.copy(sample_x, sample_y, sample_width, sample_height)
+
         total_r = total_g = total_b = 0
         count = 0
         for i in range(region.width()):
@@ -699,7 +710,6 @@ class DisplayWindow(QMainWindow):
             return None
         return None
 
-
 class PiViewerGUI:
     def __init__(self):
         self.cfg = load_config()
@@ -746,7 +756,6 @@ class PiViewerGUI:
     def run(self):
         sys.exit(self.app.exec())
 
-
 def main():
     try:
         log_message(f"Starting PiViewer GUI (v{APP_VERSION}).")
@@ -755,7 +764,6 @@ def main():
     except Exception as e:
         log_message(f"Exception in main: {e}")
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
