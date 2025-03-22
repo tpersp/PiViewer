@@ -26,7 +26,8 @@ load_env()
 # ------------------------------------------------------------
 # Application Version & Paths
 # ------------------------------------------------------------
-APP_VERSION = "2.5.8"
+
+APP_VERSION = "2.3.8"
 
 VIEWER_HOME = os.environ.get("VIEWER_HOME", "/home/pi/PiViewer")
 IMAGE_DIR   = os.environ.get("IMAGE_DIR", "/mnt/PiViewers")
