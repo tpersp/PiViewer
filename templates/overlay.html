@@ -26,9 +26,6 @@
       <label><input type="checkbox" name="weather_enabled" {% if overlay.weather_enabled %}checked{% endif %}> Show Weather</label>
     </div>
     <div class="form-group">
-      <label><input type="checkbox" name="background_enabled" {% if overlay.background_enabled %}checked{% endif %}> Show Background Box</label>
-    </div>
-    <div class="form-group">
       <label>Clock Font Size:</label>
       <input type="number" name="clock_font_size" value="{{ overlay.clock_font_size|default(26) }}">
     </div>
@@ -36,7 +33,7 @@
       <label>Weather Font Size:</label>
       <input type="number" name="weather_font_size" value="{{ overlay.weather_font_size|default(22) }}">
     </div>
-    <!-- New Weather Toggle Options -->
+    <!-- Weather Options -->
     <div class="form-group">
       <label><input type="checkbox" name="show_desc" {% if overlay.show_desc %}checked{% endif %}> Show Weather Description</label>
     </div>
@@ -71,35 +68,6 @@
       <label>Padding Y:</label>
       <input type="number" name="padding_y" value="{{ overlay.padding_y|default(6) }}">
     </div>
-    <div class="form-group">
-      <label><input type="checkbox" id="auto_scale" name="auto_scale" {% if overlay.auto_scale %}checked{% endif %}> Auto Scale Overlay Box</label>
-    </div>
-    <div id="manual_size_fields" {% if overlay.auto_scale %}style="display:none;"{% endif %}>
-      <div class="form-group">
-        <label>Offset X:</label>
-        <input type="number" name="offset_x" value="{{ overlay.offset_x|default(20) }}">
-      </div>
-      <div class="form-group">
-        <label>Offset Y:</label>
-        <input type="number" name="offset_y" value="{{ overlay.offset_y|default(20) }}">
-      </div>
-      <div class="form-group">
-        <label>Overlay Width:</label>
-        <input type="number" name="overlay_width" value="{{ overlay.overlay_width|default(300) }}">
-      </div>
-      <div class="form-group">
-        <label>Overlay Height:</label>
-        <input type="number" name="overlay_height" value="{{ overlay.overlay_height|default(150) }}">
-      </div>
-    </div>
-    <div class="form-group">
-      <label>Background Color:</label>
-      <input type="color" name="bg_color" value="{{ overlay.bg_color|default('#000000') }}">
-    </div>
-    <div class="form-group">
-      <label>Background Opacity (0-1):</label>
-      <input type="text" name="bg_opacity" value="{{ overlay.bg_opacity|default(0.4) }}">
-    </div>
     <br>
     <button type="submit">Save Overlay Settings</button>
   </form>
@@ -112,14 +80,4 @@
     </div>
   </div>
 </div>
-<script>
-document.getElementById("auto_scale").addEventListener("change", function(){
-  var manualFields = document.getElementById("manual_size_fields");
-  if(this.checked){
-    manualFields.style.display = "none";
-  } else {
-    manualFields.style.display = "block";
-  }
-});
-</script>
 {% endblock %}

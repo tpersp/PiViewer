@@ -87,6 +87,8 @@ def get_local_monitors_from_config(cfg):
 def compute_overlay_preview(overlay_cfg, monitors_dict):
     """
     Used for overlay preview, only.
+    This new version ignores manual sizing settings (removed) and
+    computes a preview overlay box automatically.
     """
     selection = overlay_cfg.get("monitor_selection", "All")
     if selection == "All":
@@ -124,16 +126,16 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
     preview_width = int(total_w * scale_factor)
     preview_height = int(total_h * scale_factor)
 
-    ow = overlay_cfg.get("overlay_width", 300)
-    oh = overlay_cfg.get("overlay_height", 150)
-    ox = overlay_cfg.get("offset_x", 20)
-    oy = overlay_cfg.get("offset_y", 20)
-
+    # Auto-compute overlay preview box as a fixed proportion of preview size
+    overlay_box_width = int(preview_width * 0.3)
+    overlay_box_height = int(preview_height * 0.2)
+    overlay_box_left = int(preview_width * 0.05)
+    overlay_box_top = int(preview_height * 0.05)
     preview_overlay = {
-        "width": int(ow * scale_factor),
-        "height": int(oh * scale_factor),
-        "left": int(ox * scale_factor),
-        "top": int(oy * scale_factor),
+         "width": overlay_box_width,
+         "height": overlay_box_height,
+         "left": overlay_box_left,
+         "top": overlay_box_top,
     }
     return (preview_width, preview_height, preview_overlay)
 
@@ -405,7 +407,6 @@ def overlay_config():
             "overlay_enabled": ("overlay_enabled" in request.form),
             "clock_enabled": ("clock_enabled" in request.form),
             "weather_enabled": ("weather_enabled" in request.form),
-            "background_enabled": ("background_enabled" in request.form),
             "clock_font_size": int(request.form.get("clock_font_size", "26")),
             "weather_font_size": int(request.form.get("weather_font_size", "22")),
             "font_color": request.form.get("font_color", "#FFFFFF"),
@@ -416,12 +417,6 @@ def overlay_config():
             "show_temp": ("show_temp" in request.form),
             "show_feels_like": ("show_feels_like" in request.form),
             "show_humidity": ("show_humidity" in request.form),
-            "offset_x": int(request.form.get("offset_x", "20")),
-            "offset_y": int(request.form.get("offset_y", "20")),
-            "overlay_width": int(request.form.get("overlay_width", "300")),
-            "overlay_height": int(request.form.get("overlay_height", "150")),
-            "bg_color": request.form.get("bg_color", "#000000"),
-            "bg_opacity": float(request.form.get("bg_opacity", "0.4")),
             "auto_negative_font": ("auto_negative_font" in request.form)
         }
         if selected_monitor == "All":

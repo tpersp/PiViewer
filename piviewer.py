@@ -189,14 +189,13 @@ class DisplayWindow(QMainWindow):
             self.weather_label.setVisible(over.get("weather_enabled", False))
             cfsize = over.get("clock_font_size", 24)
             wfsize = over.get("weather_font_size", 18)
-            fcolor = over.get("font_color", "#ffffff")
             # Only set manual color if auto_negative_font is not enabled
             if not over.get("auto_negative_font", False):
                 self.clock_label.setStyleSheet(
-                    f"color: {fcolor}; font-size: {cfsize}px; background: transparent;"
+                    f"color: {over.get('font_color', '#FFFFFF')}; font-size: {cfsize}px; background: transparent;"
                 )
                 self.weather_label.setStyleSheet(
-                    f"color: {fcolor}; font-size: {wfsize}px; background: transparent;"
+                    f"color: {over.get('font_color', '#FFFFFF')}; font-size: {wfsize}px; background: transparent;"
                 )
         self.overlay_config = over
 
@@ -483,218 +482,6 @@ class DisplayWindow(QMainWindow):
         if new_w < 1: new_w = 1
         if new_h < 1: new_h = 1
         return (new_w, new_h)
-    def degrade_foreground(self, src_pm, bounding):
-        bw, bh = bounding
-        if bw < 1 or bh < 1:
-            return src_pm
-        scaled = src_pm.scaled(bw, bh, Qt.KeepAspectRatio, Qt.FastTransformation)
-        if self.fg_scale_percent >= 100:
-            return scaled
-        sf = float(self.fg_scale_percent) / 100.0
-        down_w = int(bw * sf)
-        down_h = int(bh * sf)
-        if down_w < 1 or down_h < 1:
-            return scaled
-        smaller = scaled.scaled(down_w, down_h, Qt.IgnoreAspectRatio, Qt.FastTransformation)
-        final_pm = smaller.scaled(bw, bh, Qt.IgnoreAspectRatio, Qt.FastTransformation)
-        return final_pm
-
-    def apply_rotation_if_any(self, pixmap):
-        deg = self.disp_cfg.get("rotate", 0)
-        if deg == 0:
-            return pixmap
-        transform = QTransform()
-        transform.rotate(deg)
-        return pixmap.transformed(transform, Qt.SmoothTransformation)
-
-    def make_background_cover(self, pixmap):
-        rect = self.main_widget.rect()
-        sw, sh = rect.width(), rect.height()
-        pw, ph = pixmap.width(), pixmap.height()
-        if sw < 1 or sh < 1 or pw < 1 or ph < 1:
-            return None
-        screen_ratio = float(sw) / float(sh)
-        img_ratio = float(pw) / float(ph)
-        tmode = Qt.FastTransformation
-
-        if img_ratio > screen_ratio:
-            new_h = sh
-            new_w = int(new_h * img_ratio)
-        else:
-            new_w = sw
-            new_h = int(new_w / img_ratio)
-        scaled = pixmap.scaled(new_w, new_h, Qt.KeepAspectRatio, tmode)
-        xoff = (scaled.width() - sw) // 2
-        yoff = (scaled.height() - sh) // 2
-        final_cover = scaled.copy(xoff, yoff, sw, sh)
-
-        if self.bg_scale_percent < 100:
-            sf = float(self.bg_scale_percent) / 100.0
-            down_w = int(sw * sf)
-            down_h = int(sh * sf)
-            if down_w > 0 and down_h > 0:
-                temp_down = final_cover.scaled(down_w, down_h, Qt.IgnoreAspectRatio, tmode)
-                blurred = self.blur_pixmap_once(temp_down, self.bg_blur_radius)
-                if blurred:
-                    final_bg = blurred.scaled(sw, sh, Qt.IgnoreAspectRatio, tmode)
-                else:
-                    final_bg = temp_down.scaled(sw, sh, Qt.IgnoreAspectRatio, tmode)
-            else:
-                final_bg = self.blur_pixmap_once(final_cover, self.bg_blur_radius)
-        else:
-            final_bg = self.blur_pixmap_once(final_cover, self.bg_blur_radius)
-
-        return final_bg
-
-    def blur_pixmap_once(self, pm, radius):
-        if radius <= 0:
-            return pm
-        scene = QGraphicsScene()
-        item = QGraphicsPixmapItem(pm)
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(radius)
-        blur.setBlurHints(QGraphicsBlurEffect.PerformanceHint)
-        item.setGraphicsEffect(blur)
-        scene.addItem(item)
-
-        result = QImage(pm.width(), pm.height(), QImage.Format_ARGB32)
-        result.fill(Qt.transparent)
-        painter = QPainter(result)
-        scene.render(painter, QRectF(0, 0, pm.width(), pm.height()),
-                     QRectF(0, 0, pm.width(), pm.height()))
-        painter.end()
-        return QPixmap.fromImage(result)
-
-    def update_clock(self):
-        now_str = datetime.now().strftime("%H:%M:%S")
-        self.clock_label.setText(now_str)
-
-    def update_weather(self):
-        cfg = load_config()
-        # Check if per-display overlay settings exist; use those if available.
-        if "overlay" in self.disp_cfg:
-            over = self.disp_cfg["overlay"]
-        else:
-            over = cfg.get("overlay", {})
-        if not over.get("weather_enabled", False):
-            return
-        wcfg = cfg.get("weather", {})
-        api_key = wcfg.get("api_key", "")
-        zip_code = wcfg.get("zip_code", "")
-        country_code = wcfg.get("country_code", "")
-        if not (api_key and zip_code and country_code):
-            self.weather_label.setText("Weather: config missing")
-            return
-        try:
-            url = f"https://api.openweathermap.org/data/2.5/weather?zip={zip_code},{country_code}&units=metric&appid={api_key}"
-            r = requests.get(url, timeout=5)
-            if r.status_code == 200:
-                data = r.json()
-                parts = []
-                if self.overlay_config.get("show_desc", True):
-                    parts.append(data["weather"][0]["description"].title())
-                if self.overlay_config.get("show_temp", True):
-                    parts.append(f"{data['main']['temp']}\u00B0C")
-                if self.overlay_config.get("show_feels_like", False):
-                    parts.append(f"Feels: {data['main']['feels_like']}\u00B0C")
-                if self.overlay_config.get("show_humidity", False):
-                    parts.append(f"Humidity: {data['main']['humidity']}%")
-                weather_text = " | ".join(parts)
-                self.weather_label.setText(weather_text)
-            else:
-                self.weather_label.setText("Weather: error")
-        except Exception as e:
-            self.weather_label.setText("Weather: error")
-            log_message(f"Error updating weather: {e}")
-
-    def update_overlay_font_color(self):
-        # Compute the average color of the region beneath the clock_label and set its negative as the text color.
-        if self.last_scaled_foreground_image is None:
-            return
-        geom = self.clock_label.geometry()
-        x = geom.x()
-        y = geom.y()
-        w = geom.width()
-        h = geom.height()
-        img = self.last_scaled_foreground_image
-        if x < 0: x = 0
-        if y < 0: y = 0
-        if x + w > img.width():
-            w = img.width() - x
-        if y + h > img.height():
-            h = img.height() - y
-        if w <= 0 or h <= 0:
-            return
-        region = img.copy(x, y, w, h)
-        total_r = total_g = total_b = 0
-        count = 0
-        for i in range(region.width()):
-            for j in range(region.height()):
-                color = region.pixelColor(i, j)
-                total_r += color.red()
-                total_g += color.green()
-                total_b += color.blue()
-                count += 1
-        if count == 0:
-            return
-        avg_r = total_r // count
-        avg_g = total_g // count
-        avg_b = total_b // count
-        neg_r = 255 - avg_r
-        neg_g = 255 - avg_g
-        neg_b = 255 - avg_b
-        neg_color = f"#{neg_r:02X}{neg_g:02X}{neg_b:02X}"
-        cfsize = self.overlay_config.get("clock_font_size", 24)
-        wfsize = self.overlay_config.get("weather_font_size", 18)
-        self.clock_label.setStyleSheet(f"color: {neg_color}; font-size: {cfsize}px; background: transparent;")
-        self.weather_label.setStyleSheet(f"color: {neg_color}; font-size: {wfsize}px; background: transparent;")
-
-    def updateForegroundScaled(self):
-        if not self.current_pixmap:
-            return
-        fw = self.foreground_label.width()
-        fh = self.foreground_label.height()
-        if fw < 1 or fh < 1:
-            return
-        iw = self.current_pixmap.width()
-        ih = self.current_pixmap.height()
-        if iw < 1 or ih < 1:
-            return
-
-        bw, bh = self.calc_fill_size(iw, ih, fw, fh)
-        degraded = self.degrade_foreground(self.current_pixmap, (bw, bh))
-        rotated = self.apply_rotation_if_any(degraded)
-
-        final_img = QImage(fw, fh, QImage.Format_ARGB32)
-        final_img.fill(Qt.transparent)
-        painter = QPainter(final_img)
-
-        rw = rotated.width()
-        rh = rotated.height()
-        xoff = (fw - rw) // 2
-        yoff = (fh - rh) // 2
-        painter.drawPixmap(xoff, yoff, rotated)
-        painter.end()
-
-        self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
-        self.last_scaled_foreground_image = final_img
-        if self.overlay_config.get("auto_negative_font", False):
-            self.update_overlay_font_color()
-
-    def calc_fill_size(self, iw, ih, fw, fh):
-        if iw <= 0 or ih <= 0 or fw <= 0 or fh <= 0:
-            return (fw, fh)
-        image_aspect = float(iw) / float(ih)
-        screen_aspect = float(fw) / float(fh)
-        if image_aspect > screen_aspect:
-            new_w = fw
-            new_h = int(new_w / image_aspect)
-        else:
-            new_h = fh
-            new_w = int(new_h * image_aspect)
-        if new_w < 1: new_w = 1
-        if new_h < 1: new_h = 1
-        return (new_w, new_h)
 
     def degrade_foreground(self, src_pm, bounding):
         bw, bh = bounding
@@ -819,6 +606,48 @@ class DisplayWindow(QMainWindow):
         except Exception as e:
             self.weather_label.setText("Weather: error")
             log_message(f"Error updating weather: {e}")
+
+    def update_overlay_font_color(self):
+        # Compute the average color of the region beneath the clock_label and set its negative as the text color.
+        if self.last_scaled_foreground_image is None:
+            return
+        geom = self.clock_label.geometry()
+        x = geom.x()
+        y = geom.y()
+        w = geom.width()
+        h = geom.height()
+        img = self.last_scaled_foreground_image
+        if x < 0: x = 0
+        if y < 0: y = 0
+        if x + w > img.width():
+            w = img.width() - x
+        if y + h > img.height():
+            h = img.height() - y
+        if w <= 0 or h <= 0:
+            return
+        region = img.copy(x, y, w, h)
+        total_r = total_g = total_b = 0
+        count = 0
+        for i in range(region.width()):
+            for j in range(region.height()):
+                color = region.pixelColor(i, j)
+                total_r += color.red()
+                total_g += color.green()
+                total_b += color.blue()
+                count += 1
+        if count == 0:
+            return
+        avg_r = total_r // count
+        avg_g = total_g // count
+        avg_b = total_b // count
+        neg_r = 255 - avg_r
+        neg_g = 255 - avg_g
+        neg_b = 255 - avg_b
+        neg_color = f"#{neg_r:02X}{neg_g:02X}{neg_b:02X}"
+        cfsize = self.overlay_config.get("clock_font_size", 24)
+        wfsize = self.overlay_config.get("weather_font_size", 18)
+        self.clock_label.setStyleSheet(f"color: {neg_color}; font-size: {cfsize}px; background: transparent;")
+        self.weather_label.setStyleSheet(f"color: {neg_color}; font-size: {wfsize}px; background: transparent;")
 
     def fetch_spotify_album_art(self):
         try:
