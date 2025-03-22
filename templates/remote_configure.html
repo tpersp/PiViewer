@@ -2,7 +2,7 @@
 {% block title %}Configure Remote Device{% endblock %}
 {% block content %}
 
-<div class="page-section">
+<div class="page-section" style="text-align:center;">
   <h2>Configure Remote Device</h2>
   <p>
     Device: <strong>{{ dev_name }}</strong> ({{ dev_ip }})<br>
@@ -20,7 +20,7 @@
       {% for dname, dcfg in remote_cfg.displays.items() %}
       {% set moninfo = remote_mons[dname] if dname in remote_mons else None %}
       {% set resolution = moninfo.resolution if moninfo else "unknown" %}
-      <div class="card">
+      <div class="card" style="text-align:center;">
         <h3>{{ dname }} ({{ resolution }})</h3>
 
         <label>Mode:</label><br>
