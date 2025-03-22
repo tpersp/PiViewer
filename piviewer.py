@@ -30,6 +30,29 @@ from config import APP_VERSION, IMAGE_DIR, LOG_PATH, VIEWER_HOME
 from utils import load_config, save_config, log_message
 
 
+# --- New custom label for negative (difference) text drawing ---
+class NegativeTextLabel(QLabel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # When useDifference is True, the text is drawn using difference mode.
+        self.useDifference = False
+
+    def paintEvent(self, event):
+        if self.useDifference:
+            # Draw text using difference blend mode so that it inverts the background.
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.Antialiasing)
+            # Set composition to difference.
+            painter.setCompositionMode(QPainter.CompositionMode_Difference)
+            # Always draw using white so that the difference produces an inversion.
+            painter.setPen(Qt.white)
+            painter.setFont(self.font())
+            painter.drawText(self.rect(), self.alignment(), self.text())
+        else:
+            # Default painting.
+            super().paintEvent(event)
+
+
 def detect_monitors():
     """
     Basic usage of xrandr for single resolution detection.
@@ -80,7 +103,7 @@ class DisplayWindow(QMainWindow):
         self.handling_gif_frames = False
         self.last_scaled_foreground_image = None  # Cached scaled image for computing auto-negative
 
-        # Variables for auto-negative sampling
+        # Variables for auto-negative sampling (no longer used for difference mode)
         self.current_drawn_image = None
         self.foreground_drawn_rect = None
 
@@ -104,19 +127,16 @@ class DisplayWindow(QMainWindow):
         self.bg_label.setScaledContents(False)
         self.bg_label.setStyleSheet("background-color: black;")
 
-        # Foreground label
-        self.foreground_label = QLabel(self.main_widget)
-        self.foreground_label.setScaledContents(False)
-        self.foreground_label.setAlignment(Qt.AlignCenter)
-        self.foreground_label.setStyleSheet("background-color: transparent; color: white;")
-
-        # Overlay labels
-        self.clock_label = QLabel(self.main_widget)
+        # Use custom NegativeTextLabel for overlay text so we can toggle difference drawing.
+        self.clock_label = NegativeTextLabel(self.main_widget)
         self.clock_label.setText("00:00:00")
-        self.clock_label.setStyleSheet("color: white; font-size: 24px; background: transparent;")
+        self.clock_label.setAlignment(Qt.AlignCenter)
+        # Default style – will be overridden in reload_settings() if needed.
+        self.clock_label.setStyleSheet("font-size: 24px; background: transparent;")
 
-        self.weather_label = QLabel(self.main_widget)
-        self.weather_label.setStyleSheet("color: white; font-size: 18px; background: transparent;")
+        self.weather_label = NegativeTextLabel(self.main_widget)
+        self.weather_label.setAlignment(Qt.AlignCenter)
+        self.weather_label.setStyleSheet("font-size: 18px; background: transparent;")
 
         # Timers
         self.slideshow_timer = QTimer(self)
@@ -189,18 +209,21 @@ class DisplayWindow(QMainWindow):
             self.clock_label.hide()
             self.weather_label.hide()
         else:
-            self.clock_label.setVisible(over.get("clock_enabled", True))
-            self.weather_label.setVisible(over.get("weather_enabled", False))
+            self.clock_label.show()
+            self.weather_label.show()
             cfsize = over.get("clock_font_size", 24)
             wfsize = over.get("weather_font_size", 18)
-            # Only set manual color if auto_negative_font is not enabled
-            if not over.get("auto_negative_font", False):
-                self.clock_label.setStyleSheet(
-                    f"color: {over.get('font_color', '#FFFFFF')}; font-size: {cfsize}px; background: transparent;"
-                )
-                self.weather_label.setStyleSheet(
-                    f"color: {over.get('font_color', '#FFFFFF')}; font-size: {wfsize}px; background: transparent;"
-                )
+            if over.get("auto_negative_font", False):
+                # Enable difference drawing: ignore manual font color.
+                self.clock_label.useDifference = True
+                self.weather_label.useDifference = True
+            else:
+                self.clock_label.useDifference = False
+                self.weather_label.useDifference = False
+                # Apply manual font color from config.
+                fcolor = over.get("font_color", "#FFFFFF")
+                self.clock_label.setStyleSheet(f"color: {fcolor}; font-size: {cfsize}px; background: transparent;")
+                self.weather_label.setStyleSheet(f"color: {fcolor}; font-size: {wfsize}px; background: transparent;")
         self.overlay_config = over
 
         gui_cfg = self.cfg.get("gui", {})
@@ -323,8 +346,10 @@ class DisplayWindow(QMainWindow):
 
         self.show_foreground_image(new_path)
         self.preload_next_images()
+        # For auto-negative mode, simply update the labels so that their paintEvent in difference mode is used.
         if self.overlay_config.get("auto_negative_font", False):
-            self.update_overlay_font_color()
+            self.clock_label.update()
+            self.weather_label.update()
 
     def clear_foreground_label(self, message):
         if self.current_movie:
@@ -416,12 +441,10 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
         self.last_scaled_foreground_image = final_img
 
-        # Store the drawn image and its rectangle for auto-negative calculation
-        self.current_drawn_image = rotated.toImage()
-        self.foreground_drawn_rect = QRect(xoff, yoff, rotated.width(), rotated.height())
-
+        # For auto-negative mode, simply update the labels to trigger their difference drawing.
         if self.overlay_config.get("auto_negative_font", False):
-            self.update_overlay_font_color()
+            self.clock_label.update()
+            self.weather_label.update()
 
     def calc_bounding_for_window(self, first_frame):
         fw = self.foreground_label.width()
@@ -461,7 +484,7 @@ class DisplayWindow(QMainWindow):
         degraded = self.degrade_foreground(self.current_pixmap, (bw, bh))
         rotated = self.apply_rotation_if_any(degraded)
 
-        # Store the drawn image (rotated) for auto-negative calculation
+        # Store the drawn image (rotated) for reference if needed
         self.current_drawn_image = rotated.toImage()
 
         final_img = QImage(fw, fh, QImage.Format_ARGB32)
@@ -481,7 +504,8 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
         self.last_scaled_foreground_image = final_img
         if self.overlay_config.get("auto_negative_font", False):
-            self.update_overlay_font_color()
+            self.clock_label.update()
+            self.weather_label.update()
 
     def calc_fill_size(self, iw, ih, fw, fh):
         if iw <= 0 or ih <= 0 or fw <= 0 or fh <= 0:
@@ -622,54 +646,6 @@ class DisplayWindow(QMainWindow):
             self.weather_label.setText("Weather: error")
             log_message(f"Error updating weather: {e}")
 
-    def update_overlay_font_color(self):
-        # Compute the average color of the region of the drawn image that is beneath the clock_label.
-        if not hasattr(self, "current_drawn_image") or self.current_drawn_image is None:
-            return
-        if not hasattr(self, "foreground_drawn_rect") or self.foreground_drawn_rect is None:
-            return
-
-        clock_rect = self.clock_label.geometry()
-        image_rect = self.foreground_drawn_rect
-
-        # Compute intersection of clock label and drawn image area
-        intersection = clock_rect.intersected(image_rect)
-        if intersection.width() <= 0 or intersection.height() <= 0:
-            return
-
-        # Calculate the region in the current_drawn_image corresponding to the intersection.
-        # Since current_drawn_image is the image that was drawn at image_rect,
-        # its coordinate system starts at (0,0) for the drawn image.
-        sample_x = intersection.x() - image_rect.x()
-        sample_y = intersection.y() - image_rect.y()
-        sample_width = intersection.width()
-        sample_height = intersection.height()
-
-        region = self.current_drawn_image.copy(sample_x, sample_y, sample_width, sample_height)
-
-        total_r = total_g = total_b = 0
-        count = 0
-        for i in range(region.width()):
-            for j in range(region.height()):
-                color = region.pixelColor(i, j)
-                total_r += color.red()
-                total_g += color.green()
-                total_b += color.blue()
-                count += 1
-        if count == 0:
-            return
-        avg_r = total_r // count
-        avg_g = total_g // count
-        avg_b = total_b // count
-        neg_r = 255 - avg_r
-        neg_g = 255 - avg_g
-        neg_b = 255 - avg_b
-        neg_color = f"#{neg_r:02X}{neg_g:02X}{neg_b:02X}"
-        cfsize = self.overlay_config.get("clock_font_size", 24)
-        wfsize = self.overlay_config.get("weather_font_size", 18)
-        self.clock_label.setStyleSheet(f"color: {neg_color}; font-size: {cfsize}px; background: transparent;")
-        self.weather_label.setStyleSheet(f"color: {neg_color}; font-size: {wfsize}px; background: transparent;")
-
     def fetch_spotify_album_art(self):
         try:
             cfg = load_config()
@@ -709,6 +685,7 @@ class DisplayWindow(QMainWindow):
             log_message(f"Spotify error: {e}")
             return None
         return None
+
 
 class PiViewerGUI:
     def __init__(self):
