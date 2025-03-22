@@ -131,15 +131,16 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setAlignment(Qt.AlignCenter)
         self.foreground_label.setStyleSheet("background-color: transparent;")
 
-        # Use custom NegativeTextLabel for overlay text so we can toggle difference drawing.
+        # Use custom NegativeTextLabel for overlay text.
         self.clock_label = NegativeTextLabel(self.main_widget)
         self.clock_label.setText("00:00:00")
         self.clock_label.setAlignment(Qt.AlignCenter)
-        self.clock_label.setStyleSheet("font-size: 24px; background: transparent;")
+        # Initially set a default style; will be overridden in reload_settings()
+        self.clock_label.setStyleSheet("background: transparent;")
 
         self.weather_label = NegativeTextLabel(self.main_widget)
         self.weather_label.setAlignment(Qt.AlignCenter)
-        self.weather_label.setStyleSheet("font-size: 18px; background: transparent;")
+        self.weather_label.setStyleSheet("background: transparent;")
 
         # Timers
         self.slideshow_timer = QTimer(self)
@@ -216,7 +217,9 @@ class DisplayWindow(QMainWindow):
             if over.get("auto_negative_font", False):
                 self.clock_label.useDifference = True
                 self.weather_label.useDifference = True
-                # Use setPixelSize so that the configured font sizes (in pixels) are used.
+                # Clear any style sheet font-size so that the QFont takes precedence.
+                self.clock_label.setStyleSheet("background: transparent;")
+                self.weather_label.setStyleSheet("background: transparent;")
                 font_clock = QFont(self.clock_label.font())
                 font_clock.setPixelSize(cfsize)
                 self.clock_label.setFont(font_clock)
