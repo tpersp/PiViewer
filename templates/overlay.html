@@ -1,138 +1,82 @@
 {% extends "base.html" %}
 {% block title %}Overlay Configuration{% endblock %}
-
 {% block content %}
-<div class="container py-4">
-  <div class="card mb-4">
-    <div class="card-header">
-      <h2 class="text-center mb-0">Overlay Configuration</h2>
+<div class="page-section" style="text-align:center;">
+  <h2>Overlay Configuration</h2>
+  <form method="GET" action="{{ url_for('main.overlay_config') }}">
+    <label for="monitorSelect">Select Monitor:</label>
+    <select id="monitorSelect" name="monitor" onchange="this.form.submit()">
+      <option value="All" {% if selected_monitor == "All" %}selected{% endif %}>All Monitors (Global Settings)</option>
+      {% for mname, minfo in monitors.items() %}
+        <option value="{{ mname }}" {% if selected_monitor == mname %}selected{% endif %}>{{ mname }} ({{ minfo.resolution }})</option>
+      {% endfor %}
+    </select>
+  </form>
+  <hr>
+  <form method="POST" action="{{ url_for('main.overlay_config', monitor=selected_monitor) }}">
+    <input type="hidden" name="selected_monitor" value="{{ selected_monitor }}">
+    <h3>Overlay Settings for {% if selected_monitor == "All" %}All Monitors{% else %}{{ selected_monitor }}{% endif %}</h3>
+    <div class="form-group">
+      <label><input type="checkbox" name="overlay_enabled" {% if overlay.overlay_enabled %}checked{% endif %}> Enable Overlay</label>
     </div>
-    <div class="card-body">
-      <!-- Monitor Selection Form -->
-      <form class="mb-4" method="GET" action="{{ url_for('main.overlay_config') }}">
-        <div class="row mb-3 align-items-center">
-          <label for="monitorSelect" class="col-auto col-form-label">Select Monitor:</label>
-          <div class="col-auto">
-            <select id="monitorSelect" name="monitor" class="form-select" onchange="this.form.submit()">
-              <option value="All" {% if selected_monitor == "All" %}selected{% endif %}>All Monitors (Global Settings)</option>
-              {% for mname, minfo in monitors.items() %}
-                <option value="{{ mname }}" {% if selected_monitor == mname %}selected{% endif %}>
-                  {{ mname }} ({{ minfo.resolution }})
-                </option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-      </form>
-
-      <hr>
-
-      <!-- Overlay Settings Form -->
-      <form method="POST" action="{{ url_for('main.overlay_config', monitor=selected_monitor) }}">
-        <input type="hidden" name="selected_monitor" value="{{ selected_monitor }}">
-        <h3 class="mb-3">
-          Overlay Settings for 
-          {% if selected_monitor == "All" %}
-            All Monitors
-          {% else %}
-            {{ selected_monitor }}
-          {% endif %}
-        </h3>
-        
-        <div class="mb-3 form-check">
-          <input class="form-check-input" type="checkbox" id="overlay_enabled" name="overlay_enabled" {% if overlay.overlay_enabled %}checked{% endif %}>
-          <label class="form-check-label" for="overlay_enabled">Enable Overlay</label>
-        </div>
-        
-        <div class="mb-3 form-check">
-          <input class="form-check-input" type="checkbox" id="clock_enabled" name="clock_enabled" {% if overlay.clock_enabled %}checked{% endif %}>
-          <label class="form-check-label" for="clock_enabled">Show Clock</label>
-        </div>
-        
-        <div class="mb-3 form-check">
-          <input class="form-check-input" type="checkbox" id="weather_enabled" name="weather_enabled" {% if overlay.weather_enabled %}checked{% endif %}>
-          <label class="form-check-label" for="weather_enabled">Show Weather</label>
-        </div>
-        
-        <div class="mb-3">
-          <label for="clock_font_size" class="form-label">Clock Font Size:</label>
-          <input type="number" class="form-control" id="clock_font_size" name="clock_font_size" value="{{ overlay.clock_font_size|default(26) }}">
-        </div>
-        
-        <div class="mb-3">
-          <label for="weather_font_size" class="form-label">Weather Font Size:</label>
-          <input type="number" class="form-control" id="weather_font_size" name="weather_font_size" value="{{ overlay.weather_font_size|default(22) }}">
-        </div>
-        
-        <!-- Weather Options -->
-        <div class="mb-3 form-check">
-          <input class="form-check-input" type="checkbox" id="show_desc" name="show_desc" {% if overlay.show_desc %}checked{% endif %}>
-          <label class="form-check-label" for="show_desc">Show Weather Description</label>
-        </div>
-        
-        <div class="mb-3 form-check">
-          <input class="form-check-input" type="checkbox" id="show_temp" name="show_temp" {% if overlay.show_temp %}checked{% endif %}>
-          <label class="form-check-label" for="show_temp">Show Temperature</label>
-        </div>
-        
-        <div class="mb-3 form-check">
-          <input class="form-check-input" type="checkbox" id="show_feels_like" name="show_feels_like" {% if overlay.show_feels_like %}checked{% endif %}>
-          <label class="form-check-label" for="show_feels_like">Show Feels Like Temperature</label>
-        </div>
-        
-        <div class="mb-3 form-check">
-          <input class="form-check-input" type="checkbox" id="show_humidity" name="show_humidity" {% if overlay.show_humidity %}checked{% endif %}>
-          <label class="form-check-label" for="show_humidity">Show Humidity</label>
-        </div>
-        
-        <div class="mb-3">
-          <label for="font_color" class="form-label">Font Color:</label>
-          <input type="color" class="form-control form-control-color" id="font_color" name="font_color" value="{{ overlay.font_color|default('#FFFFFF') }}">
-        </div>
-        
-        <div class="mb-3 form-check">
-          <input class="form-check-input" type="checkbox" id="auto_negative_font" name="auto_negative_font" {% if overlay.auto_negative_font %}checked{% endif %}>
-          <label class="form-check-label" for="auto_negative_font">Auto Negative Font Color</label>
-        </div>
-        
-        <div class="mb-3">
-          <label for="layout_style" class="form-label">Layout Style:</label>
-          <select class="form-select" id="layout_style" name="layout_style">
-            <option value="stacked" {% if overlay.layout_style == "stacked" %}selected{% endif %}>Stacked</option>
-            <option value="inline" {% if overlay.layout_style == "inline" %}selected{% endif %}>Inline</option>
-          </select>
-        </div>
-        
-        <div class="mb-3">
-          <label for="padding_x" class="form-label">Padding X:</label>
-          <input type="number" class="form-control" id="padding_x" name="padding_x" value="{{ overlay.padding_x|default(8) }}">
-        </div>
-        
-        <div class="mb-3">
-          <label for="padding_y" class="form-label">Padding Y:</label>
-          <input type="number" class="form-control" id="padding_y" name="padding_y" value="{{ overlay.padding_y|default(6) }}">
-        </div>
-        
-        <button type="submit" class="btn btn-primary">Save Overlay Settings</button>
-      </form>
+    <div class="form-group">
+      <label><input type="checkbox" name="clock_enabled" {% if overlay.clock_enabled %}checked{% endif %}> Show Clock</label>
     </div>
-  </div>
-  
-  <!-- Preview Section -->
-  <div class="card">
-    <div class="card-header">
-      <h3 class="mb-0 text-center">Preview</h3>
+    <div class="form-group">
+      <label><input type="checkbox" name="weather_enabled" {% if overlay.weather_enabled %}checked{% endif %}> Show Weather</label>
     </div>
-    <div class="card-body text-center">
-      <p class="fw-bold">Monitor Preview (Scaled to {{ preview_size.width }}x{{ preview_size.height }})</p>
-      <div id="overlayPreviewBox" class="position-relative mx-auto" 
-           style="width: {{ preview_size.width }}px; height: {{ preview_size.height }}px; background: #333;">
-        <div id="overlayDraggable" 
-             style="position: absolute; left: {{ preview_overlay.left }}px; top: {{ preview_overlay.top }}px; 
-                    width: {{ preview_overlay.width }}px; height: {{ preview_overlay.height }}px; 
-                    border: 2px dashed lime; cursor: move;">
-        </div>
-      </div>
+    <div class="form-group">
+      <label>Clock Font Size:</label>
+      <input type="number" name="clock_font_size" value="{{ overlay.clock_font_size|default(26) }}">
+    </div>
+    <div class="form-group">
+      <label>Weather Font Size:</label>
+      <input type="number" name="weather_font_size" value="{{ overlay.weather_font_size|default(22) }}">
+    </div>
+    <!-- Weather Options -->
+    <div class="form-group">
+      <label><input type="checkbox" name="show_desc" {% if overlay.show_desc %}checked{% endif %}> Show Weather Description</label>
+    </div>
+    <div class="form-group">
+      <label><input type="checkbox" name="show_temp" {% if overlay.show_temp %}checked{% endif %}> Show Temperature</label>
+    </div>
+    <div class="form-group">
+      <label><input type="checkbox" name="show_feels_like" {% if overlay.show_feels_like %}checked{% endif %}> Show Feels Like Temperature</label>
+    </div>
+    <div class="form-group">
+      <label><input type="checkbox" name="show_humidity" {% if overlay.show_humidity %}checked{% endif %}> Show Humidity</label>
+    </div>
+    <div class="form-group">
+      <label>Font Color:</label>
+      <input type="color" name="font_color" value="{{ overlay.font_color|default('#FFFFFF') }}">
+    </div>
+    <div class="form-group">
+      <label><input type="checkbox" name="auto_negative_font" {% if overlay.auto_negative_font %}checked{% endif %}> Auto Negative Font Color</label>
+    </div>
+    <div class="form-group">
+      <label>Layout Style:</label>
+      <select name="layout_style">
+        <option value="stacked" {% if overlay.layout_style == "stacked" %}selected{% endif %}>Stacked</option>
+        <option value="inline" {% if overlay.layout_style == "inline" %}selected{% endif %}>Inline</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Padding X:</label>
+      <input type="number" name="padding_x" value="{{ overlay.padding_x|default(8) }}">
+    </div>
+    <div class="form-group">
+      <label>Padding Y:</label>
+      <input type="number" name="padding_y" value="{{ overlay.padding_y|default(6) }}">
+    </div>
+    <br>
+    <button type="submit">Save Overlay Settings</button>
+  </form>
+  <hr>
+  <h3>Preview</h3>
+  <div class="overlay-preview-container" style="border:1px solid #ccc; padding:10px; display:inline-block;">
+    <p>Monitor Preview (Scaled to {{ preview_size.width }}x{{ preview_size.height }})</p>
+    <div id="overlayPreviewBox" style="position: relative; width: {{ preview_size.width }}px; height: {{ preview_size.height }}px; background: #333;">
+      <div id="overlayDraggable" style="position: absolute; left: {{ preview_overlay.left }}px; top: {{ preview_overlay.top }}px; width: {{ preview_overlay.width }}px; height: {{ preview_overlay.height }}px; border: 2px dashed lime; cursor: move;"></div>
     </div>
   </div>
 </div>
