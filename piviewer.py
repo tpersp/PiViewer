@@ -757,5 +757,5 @@ def main():
         sys.exit(1)
 
 
-if name == "main":
+if name == "__main__":
     main()
