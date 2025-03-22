@@ -42,14 +42,12 @@ class NegativeTextLabel(QLabel):
             # Draw text using difference blend mode so that it inverts the background.
             painter = QPainter(self)
             painter.setRenderHint(QPainter.Antialiasing)
-            # Set composition to difference.
             painter.setCompositionMode(QPainter.CompositionMode_Difference)
             # Always draw using white so that the difference produces an inversion.
             painter.setPen(Qt.white)
             painter.setFont(self.font())
             painter.drawText(self.rect(), self.alignment(), self.text())
         else:
-            # Default painting.
             super().paintEvent(event)
 
 
@@ -127,11 +125,16 @@ class DisplayWindow(QMainWindow):
         self.bg_label.setScaledContents(False)
         self.bg_label.setStyleSheet("background-color: black;")
 
+        # Foreground label (for showing the main image)
+        self.foreground_label = QLabel(self.main_widget)
+        self.foreground_label.setScaledContents(False)
+        self.foreground_label.setAlignment(Qt.AlignCenter)
+        self.foreground_label.setStyleSheet("background-color: transparent;")
+
         # Use custom NegativeTextLabel for overlay text so we can toggle difference drawing.
         self.clock_label = NegativeTextLabel(self.main_widget)
         self.clock_label.setText("00:00:00")
         self.clock_label.setAlignment(Qt.AlignCenter)
-        # Default style – will be overridden in reload_settings() if needed.
         self.clock_label.setStyleSheet("font-size: 24px; background: transparent;")
 
         self.weather_label = NegativeTextLabel(self.main_widget)
@@ -161,7 +164,6 @@ class DisplayWindow(QMainWindow):
     def setup_layout(self):
         if not self.isVisible():
             return
-        # Use assigned screen geometry if available
         if self.assigned_screen:
             self.setGeometry(self.assigned_screen.geometry())
         else:
@@ -178,7 +180,6 @@ class DisplayWindow(QMainWindow):
         self.clock_label.raise_()
         self.weather_label.raise_()
 
-        # Position overlay labels based on layout style
         if self.overlay_config.get("layout_style", "stacked") == "inline":
             self.clock_label.adjustSize()
             self.clock_label.move(20, 20)
@@ -200,7 +201,6 @@ class DisplayWindow(QMainWindow):
     @Slot()
     def reload_settings(self):
         self.cfg = load_config()
-        # Use per-display overlay settings if available; otherwise fallback to global
         if "overlay" in self.disp_cfg:
             over = self.disp_cfg["overlay"]
         else:
@@ -214,13 +214,11 @@ class DisplayWindow(QMainWindow):
             cfsize = over.get("clock_font_size", 24)
             wfsize = over.get("weather_font_size", 18)
             if over.get("auto_negative_font", False):
-                # Enable difference drawing: ignore manual font color.
                 self.clock_label.useDifference = True
                 self.weather_label.useDifference = True
             else:
                 self.clock_label.useDifference = False
                 self.weather_label.useDifference = False
-                # Apply manual font color from config.
                 fcolor = over.get("font_color", "#FFFFFF")
                 self.clock_label.setStyleSheet(f"color: {fcolor}; font-size: {cfsize}px; background: transparent;")
                 self.weather_label.setStyleSheet(f"color: {fcolor}; font-size: {wfsize}px; background: transparent;")
@@ -346,7 +344,6 @@ class DisplayWindow(QMainWindow):
 
         self.show_foreground_image(new_path)
         self.preload_next_images()
-        # For auto-negative mode, simply update the labels so that their paintEvent in difference mode is used.
         if self.overlay_config.get("auto_negative_font", False):
             self.clock_label.update()
             self.weather_label.update()
@@ -441,7 +438,6 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
         self.last_scaled_foreground_image = final_img
 
-        # For auto-negative mode, simply update the labels to trigger their difference drawing.
         if self.overlay_config.get("auto_negative_font", False):
             self.clock_label.update()
             self.weather_label.update()
@@ -484,7 +480,6 @@ class DisplayWindow(QMainWindow):
         degraded = self.degrade_foreground(self.current_pixmap, (bw, bh))
         rotated = self.apply_rotation_if_any(degraded)
 
-        # Store the drawn image (rotated) for reference if needed
         self.current_drawn_image = rotated.toImage()
 
         final_img = QImage(fw, fh, QImage.Format_ARGB32)
@@ -498,7 +493,6 @@ class DisplayWindow(QMainWindow):
         painter.drawPixmap(xoff, yoff, rotated)
         painter.end()
 
-        # Store the area where the image is drawn
         self.foreground_drawn_rect = QRect(xoff, yoff, rw, rh)
 
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
@@ -609,7 +603,6 @@ class DisplayWindow(QMainWindow):
         self.clock_label.setText(now_str)
 
     def update_weather(self):
-        # Use local overlay settings rather than self.overlay_config to avoid attribute errors.
         cfg = load_config()
         if "overlay" in self.disp_cfg:
             over = self.disp_cfg["overlay"]
@@ -716,7 +709,6 @@ class PiViewerGUI:
 
         self.windows = []
         screens = self.app.screens()
-        # Create a window for each display in config, assigning a QScreen (if available)
         i = 0
         for dname, dcfg in self.cfg.get("displays", {}).items():
             assigned_screen = screens[i] if i < len(screens) else None
@@ -733,6 +725,7 @@ class PiViewerGUI:
     def run(self):
         sys.exit(self.app.exec())
 
+
 def main():
     try:
         log_message(f"Starting PiViewer GUI (v{APP_VERSION}).")
@@ -741,6 +734,7 @@ def main():
     except Exception as e:
         log_message(f"Exception in main: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
