@@ -887,7 +887,8 @@ def update_app():
       <body>
         <h2>Update is complete. The system is now rebooting...</h2>
         <p>Please wait for the device to come back online.</p>
-        <p>If the device does not redirect automatically, you can
+        <p>If the device does not redirect automatically, click below
+            <br>
            <a href="/" class="button">Return to Home Page</a></p>
         <script>
           setTimeout(function() {{
