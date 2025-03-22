@@ -367,6 +367,7 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setMovie(None)
         self.foreground_label.setText(message)
         self.foreground_label.setAlignment(Qt.AlignCenter)
+        self.foreground_label.setStyleSheet("color: white; background-color: transparent;")
 
     def show_foreground_image(self, fullpath, is_spotify=False):
         if not os.path.exists(fullpath):
