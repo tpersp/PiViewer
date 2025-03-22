@@ -2,11 +2,11 @@
 {% block title %}Settings{% endblock %}
 {% block content %}
 
-<div class="page-section">
+<div class="page-section" style="max-width:1200px;">
   <h2>Settings</h2>
 
   <!-- Role + Theme in a top card -->
-  <div class="card" style="margin-bottom:20px; text-align:center;">
+  <div class="card" style="margin-bottom:20px;">
     <form method="POST" enctype="multipart/form-data">
       <label>Role:</label><br>
       <select name="role" id="roleSelect" onchange="toggleMainIP()">
@@ -35,7 +35,6 @@
         <br><br>
       {% endif %}
 
-      <!-- We'll save other settings below, so let's let user know to see next form. -->
       <button type="submit">Save Role/Theme</button>
     </form>
   </div>
@@ -44,14 +43,13 @@
   <div class="cards-container">
 
     <!-- GUI card -->
-    <div class="card" style="text-align:center;">
+    <div class="card">
       <h3>GUI Settings</h3>
       <form method="POST" enctype="multipart/form-data">
         <fieldset style="border:none;">
           <input type="hidden" name="role" value="{{ cfg.role }}">
           <input type="hidden" name="main_ip" value="{{ cfg.main_ip }}">
           <input type="hidden" name="theme" value="{{ cfg.theme }}">
-          <!-- Only re-save if user wants to update everything in one go -->
           <label>Background Blur Radius:</label><br>
           <input type="number" name="background_blur_radius"
                  value="{{ cfg.gui.background_blur_radius|default('20') }}" min="0">
@@ -74,7 +72,7 @@
     </div>
 
     <!-- Weather card -->
-    <div class="card" style="text-align:center;">
+    <div class="card">
       <h3>Weather Settings</h3>
       <form method="POST" enctype="multipart/form-data">
         <fieldset style="border:none;">
@@ -104,7 +102,7 @@
 
   <!-- New Weather Info Confirmation Card -->
   {% if weather_info %}
-  <div class="card" style="margin-top:20px; text-align:center;">
+  <div class="card" style="margin-top:20px;">
     <h3>Weather Location Confirmation</h3>
     <p><strong>Location Name:</strong> {{ weather_info.name }}</p>
     <p><strong>Timezone:</strong> {{ weather_info.timezone }}</p>
@@ -113,7 +111,7 @@
   {% endif %}
 
   <!-- Update from GitHub, logs, etc. as a final separate card -->
-  <div class="card" style="margin-top:20px; text-align:center;">
+  <div class="card" style="margin-top:20px;">
     <form method="POST" action="{{ url_for('main.update_app') }}">
       <p><strong>Update from GitHub</strong></p>
       <p>Branch: <em>{{ update_branch }}</em></p>
