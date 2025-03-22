@@ -217,6 +217,22 @@ def restart_viewer():
     except subprocess.CalledProcessError as e:
         return f"Failed to restart service: {e}", 500
 
+@main_bp.route("/restart_device", methods=["POST"])
+def restart_device():
+    try:
+        subprocess.check_output(["sudo", "reboot"])
+        return redirect(url_for("main.index"))
+    except subprocess.CalledProcessError as e:
+        return f"Failed to restart device: {e}", 500
+
+@main_bp.route("/power_off", methods=["POST"])
+def power_off():
+    try:
+        subprocess.check_output(["sudo", "poweroff"])
+        return "Device is powering off...", 200
+    except subprocess.CalledProcessError as e:
+        return f"Failed to power off: {e}", 500
+
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
     cfg = load_config()

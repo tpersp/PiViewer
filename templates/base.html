@@ -64,13 +64,20 @@
     </a>
   </div>
 
-  <!-- Restart Viewer -->
-  <div class="nav-item">
-    <form action="{{ url_for('main.restart_viewer') }}" method="post">
-      <button type="submit" style="background:transparent; color:inherit;">
-        🔄 Restart Viewer
-      </button>
-    </form>
+  <!-- Power Button Dropdown -->
+  <div class="nav-item dropdown">
+    <button class="dropbtn">⏻</button>
+    <div class="dropdown-content">
+      <form action="{{ url_for('main.restart_viewer') }}" method="post">
+        <button type="submit">Restart Viewer</button>
+      </form>
+      <form action="{{ url_for('main.restart_device') }}" method="post">
+        <button type="submit">Restart Device</button>
+      </form>
+      <form action="{{ url_for('main.power_off') }}" method="post">
+        <button type="submit">Power Off</button>
+      </form>
+    </div>
   </div>
 
   <!-- Right icon (flipped) -->
