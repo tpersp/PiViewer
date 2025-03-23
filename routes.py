@@ -556,9 +556,17 @@ def index():
                 dcfg["specific_image"] = new_spec
                 dcfg["rotate"] = new_rotate
 
-                # Update fallback mode if spotify is selected
+                # Update Spotify mode settings
                 if new_mode == "spotify":
                     dcfg["fallback_mode"] = request.form.get(pre + "fallback_mode", dcfg.get("fallback_mode", "random_image"))
+                    dcfg["spotify_show_song"] = (request.form.get(pre + "spotify_show_song", "yes") == "yes")
+                    dcfg["spotify_show_artist"] = (request.form.get(pre + "spotify_show_artist", "yes") == "yes")
+                    dcfg["spotify_show_album"] = (request.form.get(pre + "spotify_show_album", "yes") == "yes")
+                    try:
+                        dcfg["spotify_font_size"] = int(request.form.get(pre + "spotify_font_size", "18"))
+                    except:
+                        dcfg["spotify_font_size"] = 18
+                    dcfg["spotify_negative_font"] = (request.form.get(pre + "spotify_negative_font", "yes") == "yes")
 
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list

@@ -63,7 +63,7 @@ def init_config():
             },
             "gui": {
                 "background_blur_radius": 20,
-                "background_scale_percent": 100,  # now a % rather than 0.1-1.0
+                "background_scale_percent": 100,
                 "foreground_scale_percent": 100
             },
             "weather": {
@@ -169,7 +169,6 @@ def get_remote_config(ip):
     return None
 
 def get_remote_monitors(ip):
-    # not used much now, but keep for old usage
     url = f"http://{ip}:8080/list_monitors"
     try:
         r = requests.get(url, timeout=5)

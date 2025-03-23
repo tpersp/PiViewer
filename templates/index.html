@@ -44,6 +44,34 @@
             <option value="none"           {% if dcfg.fallback_mode=="none" %}selected{% endif %}>None</option>
           </select>
           <br><br>
+          <!-- Spotify Info Options -->
+          <label>Show Song Title:</label><br>
+          <select name="{{ dname }}_spotify_show_song">
+            <option value="yes" {% if dcfg.spotify_show_song is not defined or dcfg.spotify_show_song %}selected{% endif %}>Yes</option>
+            <option value="no" {% if dcfg.spotify_show_song is defined and not dcfg.spotify_show_song %}selected{% endif %}>No</option>
+          </select>
+          <br><br>
+          <label>Show Artist:</label><br>
+          <select name="{{ dname }}_spotify_show_artist">
+            <option value="yes" {% if dcfg.spotify_show_artist is not defined or dcfg.spotify_show_artist %}selected{% endif %}>Yes</option>
+            <option value="no" {% if dcfg.spotify_show_artist is defined and not dcfg.spotify_show_artist %}selected{% endif %}>No</option>
+          </select>
+          <br><br>
+          <label>Show Album:</label><br>
+          <select name="{{ dname }}_spotify_show_album">
+            <option value="yes" {% if dcfg.spotify_show_album is not defined or dcfg.spotify_show_album %}selected{% endif %}>Yes</option>
+            <option value="no" {% if dcfg.spotify_show_album is defined and not dcfg.spotify_show_album %}selected{% endif %}>No</option>
+          </select>
+          <br><br>
+          <label>Spotify Font Size:</label><br>
+          <input type="number" name="{{ dname }}_spotify_font_size" value="{{ dcfg.spotify_font_size|default(18) }}">
+          <br><br>
+          <label>Auto Negative Font for Spotify Info:</label><br>
+          <select name="{{ dname }}_spotify_negative_font">
+            <option value="yes" {% if dcfg.spotify_negative_font is not defined or dcfg.spotify_negative_font %}selected{% endif %}>Yes</option>
+            <option value="no" {% if dcfg.spotify_negative_font is defined and not dcfg.spotify_negative_font %}selected{% endif %}>No</option>
+          </select>
+          <br><br>
           {% endif %}
           <!-- Interval (only for random/mixed) -->
           {% if dcfg.mode in ["random_image","mixed"] %}
