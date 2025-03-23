@@ -41,6 +41,7 @@
             <option value="random_image"   {% if dcfg.fallback_mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
             <option value="specific_image" {% if dcfg.fallback_mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
             <option value="mixed"          {% if dcfg.fallback_mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
+            <option value="none"           {% if dcfg.fallback_mode=="none" %}selected{% endif %}>None</option>
           </select>
           <br><br>
           {% endif %}
