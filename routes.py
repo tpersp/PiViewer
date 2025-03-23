@@ -500,6 +500,7 @@ def index():
         if mon_name not in cfg["displays"]:
             cfg["displays"][mon_name] = {
                 "mode": "random_image",
+                "fallback_mode": "random_image",   # <-- Set default fallback for new monitors
                 "image_interval": 60,
                 "image_category": "",
                 "specific_image": "",
@@ -554,6 +555,10 @@ def index():
                 dcfg["shuffle_mode"] = (shuffle_val == "yes")
                 dcfg["specific_image"] = new_spec
                 dcfg["rotate"] = new_rotate
+
+                # Update fallback mode if spotify is selected
+                if new_mode == "spotify":
+                    dcfg["fallback_mode"] = request.form.get(pre + "fallback_mode", dcfg.get("fallback_mode", "random_image"))
 
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list

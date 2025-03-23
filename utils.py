@@ -29,6 +29,7 @@ def init_config():
             "displays": {
                 "Display0": {
                     "mode": "random_image",
+                    "fallback_mode": "random_image",   # <-- New fallback mode default
                     "image_interval": 60,
                     "image_category": "",
                     "specific_image": "",

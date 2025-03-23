@@ -336,7 +336,25 @@ class DisplayWindow(QMainWindow):
             if path:
                 self.show_foreground_image(path, is_spotify=True)
             else:
-                self.clear_foreground_label("No Spotify track info")
+                fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
+                if fallback_mode in ("random_image", "mixed", "specific_image"):
+                    # Temporarily switch to fallback mode to display an image
+                    image_list_backup = self.image_list
+                    index_backup = self.index
+                    mode_backup = self.current_mode
+                    self.current_mode = fallback_mode
+                    self.build_local_image_list()
+                    if not self.image_list:
+                        self.clear_foreground_label("No fallback images found")
+                    else:
+                        self.index = (self.index + 1) % len(self.image_list)
+                        new_path = self.image_list[self.index]
+                        self.last_displayed_path = new_path
+                        self.show_foreground_image(new_path)
+                    self.current_mode = mode_backup
+                    self.image_list = image_list_backup
+                else:
+                    self.clear_foreground_label("No Spotify track info")
             return
 
         if not self.image_list:
@@ -707,6 +725,7 @@ class PiViewerGUI:
                 if mon_name not in self.cfg["displays"]:
                     self.cfg["displays"][mon_name] = {
                         "mode": "random_image",
+                        "fallback_mode": "random_image",  # <-- Set fallback mode for fallback monitors
                         "image_interval": 60,
                         "image_category": "",
                         "specific_image": "",
