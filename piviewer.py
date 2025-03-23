@@ -357,6 +357,7 @@ class DisplayWindow(QMainWindow):
             path = self.fetch_spotify_album_art()
             if path:
                 self.show_foreground_image(path, is_spotify=True)
+                self.spotify_info_label.show()
                 # Update Spotify info label if configured
                 info_parts = []
                 if self.disp_cfg.get("spotify_show_song", True) and self.spotify_info and self.spotify_info.get("song"):
@@ -399,9 +400,11 @@ class DisplayWindow(QMainWindow):
                     self.current_mode = mode_backup
                     self.image_list = image_list_backup
                     self.spotify_info_label.setText("")
+                    self.spotify_info_label.hide()
                 else:
                     self.clear_foreground_label("No Spotify track info")
                     self.spotify_info_label.setText("")
+                    self.spotify_info_label.hide()
             return
 
         if not self.image_list:
