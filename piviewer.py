@@ -178,27 +178,43 @@ class DisplayWindow(QMainWindow):
 
         # Position and raise Spotify info label based on configuration
         pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
-        label_height = 50
-        if pos in ["top-left", "bottom-left"]:
-            self.spotify_info_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            x = 10
-            y = 10 if "top" in pos else rect.height() - label_height - 10
-            self.spotify_info_label.setGeometry(x, y, rect.width() // 2, label_height)
-        elif pos in ["top-right", "bottom-right"]:
-            self.spotify_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            x = rect.width() - rect.width() // 2 - 10
-            y = 10 if "top" in pos else rect.height() - label_height - 10
-            self.spotify_info_label.setGeometry(x, y, rect.width() // 2, label_height)
+        if pos in ["top-left", "top-right", "bottom-left", "bottom-right"]:
+            # For corner positions, use dynamic sizing with word wrap.
+            self.spotify_info_label.setWordWrap(True)
+            if "left" in pos:
+                self.spotify_info_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            else:
+                self.spotify_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            # Set a maximum width of 40% of the screen width.
+            max_width = int(rect.width() * 0.4)
+            self.spotify_info_label.setFixedWidth(max_width)
+            self.spotify_info_label.adjustSize()
+            if "left" in pos:
+                x = 10
+            else:
+                x = rect.width() - self.spotify_info_label.width() - 10
+            if "top" in pos:
+                y = 10
+            else:
+                y = rect.height() - self.spotify_info_label.height() - 10
+            self.spotify_info_label.move(x, y)
         elif pos == "top-center":
             self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
-            x = 0
+            self.spotify_info_label.setWordWrap(True)
+            # Use nearly full width with some margins.
+            self.spotify_info_label.setFixedWidth(rect.width() - 20)
+            self.spotify_info_label.adjustSize()
+            x = (rect.width() - self.spotify_info_label.width()) // 2
             y = 10
-            self.spotify_info_label.setGeometry(x, y, rect.width(), label_height)
+            self.spotify_info_label.move(x, y)
         else:  # bottom-center or default
             self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
-            x = 0
-            y = rect.height() - label_height - 10
-            self.spotify_info_label.setGeometry(x, y, rect.width(), label_height)
+            self.spotify_info_label.setWordWrap(True)
+            self.spotify_info_label.setFixedWidth(rect.width() - 20)
+            self.spotify_info_label.adjustSize()
+            x = (rect.width() - self.spotify_info_label.width()) // 2
+            y = rect.height() - self.spotify_info_label.height() - 10
+            self.spotify_info_label.move(x, y)
         self.spotify_info_label.raise_()
 
         if self.overlay_config.get("layout_style", "stacked") == "inline":
