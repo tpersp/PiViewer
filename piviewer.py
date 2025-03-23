@@ -99,13 +99,6 @@ class DisplayWindow(QMainWindow):
         self.current_drawn_image = None
         self.foreground_drawn_rect = None
 
-        # Spotify info (track details) and label
-        self.spotify_info = None
-        self.spotify_info_label = NegativeTextLabel(self)
-        self.spotify_info_label.setAlignment(Qt.AlignCenter)
-        self.spotify_info_label.setStyleSheet("background: transparent;")
-        self.spotify_info_label.hide()  # Hidden unless in spotify mode
-
         # Set window geometry
         if self.assigned_screen:
             self.setGeometry(self.assigned_screen.geometry())
@@ -116,7 +109,7 @@ class DisplayWindow(QMainWindow):
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.showFullScreen()
 
-        # Central widget
+        # Central widget and child labels
         self.main_widget = QWidget(self)
         self.setCentralWidget(self.main_widget)
         self.main_widget.setStyleSheet("background-color: black;")
@@ -140,6 +133,13 @@ class DisplayWindow(QMainWindow):
         self.weather_label = NegativeTextLabel(self.main_widget)
         self.weather_label.setAlignment(Qt.AlignCenter)
         self.weather_label.setStyleSheet("background: transparent;")
+
+        # Spotify info (track details) and label – now as child of main_widget so it stays on top
+        self.spotify_info = None
+        self.spotify_info_label = NegativeTextLabel(self.main_widget)
+        self.spotify_info_label.setAlignment(Qt.AlignCenter)
+        self.spotify_info_label.setStyleSheet("background: transparent;")
+        self.spotify_info_label.hide()  # Hidden unless in spotify mode
 
         # Timers
         self.slideshow_timer = QTimer(self)
@@ -183,12 +183,12 @@ class DisplayWindow(QMainWindow):
             self.spotify_info_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             x = 10
             y = 10 if "top" in pos else rect.height() - label_height - 10
-            self.spotify_info_label.setGeometry(x, y, rect.width()//2, label_height)
+            self.spotify_info_label.setGeometry(x, y, rect.width() // 2, label_height)
         elif pos in ["top-right", "bottom-right"]:
             self.spotify_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            x = rect.width() - rect.width()//2 - 10
+            x = rect.width() - rect.width() // 2 - 10
             y = 10 if "top" in pos else rect.height() - label_height - 10
-            self.spotify_info_label.setGeometry(x, y, rect.width()//2, label_height)
+            self.spotify_info_label.setGeometry(x, y, rect.width() // 2, label_height)
         elif pos == "top-center":
             self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
             x = 0
@@ -487,7 +487,7 @@ class DisplayWindow(QMainWindow):
 
             blurred = self.make_background_cover(self.current_pixmap)
             self.bg_label.setPixmap(blurred if blurred else QPixmap())
-        # Ensure the Spotify info label is on top
+        # Ensure the Spotify info label is always on top
         self.spotify_info_label.raise_()
 
     def on_gif_frame_changed(self, frame_index):
