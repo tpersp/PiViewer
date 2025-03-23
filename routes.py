@@ -508,7 +508,8 @@ def index():
                 "mixed_folders": [],
                 "rotate": 0,
                 "screen_name": f"{mon_name}: {minfo['current_mode']}",
-                "chosen_mode": minfo["current_mode"]
+                "chosen_mode": minfo["current_mode"],
+                "spotify_info_position": "bottom-center"
             }
             log_message(f"Detected new monitor {mon_name} with current mode {minfo['current_mode']}")
         else:
@@ -567,7 +568,7 @@ def index():
                     except:
                         dcfg["spotify_font_size"] = 18
                     dcfg["spotify_negative_font"] = True if request.form.get(pre + "spotify_negative_font") else False
-
+                    dcfg["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dcfg.get("spotify_info_position", "bottom-center"))         
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list
                 else:
