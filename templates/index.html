@@ -34,6 +34,51 @@
             <option value="spotify"        {% if dcfg.mode=="spotify" %}selected{% endif %}>Spotify Now Playing</option>
           </select>
           <br><br>
+          <!-- Fallback Mode (only shown if Spotify mode is selected) -->
+          {% if dcfg.mode == "spotify" %}
+          <label>Fallback Mode:</label><br>
+          <select name="{{ dname }}_fallback_mode">
+            <option value="random_image"   {% if dcfg.fallback_mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
+            <option value="specific_image" {% if dcfg.fallback_mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
+            <option value="mixed"          {% if dcfg.fallback_mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
+            <option value="none"           {% if dcfg.fallback_mode=="none" %}selected{% endif %}>None</option>
+          </select>
+          <br><br>
+          <!-- Spotify Info Options as inline checkboxes -->
+          <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">
+            <label style="display:inline-block;">
+              <input type="checkbox" name="{{ dname }}_spotify_show_song" value="1" {% if dcfg.spotify_show_song is not defined or dcfg.spotify_show_song %}checked{% endif %}>
+              Song Title
+            </label>
+            <label style="display:inline-block;">
+              <input type="checkbox" name="{{ dname }}_spotify_show_artist" value="1" {% if dcfg.spotify_show_artist is not defined or dcfg.spotify_show_artist %}checked{% endif %}>
+              Artist
+            </label>
+            <label style="display:inline-block;">
+              <input type="checkbox" name="{{ dname }}_spotify_show_album" value="1" {% if dcfg.spotify_show_album is not defined or dcfg.spotify_show_album %}checked{% endif %}>
+              Album
+            </label>
+            <label style="display:inline-block;">
+              <input type="checkbox" name="{{ dname }}_spotify_negative_font" value="1" {% if dcfg.spotify_negative_font is not defined or dcfg.spotify_negative_font %}checked{% endif %}>
+              Auto Negative Font
+            </label>
+          </div>
+          <br>
+          <label>Spotify Font Size:</label>
+          <input type="number" name="{{ dname }}_spotify_font_size" value="{{ dcfg.spotify_font_size|default(18) }}" style="width:60px;">
+          <br><br>
+          <!-- New: Spotify Info Position Dropdown -->
+          <label>Spotify Info Position:</label><br>
+          <select name="{{ dname }}_spotify_info_position">
+            <option value="top-left" {% if dcfg.spotify_info_position=="top-left" %}selected{% endif %}>Top Left</option>
+            <option value="top-center" {% if dcfg.spotify_info_position=="top-center" %}selected{% endif %}>Top Center</option>
+            <option value="top-right" {% if dcfg.spotify_info_position=="top-right" %}selected{% endif %}>Top Right</option>
+            <option value="bottom-left" {% if dcfg.spotify_info_position=="bottom-left" %}selected{% endif %}>Bottom Left</option>
+            <option value="bottom-center" {% if dcfg.spotify_info_position=="bottom-center" or dcfg.spotify_info_position is not defined %}selected{% endif %}>Bottom Center</option>
+            <option value="bottom-right" {% if dcfg.spotify_info_position=="bottom-right" %}selected{% endif %}>Bottom Right</option>
+          </select>
+          <br><br>
+          {% endif %}
           <!-- Interval (only for random/mixed) -->
           {% if dcfg.mode in ["random_image","mixed"] %}
           <label>Interval (sec):</label><br>

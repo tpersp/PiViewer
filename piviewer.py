@@ -3,7 +3,7 @@
 '''
 piviewer.py
 Shows images in random/mixed/specific/spotify mode on each connected monitor,
-and can display an overlay with clock, weather, etc.
+and can display an overlay with clock, weather, and Spotify track info.
 '''
 
 import sys
@@ -39,11 +39,9 @@ class NegativeTextLabel(QLabel):
 
     def paintEvent(self, event):
         if self.useDifference:
-            # Draw text using difference blend mode so that it inverts the background.
             painter = QPainter(self)
             painter.setRenderHint(QPainter.Antialiasing)
             painter.setCompositionMode(QPainter.CompositionMode_Difference)
-            # Always draw using white so that the difference produces an inversion.
             painter.setPen(Qt.white)
             painter.setFont(self.font())
             painter.drawText(self.rect(), self.alignment(), self.text())
@@ -52,10 +50,6 @@ class NegativeTextLabel(QLabel):
 
 
 def detect_monitors():
-    """
-    Basic usage of xrandr for single resolution detection.
-    We keep this for fallback if needed if the extended approach is not used.
-    """
     monitors = {}
     try:
         output = subprocess.check_output(["xrandr", "--query"]).decode("utf-8")
@@ -96,16 +90,16 @@ class DisplayWindow(QMainWindow):
         self.cache_capacity = 15
 
         self.last_displayed_path = None
-        self.current_pixmap = None  # static images
-        self.current_movie = None   # GIFs
+        self.current_pixmap = None
+        self.current_movie = None
         self.handling_gif_frames = False
-        self.last_scaled_foreground_image = None  # Cached scaled image for computing auto-negative
+        self.last_scaled_foreground_image = None
 
         # Variables for auto-negative sampling (no longer used for difference mode)
         self.current_drawn_image = None
         self.foreground_drawn_rect = None
 
-        # Set window geometry based on the assigned screen (if provided)
+        # Set window geometry
         if self.assigned_screen:
             self.setGeometry(self.assigned_screen.geometry())
         else:
@@ -115,7 +109,7 @@ class DisplayWindow(QMainWindow):
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.showFullScreen()
 
-        # Central widget
+        # Central widget and child labels
         self.main_widget = QWidget(self)
         self.setCentralWidget(self.main_widget)
         self.main_widget.setStyleSheet("background-color: black;")
@@ -125,31 +119,34 @@ class DisplayWindow(QMainWindow):
         self.bg_label.setScaledContents(False)
         self.bg_label.setStyleSheet("background-color: black;")
 
-        # Foreground label (for showing the main image)
+        # Foreground label for images
         self.foreground_label = QLabel(self.main_widget)
         self.foreground_label.setScaledContents(False)
         self.foreground_label.setAlignment(Qt.AlignCenter)
         self.foreground_label.setStyleSheet("background-color: transparent;")
 
-        # Use custom NegativeTextLabel for overlay text.
+        # Overlay labels for clock and weather
         self.clock_label = NegativeTextLabel(self.main_widget)
         self.clock_label.setText("00:00:00")
         self.clock_label.setAlignment(Qt.AlignCenter)
-        # Initially set a default style; will be overridden in reload_settings()
         self.clock_label.setStyleSheet("background: transparent;")
-
         self.weather_label = NegativeTextLabel(self.main_widget)
         self.weather_label.setAlignment(Qt.AlignCenter)
         self.weather_label.setStyleSheet("background: transparent;")
 
+        # Spotify info (track details) and label – now as child of main_widget so it stays on top
+        self.spotify_info = None
+        self.spotify_info_label = NegativeTextLabel(self.main_widget)
+        self.spotify_info_label.setAlignment(Qt.AlignCenter)
+        self.spotify_info_label.setStyleSheet("background: transparent;")
+        self.spotify_info_label.hide()  # Hidden unless in spotify mode
+
         # Timers
         self.slideshow_timer = QTimer(self)
         self.slideshow_timer.timeout.connect(self.next_image)
-
         self.clock_timer = QTimer(self)
         self.clock_timer.timeout.connect(self.update_clock)
         self.clock_timer.start(1000)
-
         self.weather_timer = QTimer(self)
         self.weather_timer.timeout.connect(self.update_weather)
         self.weather_timer.start(60000)
@@ -159,7 +156,6 @@ class DisplayWindow(QMainWindow):
         self.cfg = load_config()
         self.reload_settings()
         self.next_image(force=True)
-        # Delay layout until after show
         QTimer.singleShot(1000, self.setup_layout)
 
     def setup_layout(self):
@@ -175,11 +171,51 @@ class DisplayWindow(QMainWindow):
 
         self.bg_label.setGeometry(rect)
         self.foreground_label.setGeometry(rect)
-
-        self.bg_label.lower()
-        self.foreground_label.raise_()
         self.clock_label.raise_()
         self.weather_label.raise_()
+        self.foreground_label.raise_()
+        self.bg_label.lower()
+
+        # Position and raise Spotify info label based on configuration
+        pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
+        if pos in ["top-left", "top-right", "bottom-left", "bottom-right"]:
+            # For corner positions, use dynamic sizing with word wrap.
+            self.spotify_info_label.setWordWrap(True)
+            if "left" in pos:
+                self.spotify_info_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            else:
+                self.spotify_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            # Set a maximum width of 40% of the screen width.
+            max_width = int(rect.width() * 0.4)
+            self.spotify_info_label.setFixedWidth(max_width)
+            self.spotify_info_label.adjustSize()
+            if "left" in pos:
+                x = 10
+            else:
+                x = rect.width() - self.spotify_info_label.width() - 10
+            if "top" in pos:
+                y = 10
+            else:
+                y = rect.height() - self.spotify_info_label.height() - 10
+            self.spotify_info_label.move(x, y)
+        elif pos == "top-center":
+            self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+            self.spotify_info_label.setWordWrap(True)
+            # Use nearly full width with some margins.
+            self.spotify_info_label.setFixedWidth(rect.width() - 20)
+            self.spotify_info_label.adjustSize()
+            x = (rect.width() - self.spotify_info_label.width()) // 2
+            y = 10
+            self.spotify_info_label.move(x, y)
+        else:  # bottom-center or default
+            self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
+            self.spotify_info_label.setWordWrap(True)
+            self.spotify_info_label.setFixedWidth(rect.width() - 20)
+            self.spotify_info_label.adjustSize()
+            x = (rect.width() - self.spotify_info_label.width()) // 2
+            y = rect.height() - self.spotify_info_label.height() - 10
+            self.spotify_info_label.move(x, y)
+        self.spotify_info_label.raise_()
 
         if self.overlay_config.get("layout_style", "stacked") == "inline":
             self.clock_label.adjustSize()
@@ -217,7 +253,6 @@ class DisplayWindow(QMainWindow):
             if over.get("auto_negative_font", False):
                 self.clock_label.useDifference = True
                 self.weather_label.useDifference = True
-                # Clear any style sheet font-size so that the QFont takes precedence.
                 self.clock_label.setStyleSheet("background: transparent;")
                 self.weather_label.setStyleSheet("background: transparent;")
                 font_clock = QFont(self.clock_label.font())
@@ -248,7 +283,10 @@ class DisplayWindow(QMainWindow):
         except:
             self.fg_scale_percent = 100
 
+        # In Spotify mode, poll every 5 sec for updates
         interval_s = self.disp_cfg.get("image_interval", 60)
+        if self.disp_cfg.get("mode") == "spotify":
+            interval_s = 5
         self.slideshow_timer.setInterval(interval_s * 1000)
         self.slideshow_timer.start()
 
@@ -335,8 +373,54 @@ class DisplayWindow(QMainWindow):
             path = self.fetch_spotify_album_art()
             if path:
                 self.show_foreground_image(path, is_spotify=True)
+                self.spotify_info_label.show()
+                # Update Spotify info label if configured
+                info_parts = []
+                if self.disp_cfg.get("spotify_show_song", True) and self.spotify_info and self.spotify_info.get("song"):
+                    info_parts.append(self.spotify_info["song"])
+                if self.disp_cfg.get("spotify_show_artist", True) and self.spotify_info and self.spotify_info.get("artist"):
+                    info_parts.append(self.spotify_info["artist"])
+                if self.disp_cfg.get("spotify_show_album", True) and self.spotify_info and self.spotify_info.get("album"):
+                    info_parts.append(self.spotify_info["album"])
+                pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
+                if "left" in pos or "right" in pos:
+                    text = "\n".join(info_parts)
+                else:
+                    text = " | ".join(info_parts)
+                self.spotify_info_label.setText(text)
+                font_size = self.disp_cfg.get("spotify_font_size", 18)
+                if self.disp_cfg.get("spotify_negative_font", True):
+                    self.spotify_info_label.useDifference = True
+                    self.spotify_info_label.setStyleSheet("background: transparent;")
+                    font = QFont(self.spotify_info_label.font())
+                    font.setPixelSize(font_size)
+                    self.spotify_info_label.setFont(font)
+                else:
+                    self.spotify_info_label.useDifference = False
+                    self.spotify_info_label.setStyleSheet(f"color: #FFFFFF; font-size: {font_size}px; background: transparent;")
+                self.spotify_info_label.raise_()
             else:
-                self.clear_foreground_label("No Spotify track info")
+                fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
+                if fallback_mode in ("random_image", "mixed", "specific_image"):
+                    image_list_backup = self.image_list
+                    mode_backup = self.current_mode
+                    self.current_mode = fallback_mode
+                    self.build_local_image_list()
+                    if not self.image_list:
+                        self.clear_foreground_label("No fallback images found")
+                    else:
+                        self.index = (self.index + 1) % len(self.image_list)
+                        new_path = self.image_list[self.index]
+                        self.last_displayed_path = new_path
+                        self.show_foreground_image(new_path)
+                    self.current_mode = mode_backup
+                    self.image_list = image_list_backup
+                    self.spotify_info_label.setText("")
+                    self.spotify_info_label.hide()
+                else:
+                    self.clear_foreground_label("No Spotify track info")
+                    self.spotify_info_label.setText("")
+                    self.spotify_info_label.hide()
             return
 
         if not self.image_list:
@@ -412,17 +496,18 @@ class DisplayWindow(QMainWindow):
                 self.gif_bounds = (bw, bh)
                 self.current_movie.frameChanged.connect(self.on_gif_frame_changed)
                 self.current_movie.start()
-
         else:
             if data["type"] == "static":
                 self.current_pixmap = data["pixmap"]
             else:
-                self.current_pixmap = QPixmap(fullpath)  # Spotify
+                self.current_pixmap = QPixmap(fullpath)
             self.handling_gif_frames = False
             self.updateForegroundScaled()
 
             blurred = self.make_background_cover(self.current_pixmap)
             self.bg_label.setPixmap(blurred if blurred else QPixmap())
+        # Ensure the Spotify info label is always on top
+        self.spotify_info_label.raise_()
 
     def on_gif_frame_changed(self, frame_index):
         if not self.current_movie or not self.handling_gif_frames:
@@ -452,6 +537,8 @@ class DisplayWindow(QMainWindow):
         if self.overlay_config.get("auto_negative_font", False):
             self.clock_label.update()
             self.weather_label.update()
+        # Ensure the Spotify info label stays on top during GIF updates
+        self.spotify_info_label.raise_()
 
     def calc_bounding_for_window(self, first_frame):
         fw = self.foreground_label.width()
@@ -659,6 +746,7 @@ class DisplayWindow(QMainWindow):
             ruri = sp_cfg.get("redirect_uri", "")
             scope = sp_cfg.get("scope", "user-read-currently-playing user-read-playback-state")
             if not (cid and csec and ruri):
+                self.spotify_info = None
                 return None
 
             auth = SpotifyOAuth(client_id=cid, client_secret=csec,
@@ -666,15 +754,26 @@ class DisplayWindow(QMainWindow):
                                 cache_path=".spotify_cache")
             token_info = auth.get_cached_token()
             if not token_info:
+                self.spotify_info = None
                 return None
             if auth.is_token_expired(token_info):
                 token_info = auth.refresh_access_token(token_info["refresh_token"])
 
             sp = spotipy.Spotify(auth=token_info["access_token"])
             current = sp.current_playback()
-            if not current or not current.get("item"):
+            if not current or not current.get("item") or not current.get("is_playing", False):
+                self.spotify_info = None
                 return None
-            album_imgs = current["item"]["album"]["images"]
+            item = current["item"]
+            track_name = item.get("name", "")
+            artists = ", ".join([a.get("name", "") for a in item.get("artists", [])])
+            album_name = item.get("album", {}).get("name", "")
+            self.spotify_info = {
+                "song": track_name,
+                "artist": artists,
+                "album": album_name
+            }
+            album_imgs = item["album"]["images"]
             if not album_imgs:
                 return None
             url = album_imgs[0]["url"]
@@ -687,6 +786,7 @@ class DisplayWindow(QMainWindow):
                 return tmpf.name
         except Exception as e:
             log_message(f"Spotify error: {e}")
+            self.spotify_info = None
             return None
         return None
 
@@ -696,7 +796,7 @@ class PiViewerGUI:
         self.cfg = load_config()
         self.app = QApplication(sys.argv)
 
-        # fallback detect via xrandr (if available)
+        # Fallback monitor detection via xrandr
         fallback_mons = detect_monitors()
         if fallback_mons:
             if "displays" not in self.cfg:
@@ -707,6 +807,7 @@ class PiViewerGUI:
                 if mon_name not in self.cfg["displays"]:
                     self.cfg["displays"][mon_name] = {
                         "mode": "random_image",
+                        "fallback_mode": "random_image",
                         "image_interval": 60,
                         "image_category": "",
                         "specific_image": "",

@@ -29,12 +29,14 @@ def init_config():
             "displays": {
                 "Display0": {
                     "mode": "random_image",
+                    "fallback_mode": "random_image",   # <-- New fallback mode default
                     "image_interval": 60,
                     "image_category": "",
                     "specific_image": "",
                     "shuffle_mode": False,
                     "mixed_folders": [],
-                    "rotate": 0
+                    "rotate": 0,
+                    "spotify_info_position": "bottom-center"
                 }
             },
             "overlay": {
@@ -62,7 +64,7 @@ def init_config():
             },
             "gui": {
                 "background_blur_radius": 20,
-                "background_scale_percent": 100,  # now a % rather than 0.1-1.0
+                "background_scale_percent": 100,
                 "foreground_scale_percent": 100
             },
             "weather": {
@@ -168,7 +170,6 @@ def get_remote_config(ip):
     return None
 
 def get_remote_monitors(ip):
-    # not used much now, but keep for old usage
     url = f"http://{ip}:8080/list_monitors"
     try:
         r = requests.get(url, timeout=5)

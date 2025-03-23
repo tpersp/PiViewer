@@ -500,6 +500,7 @@ def index():
         if mon_name not in cfg["displays"]:
             cfg["displays"][mon_name] = {
                 "mode": "random_image",
+                "fallback_mode": "random_image",   # <-- Set default fallback for new monitors
                 "image_interval": 60,
                 "image_category": "",
                 "specific_image": "",
@@ -507,7 +508,8 @@ def index():
                 "mixed_folders": [],
                 "rotate": 0,
                 "screen_name": f"{mon_name}: {minfo['current_mode']}",
-                "chosen_mode": minfo["current_mode"]
+                "chosen_mode": minfo["current_mode"],
+                "spotify_info_position": "bottom-center"
             }
             log_message(f"Detected new monitor {mon_name} with current mode {minfo['current_mode']}")
         else:
@@ -555,6 +557,18 @@ def index():
                 dcfg["specific_image"] = new_spec
                 dcfg["rotate"] = new_rotate
 
+                # Update Spotify mode settings
+                if new_mode == "spotify":
+                    dcfg["fallback_mode"] = request.form.get(pre + "fallback_mode", dcfg.get("fallback_mode", "random_image"))
+                    dcfg["spotify_show_song"] = True if request.form.get(pre + "spotify_show_song") else False
+                    dcfg["spotify_show_artist"] = True if request.form.get(pre + "spotify_show_artist") else False
+                    dcfg["spotify_show_album"] = True if request.form.get(pre + "spotify_show_album") else False
+                    try:
+                        dcfg["spotify_font_size"] = int(request.form.get(pre + "spotify_font_size", "18"))
+                    except:
+                        dcfg["spotify_font_size"] = 18
+                    dcfg["spotify_negative_font"] = True if request.form.get(pre + "spotify_negative_font") else False
+                    dcfg["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dcfg.get("spotify_info_position", "bottom-center"))         
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list
                 else:
