@@ -381,6 +381,7 @@ class DisplayWindow(QMainWindow):
                 else:
                     self.spotify_info_label.useDifference = False
                     self.spotify_info_label.setStyleSheet(f"color: #FFFFFF; font-size: {font_size}px; background: transparent;")
+                self.spotify_info_label.raise_()
             else:
                 fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
                 if fallback_mode in ("random_image", "mixed", "specific_image"):
@@ -476,7 +477,6 @@ class DisplayWindow(QMainWindow):
                 self.gif_bounds = (bw, bh)
                 self.current_movie.frameChanged.connect(self.on_gif_frame_changed)
                 self.current_movie.start()
-
         else:
             if data["type"] == "static":
                 self.current_pixmap = data["pixmap"]
@@ -487,6 +487,8 @@ class DisplayWindow(QMainWindow):
 
             blurred = self.make_background_cover(self.current_pixmap)
             self.bg_label.setPixmap(blurred if blurred else QPixmap())
+        # Ensure the Spotify info label is on top
+        self.spotify_info_label.raise_()
 
     def on_gif_frame_changed(self, frame_index):
         if not self.current_movie or not self.handling_gif_frames:
@@ -516,6 +518,8 @@ class DisplayWindow(QMainWindow):
         if self.overlay_config.get("auto_negative_font", False):
             self.clock_label.update()
             self.weather_label.update()
+        # Ensure the Spotify info label stays on top during GIF updates
+        self.spotify_info_label.raise_()
 
     def calc_bounding_for_window(self, first_frame):
         fw = self.foreground_label.width()
