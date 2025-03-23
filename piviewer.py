@@ -176,13 +176,30 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.raise_()
         self.bg_label.lower()
 
-        # Position and raise Spotify info label at bottom
-        self.spotify_info_label.setGeometry(0, rect.height() - 50, rect.width(), 50)
+        # Position and raise Spotify info label based on configuration
+        pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
+        label_height = 50
+        if pos in ["top-left", "bottom-left"]:
+            self.spotify_info_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            x = 10
+            y = 10 if "top" in pos else rect.height() - label_height - 10
+            self.spotify_info_label.setGeometry(x, y, rect.width()//2, label_height)
+        elif pos in ["top-right", "bottom-right"]:
+            self.spotify_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            x = rect.width() - rect.width()//2 - 10
+            y = 10 if "top" in pos else rect.height() - label_height - 10
+            self.spotify_info_label.setGeometry(x, y, rect.width()//2, label_height)
+        elif pos == "top-center":
+            self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
+            x = 0
+            y = 10
+            self.spotify_info_label.setGeometry(x, y, rect.width(), label_height)
+        else:  # bottom-center or default
+            self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
+            x = 0
+            y = rect.height() - label_height - 10
+            self.spotify_info_label.setGeometry(x, y, rect.width(), label_height)
         self.spotify_info_label.raise_()
-        if self.disp_cfg.get("mode") == "spotify":
-            self.spotify_info_label.show()
-        else:
-            self.spotify_info_label.hide()
 
         if self.overlay_config.get("layout_style", "stacked") == "inline":
             self.clock_label.adjustSize()
@@ -348,7 +365,11 @@ class DisplayWindow(QMainWindow):
                     info_parts.append(self.spotify_info["artist"])
                 if self.disp_cfg.get("spotify_show_album", True) and self.spotify_info and self.spotify_info.get("album"):
                     info_parts.append(self.spotify_info["album"])
-                text = " | ".join(info_parts)
+                pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
+                if "left" in pos or "right" in pos:
+                    text = "\n".join(info_parts)
+                else:
+                    text = " | ".join(info_parts)
                 self.spotify_info_label.setText(text)
                 font_size = self.disp_cfg.get("spotify_font_size", 18)
                 if self.disp_cfg.get("spotify_negative_font", True):
@@ -717,7 +738,7 @@ class DisplayWindow(QMainWindow):
 
             sp = spotipy.Spotify(auth=token_info["access_token"])
             current = sp.current_playback()
-            if not current or not current.get("item"):
+            if not current or not current.get("item") or not current.get("is_playing", False):
                 self.spotify_info = None
                 return None
             item = current["item"]

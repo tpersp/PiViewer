@@ -64,8 +64,19 @@
             </label>
           </div>
           <br>
-          <label style="display:inline-block; margin-right:10px;">Spotify Font Size:</label>
-          <input type="number" name="{{ dname }}_spotify_font_size" value="{{ dcfg.spotify_font_size|default(18) }}" style="width:60px; display:inline-block;">
+          <label>Spotify Font Size:</label>
+          <input type="number" name="{{ dname }}_spotify_font_size" value="{{ dcfg.spotify_font_size|default(18) }}" style="width:60px;">
+          <br><br>
+          <!-- New: Spotify Info Position Dropdown -->
+          <label>Spotify Info Position:</label><br>
+          <select name="{{ dname }}_spotify_info_position">
+            <option value="top-left" {% if dcfg.spotify_info_position=="top-left" %}selected{% endif %}>Top Left</option>
+            <option value="top-center" {% if dcfg.spotify_info_position=="top-center" %}selected{% endif %}>Top Center</option>
+            <option value="top-right" {% if dcfg.spotify_info_position=="top-right" %}selected{% endif %}>Top Right</option>
+            <option value="bottom-left" {% if dcfg.spotify_info_position=="bottom-left" %}selected{% endif %}>Bottom Left</option>
+            <option value="bottom-center" {% if dcfg.spotify_info_position=="bottom-center" or dcfg.spotify_info_position is not defined %}selected{% endif %}>Bottom Center</option>
+            <option value="bottom-right" {% if dcfg.spotify_info_position=="bottom-right" %}selected{% endif %}>Bottom Right</option>
+          </select>
           <br><br>
           {% endif %}
           <!-- Interval (only for random/mixed) -->
