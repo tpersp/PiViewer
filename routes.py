@@ -559,14 +559,14 @@ def index():
                 # Update Spotify mode settings
                 if new_mode == "spotify":
                     dcfg["fallback_mode"] = request.form.get(pre + "fallback_mode", dcfg.get("fallback_mode", "random_image"))
-                    dcfg["spotify_show_song"] = (request.form.get(pre + "spotify_show_song", "yes") == "yes")
-                    dcfg["spotify_show_artist"] = (request.form.get(pre + "spotify_show_artist", "yes") == "yes")
-                    dcfg["spotify_show_album"] = (request.form.get(pre + "spotify_show_album", "yes") == "yes")
+                    dcfg["spotify_show_song"] = True if request.form.get(pre + "spotify_show_song") else False
+                    dcfg["spotify_show_artist"] = True if request.form.get(pre + "spotify_show_artist") else False
+                    dcfg["spotify_show_album"] = True if request.form.get(pre + "spotify_show_album") else False
                     try:
                         dcfg["spotify_font_size"] = int(request.form.get(pre + "spotify_font_size", "18"))
                     except:
                         dcfg["spotify_font_size"] = 18
-                    dcfg["spotify_negative_font"] = (request.form.get(pre + "spotify_negative_font", "yes") == "yes")
+                    dcfg["spotify_negative_font"] = True if request.form.get(pre + "spotify_negative_font") else False
 
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list

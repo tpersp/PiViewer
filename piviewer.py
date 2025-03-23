@@ -104,7 +104,7 @@ class DisplayWindow(QMainWindow):
         self.spotify_info_label = NegativeTextLabel(self)
         self.spotify_info_label.setAlignment(Qt.AlignCenter)
         self.spotify_info_label.setStyleSheet("background: transparent;")
-        self.spotify_info_label.hide()  # hidden if not in spotify mode
+        self.spotify_info_label.hide()  # Hidden unless in spotify mode
 
         # Set window geometry
         if self.assigned_screen:
@@ -176,8 +176,9 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.raise_()
         self.bg_label.lower()
 
-        # Position Spotify info label at bottom
+        # Position and raise Spotify info label at bottom
         self.spotify_info_label.setGeometry(0, rect.height() - 50, rect.width(), 50)
+        self.spotify_info_label.raise_()
         if self.disp_cfg.get("mode") == "spotify":
             self.spotify_info_label.show()
         else:
@@ -249,10 +250,10 @@ class DisplayWindow(QMainWindow):
         except:
             self.fg_scale_percent = 100
 
-        # If in Spotify mode, override timer interval to 15 sec for quicker checks
+        # In Spotify mode, poll every 5 sec for updates
         interval_s = self.disp_cfg.get("image_interval", 60)
         if self.disp_cfg.get("mode") == "spotify":
-            interval_s = 15
+            interval_s = 5
         self.slideshow_timer.setInterval(interval_s * 1000)
         self.slideshow_timer.start()
 
@@ -363,7 +364,6 @@ class DisplayWindow(QMainWindow):
                 fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
                 if fallback_mode in ("random_image", "mixed", "specific_image"):
                     image_list_backup = self.image_list
-                    index_backup = self.index
                     mode_backup = self.current_mode
                     self.current_mode = fallback_mode
                     self.build_local_image_list()
