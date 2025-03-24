@@ -416,8 +416,9 @@ systemctl start controller.service
 # 8) Configure Openbox autologin & picom in openbox autostart
 # -------------------------------------------------------
 echo
-echo "== Step 8: Configure Openbox autologin and autostart (with picom) =="
+echo "== Step 8: Configure Openbox autologin, picom, and autostart =="
 
+# Configure LightDM for Openbox autologin
 mkdir -p /etc/lightdm/lightdm.conf.d
 cat <<EOF >/etc/lightdm/lightdm.conf.d/99-openbox-autologin.conf
 [Seat:*]
@@ -428,6 +429,7 @@ autologin-user-timeout=0
 autologin-session=openbox
 EOF
 
+# Configure Openbox autostart to launch picom
 OPENBOX_CONF_DIR="/home/$VIEWER_USER/.config/openbox"
 mkdir -p "$OPENBOX_CONF_DIR"
 AUTOSTART_FILE="$OPENBOX_CONF_DIR/autostart"
@@ -440,14 +442,35 @@ cat <<EOF > "$AUTOSTART_FILE"
 # Set a black root just in case
 xsetroot -solid black
 
-# Start picom in background
-picom &
+# Start picom in background quietly
+picom >/dev/null 2>&1 &
 EOF
 
+# Set permissions on Openbox autostart
 chown -R "$VIEWER_USER:$VIEWER_USER" "/home/$VIEWER_USER/.config/openbox"
 chmod +x "$AUTOSTART_FILE"
 
-echo "Done configuring Openbox autologin and autostart."
+# Create Picom configuration optimized for Raspberry Pi
+PICOM_CONF_DIR="/home/$VIEWER_USER/.config/picom"
+mkdir -p "$PICOM_CONF_DIR"
+PICOM_CONF_FILE="$PICOM_CONF_DIR/picom.conf"
+
+cat <<EOF > "$PICOM_CONF_FILE"
+backend = "xrender";
+
+fade = true;
+fade-delta = 4;
+
+fade-in-step = 0.03;
+fade-out-step = 0.03;
+
+use-damage = false;
+EOF
+
+# Set permissions on Picom configuration
+chown -R "$VIEWER_USER:$VIEWER_USER" "$PICOM_CONF_DIR"
+
+echo "Done configuring Openbox autologin, Picom configuration, and autostart."
 
 # -------------------------------------------------------
 # 9) Reboot (skip if AUTO_UPDATE)
