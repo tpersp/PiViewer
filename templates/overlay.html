@@ -39,32 +39,36 @@
             Auto Negative Font Color
           </label>
         </div>
-        <!-- Clock Position (6-dot) -->
+        <!-- Clock Position, label above the mini-screen -->
         <div class="form-group">
           <label>Clock Position:</label>
-          <div id="{{ monitor_name }}_clockPosGrid" class="position-grid">
-            <div class="pos-dot" data-pos="top-left"></div>
-            <div class="pos-dot" data-pos="top-center"></div>
-            <div class="pos-dot" data-pos="top-right"></div>
-            <div class="pos-dot" data-pos="bottom-left"></div>
-            <div class="pos-dot" data-pos="bottom-center"></div>
-            <div class="pos-dot" data-pos="bottom-right"></div>
+          <div class="mini-screen">
+            <div id="{{ monitor_name }}_clockPosGrid" class="position-grid">
+              <div class="pos-dot" data-pos="top-left"></div>
+              <div class="pos-dot" data-pos="top-center"></div>
+              <div class="pos-dot" data-pos="top-right"></div>
+              <div class="pos-dot" data-pos="bottom-left"></div>
+              <div class="pos-dot" data-pos="bottom-center"></div>
+              <div class="pos-dot" data-pos="bottom-right"></div>
+            </div>
           </div>
           <input type="hidden"
                  id="{{ monitor_name }}_clockPosInput"
                  name="{{ monitor_name }}_clock_position"
                  value="{% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position is defined %}{{ monitor_cfg.overlay.clock_position }}{% else %}bottom-center{% endif %}">
         </div>
-        <!-- Weather Position (6-dot) -->
+        <!-- Weather Position, label above the mini-screen -->
         <div class="form-group">
           <label>Weather Position:</label>
-          <div id="{{ monitor_name }}_weatherPosGrid" class="position-grid">
-            <div class="pos-dot" data-pos="top-left"></div>
-            <div class="pos-dot" data-pos="top-center"></div>
-            <div class="pos-dot" data-pos="top-right"></div>
-            <div class="pos-dot" data-pos="bottom-left"></div>
-            <div class="pos-dot" data-pos="bottom-center"></div>
-            <div class="pos-dot" data-pos="bottom-right"></div>
+          <div class="mini-screen">
+            <div id="{{ monitor_name }}_weatherPosGrid" class="position-grid">
+              <div class="pos-dot" data-pos="top-left"></div>
+              <div class="pos-dot" data-pos="top-center"></div>
+              <div class="pos-dot" data-pos="top-right"></div>
+              <div class="pos-dot" data-pos="bottom-left"></div>
+              <div class="pos-dot" data-pos="bottom-center"></div>
+              <div class="pos-dot" data-pos="bottom-right"></div>
+            </div>
           </div>
           <input type="hidden"
                  id="{{ monitor_name }}_weatherPosInput"

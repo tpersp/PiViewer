@@ -67,15 +67,17 @@
           <label>Spotify Font Size:</label>
           <input type="number" name="{{ dname }}_spotify_font_size" value="{{ dcfg.spotify_font_size|default(18) }}" style="width:60px;">
           <br><br>
-          <!-- New: Spotify Info Position (6-dot grid) -->
+          <!-- New: Spotify Info Position in a labeled mini-screen -->
           <label>Spotify Info Position:</label>
-          <div id="{{ dname }}_spotifyPositionGrid" class="position-grid">
-            <div class="pos-dot" data-pos="top-left"></div>
-            <div class="pos-dot" data-pos="top-center"></div>
-            <div class="pos-dot" data-pos="top-right"></div>
-            <div class="pos-dot" data-pos="bottom-left"></div>
-            <div class="pos-dot" data-pos="bottom-center"></div>
-            <div class="pos-dot" data-pos="bottom-right"></div>
+          <div class="mini-screen">
+            <div id="{{ dname }}_spotifyPositionGrid" class="position-grid">
+              <div class="pos-dot" data-pos="top-left"></div>
+              <div class="pos-dot" data-pos="top-center"></div>
+              <div class="pos-dot" data-pos="top-right"></div>
+              <div class="pos-dot" data-pos="bottom-left"></div>
+              <div class="pos-dot" data-pos="bottom-center"></div>
+              <div class="pos-dot" data-pos="bottom-right"></div>
+            </div>
           </div>
           <input type="hidden" id="{{ dname }}_spotifyPositionInput"
                  name="{{ dname }}_spotify_info_position"

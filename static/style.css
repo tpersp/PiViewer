@@ -331,3 +331,15 @@ table td button {
   background: var(--nav-active);
   border-color: var(--nav-active-fg);
 }
+
+/* A small "screen" to show the 6-dot position inside. */
+.mini-screen {
+  width: 130px;
+  height: 90px;
+  border: 2px solid var(--border-muted);
+  border-radius: 6px;
+  margin: 10px auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
