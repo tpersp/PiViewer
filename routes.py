@@ -14,7 +14,8 @@ from utils import (
     get_system_stats, get_subfolders, count_files_in_folder,
     get_remote_config, get_remote_monitors,
     pull_displays_from_remote, push_displays_to_remote,
-    get_hostname, get_ip_address, get_pi_model
+    get_hostname, get_ip_address, get_pi_model,
+    CONFIG_PATH
 )
 
 def detect_monitors_extended():
@@ -255,15 +256,15 @@ def settings():
                 if f and f.filename:
                     f.save(WEB_BG)
 
-        # Updated weather settings using zip code API call only
+        # Updated weather settings
         w_api = request.form.get("weather_api_key", "").strip()
         w_zip = request.form.get("weather_zip_code", "").strip()
         w_cc = request.form.get("weather_country_code", "").strip()
         if w_api and w_zip and w_cc:
             try:
                 weather_url = f"http://api.openweathermap.org/data/2.5/weather?zip={w_zip},{w_cc}&appid={w_api}&units=metric"
-                r = requests.get(weather_url, timeout=5)
-            except Exception as e:
+                requests.get(weather_url, timeout=5)
+            except:
                 pass
         cfg["weather"]["api_key"] = w_api
         cfg["weather"]["zip_code"] = w_zip
@@ -307,7 +308,7 @@ def settings():
                         "timezone": data.get("timezone", "Unknown"),
                         "country": data.get("sys", {}).get("country", "Unknown")
                     }
-            except Exception as e:
+            except:
                 weather_info = None
         return render_template(
             "settings.html",
@@ -316,6 +317,22 @@ def settings():
             update_branch=UPDATE_BRANCH,
             weather_info=weather_info
         )
+
+@main_bp.route("/clear_config", methods=["POST"])
+def clear_config():
+    """
+    Wipes the viewerconfig.json and resets it to defaults.
+    Then restarts piviewer.
+    """
+    if os.path.exists(CONFIG_PATH):
+        os.remove(CONFIG_PATH)
+        log_message("viewerconfig.json has been deleted. Re-initializing config.")
+    init_config()  # recreate default config
+    try:
+        subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
+    except subprocess.CalledProcessError as e:
+        log_message(f"Failed to restart piviewer.service after clearing config: {e}")
+    return redirect(url_for("main.settings"))
 
 @main_bp.route("/configure_spotify", methods=["GET", "POST"])
 def configure_spotify():
@@ -415,65 +432,37 @@ def callback():
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
     cfg = load_config()
-    monitors_dict = get_local_monitors_from_config(cfg)
-    selected_monitor = request.args.get("monitor", "All")
     if request.method == "POST":
-        selected_monitor = request.form.get("selected_monitor", "All")
-        new_overlay = {
-            "overlay_enabled": ("overlay_enabled" in request.form),
-            "clock_enabled": ("clock_enabled" in request.form),
-            "weather_enabled": ("weather_enabled" in request.form),
-            "clock_font_size": int(request.form.get("clock_font_size", "26")),
-            "weather_font_size": int(request.form.get("weather_font_size", "22")),
-            "font_color": request.form.get("font_color", "#FFFFFF"),
-            "layout_style": request.form.get("layout_style", "stacked"),
-            "padding_x": int(request.form.get("padding_x", "8")),
-            "padding_y": int(request.form.get("padding_y", "6")),
-            "show_desc": ("show_desc" in request.form),
-            "show_temp": ("show_temp" in request.form),
-            "show_feels_like": ("show_feels_like" in request.form),
-            "show_humidity": ("show_humidity" in request.form),
-            "auto_negative_font": ("auto_negative_font" in request.form)
-        }
-        if selected_monitor == "All":
-            cfg["overlay"] = new_overlay
-        else:
-            if "displays" in cfg and selected_monitor in cfg["displays"]:
-                cfg["displays"][selected_monitor]["overlay"] = new_overlay
+        # Now storing weather_layout along with everything else
+        for monitor in cfg.get("displays", {}):
+            new_overlay = {
+                "clock_enabled": (f"{monitor}_clock_enabled" in request.form),
+                "weather_enabled": (f"{monitor}_weather_enabled" in request.form),
+                "clock_font_size": int(request.form.get(f"{monitor}_clock_font_size", "26")),
+                "weather_font_size": int(request.form.get(f"{monitor}_weather_font_size", "22")),
+                "font_color": request.form.get(f"{monitor}_font_color", "#FFFFFF"),
+                "auto_negative_font": (f"{monitor}_auto_negative_font" in request.form),
+                "clock_position": request.form.get(f"{monitor}_clock_position", "bottom-center"),
+                "weather_position": request.form.get(f"{monitor}_weather_position", "bottom-center"),
+                "weather_layout": request.form.get(f"{monitor}_weather_layout", "inline"),
+                "show_desc": (f"{monitor}_show_desc" in request.form),
+                "show_temp": (f"{monitor}_show_temp" in request.form),
+                "show_feels_like": (f"{monitor}_show_feels_like" in request.form),
+                "show_humidity": (f"{monitor}_show_humidity" in request.form)
+            }
+            if "displays" in cfg and monitor in cfg["displays"]:
+                cfg["displays"][monitor]["overlay"] = new_overlay
         save_config(cfg)
         try:
             subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
         except subprocess.CalledProcessError as e:
             log_message(f"Failed to restart piviewer.service: {e}")
-        return redirect(url_for("main.overlay_config", monitor=selected_monitor))
+        return redirect(url_for("main.overlay_config"))
     else:
-        if selected_monitor == "All":
-            overlay_cfg = cfg.get("overlay", {})
-        else:
-            overlay_cfg = {}
-            if "displays" in cfg and selected_monitor in cfg["displays"]:
-                overlay_cfg = cfg["displays"][selected_monitor].get("overlay", {})
-            if not overlay_cfg:
-                overlay_cfg = cfg.get("overlay", {})
-        preview_mon = {}
-        if selected_monitor == "All":
-            # Use a default resolution for preview when all monitors are combined
-            max_res = "1920x1080"
-            for m in monitors_dict.values():
-                max_res = m.get("resolution", "1920x1080")
-                break
-            preview_mon["All"] = {"resolution": max_res}
-        else:
-            preview_mon[selected_monitor] = monitors_dict.get(selected_monitor, {"resolution": "1920x1080"})
-        pw, ph, preview_overlay = compute_overlay_preview(overlay_cfg, preview_mon)
         return render_template(
             "overlay.html",
             theme=cfg.get("theme", "dark"),
-            overlay=overlay_cfg,
-            monitors=monitors_dict,
-            selected_monitor=selected_monitor,
-            preview_size={"width": pw, "height": ph},
-            preview_overlay=preview_overlay
+            monitors=cfg.get("displays", {})
         )
 
 @main_bp.route("/", methods=["GET", "POST"])
@@ -500,7 +489,7 @@ def index():
         if mon_name not in cfg["displays"]:
             cfg["displays"][mon_name] = {
                 "mode": "random_image",
-                "fallback_mode": "random_image",   # <-- Set default fallback for new monitors
+                "fallback_mode": "random_image",
                 "image_interval": 60,
                 "image_category": "",
                 "specific_image": "",
@@ -557,7 +546,7 @@ def index():
                 dcfg["specific_image"] = new_spec
                 dcfg["rotate"] = new_rotate
 
-                # Update Spotify mode settings
+                # If Spotify, store extras
                 if new_mode == "spotify":
                     dcfg["fallback_mode"] = request.form.get(pre + "fallback_mode", dcfg.get("fallback_mode", "random_image"))
                     dcfg["spotify_show_song"] = True if request.form.get(pre + "spotify_show_song") else False
@@ -568,7 +557,8 @@ def index():
                     except:
                         dcfg["spotify_font_size"] = 18
                     dcfg["spotify_negative_font"] = True if request.form.get(pre + "spotify_negative_font") else False
-                    dcfg["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dcfg.get("spotify_info_position", "bottom-center"))         
+                    dcfg["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dcfg.get("spotify_info_position", "bottom-center"))
+
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list
                 else:
@@ -613,7 +603,7 @@ def index():
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
-    # Dynamic status for main devices
+    # Status logic
     if cfg.get("role") == "main":
         sp_cfg = cfg.get("spotify", {})
         if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
@@ -751,7 +741,6 @@ def sync_config():
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
-    # Called by push_displays_to_remote from a "main" device
     incoming = request.get_json()
     if not incoming:
         return "No JSON received", 400
@@ -762,7 +751,6 @@ def update_config():
         cfg["theme"] = incoming["theme"]
     save_config(cfg)
     log_message("Local config partially updated via /update_config")
-    # Force remote piviewer to reload new config
     try:
         subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
     except subprocess.CalledProcessError as e:
@@ -870,7 +858,6 @@ def update_app():
     log_message("Update completed successfully.")
     subprocess.Popen(["sudo", "reboot"])
 
-    # Match the theme and add an auto-redirect/button:
     theme = cfg.get("theme", "dark")
     if theme == "dark":
         page_bg = "#121212"

@@ -31,21 +31,60 @@ if [[ "$1" == "--auto-update" ]]; then
   AUTO_UPDATE="true"
 fi
 
+# -------------------------------------------------------
+# Display fancy reminder about X11 vs Wayland
+# -------------------------------------------------------
 if [[ "$AUTO_UPDATE" == "false" ]]; then
-  echo "================================================================="
-  echo "  Simple 'It Just Works' Setup with LightDM + PiViewer (PySide6) "
-  echo "================================================================="
+  echo "***************************************************************"
+  echo "*                                                             *"
+  echo "*     IMPORTANT: PiViewer requires X11 for proper operation   *"
+  echo "*                                                             *"
+  echo "*  If you are currently using Wayland, please change your     *"
+  echo "*  display server to X11 before continuing.                   *"
+  echo "*                                                             *"
+  echo "***************************************************************"
   echo
-  echo "This script will:"
-  echo " 1) Install lightdm (Xorg), python3, etc. plus system python3-pyside6"
-  echo " 2) pip-install your other dependencies (with --break-system-packages)"
-  echo " 3) Disable screen blanking"
-  echo " 4) Prompt for user & paths"
-  echo " 5) Create .env in VIEWER_HOME"
-  echo " 6) (Optional) mount a network share or fallback to local uploads folder"
-  echo " 7) Create systemd services for piviewer.py + controller"
-  echo " 8) Configure Openbox autologin & picom in openbox autostart"
-  echo " 9) Reboot"
+  read -p "Have you switched your display server to X11? (y/n): " confirm_x11
+  if [[ ! "$confirm_x11" =~ ^[Yy]$ ]]; then
+      echo "-------------------------------------------------------------"
+      echo "  Please switch to X11 and then rerun this script. Exiting.  "
+      echo "                                                             "
+      echo "  Please change your display server to X11 by running:       "
+      echo "     sudo raspi-config -> advanced -> wayland -> select x11  "
+      echo "                                                             "
+      echo "  After making the change and rebooting, rerun this script.  "
+      echo "-------------------------------------------------------------"
+      exit 1
+  fi
+else
+  echo "------------------------------------------------------------------------------"
+  echo "WARNING: PiViewer requires X11. Ensure that your display server is set to X11."
+  echo "------------------------------------------------------------------------------"
+fi
+
+# -------------------------------------------------------
+# Display fancy initial banner if not in auto-update mode
+# -------------------------------------------------------
+if [[ "$AUTO_UPDATE" == "false" ]]; then
+  echo "==============================================================="
+  echo "|                                                             |"
+  echo "|         Welcome to the PiViewer Setup Script                |"
+  echo "|                                                             |"
+  echo "|   Simple 'It Just Works' Setup with LightDM + PiViewer      |"
+  echo "|                      (PySide6)                              |"
+  echo "|                                                             |"
+  echo "==============================================================="
+  echo
+  echo "This script will perform the following tasks:"
+  echo "  1) Install lightdm (Xorg), python3, etc. plus system python3-pyside6"
+  echo "  2) pip-install your other dependencies (with --break-system-packages)"
+  echo "  3) Disable screen blanking"
+  echo "  4) Prompt for user & paths"
+  echo "  5) Create .env in VIEWER_HOME"
+  echo "  6) (Optional) Mount a network share or fallback to local uploads folder"
+  echo "  7) Create systemd services for piviewer.py and the controller"
+  echo "  8) Configure Openbox autologin & picom in openbox autostart"
+  echo "  9) Reboot the system"
   echo
   read -p "Press [Enter] to continue or Ctrl+C to abort..."
 fi
@@ -177,7 +216,12 @@ fi
 # -------------------------------------------------------
 if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo
-  echo "== Step 4: Configuration =="
+  echo "*******************************************************"
+  echo "*                                                     *"
+  echo "*         PiViewer Configuration Setup                *"
+  echo "*                                                     *"
+  echo "*******************************************************"
+  echo
   read -p "Enter the Linux username to run PiViewer (default: pi): " VIEWER_USER
   VIEWER_USER=${VIEWER_USER:-pi}
 
@@ -195,6 +239,10 @@ if [[ "$AUTO_UPDATE" == "false" ]]; then
     fi
   fi
 
+  echo
+  echo "-------------------------------------------------------"
+  echo "  Please specify the installation directories below:"
+  echo "-------------------------------------------------------"
   read -p "Enter the path for VIEWER_HOME (default: /home/$VIEWER_USER/PiViewer): " input_home
   if [ -z "$input_home" ]; then
     VIEWER_HOME="/home/$VIEWER_USER/PiViewer"
@@ -368,8 +416,9 @@ systemctl start controller.service
 # 8) Configure Openbox autologin & picom in openbox autostart
 # -------------------------------------------------------
 echo
-echo "== Step 8: Configure Openbox autologin and autostart (with picom) =="
+echo "== Step 8: Configure Openbox autologin, picom, and autostart =="
 
+# Configure LightDM for Openbox autologin
 mkdir -p /etc/lightdm/lightdm.conf.d
 cat <<EOF >/etc/lightdm/lightdm.conf.d/99-openbox-autologin.conf
 [Seat:*]
@@ -380,6 +429,7 @@ autologin-user-timeout=0
 autologin-session=openbox
 EOF
 
+# Configure Openbox autostart to launch picom
 OPENBOX_CONF_DIR="/home/$VIEWER_USER/.config/openbox"
 mkdir -p "$OPENBOX_CONF_DIR"
 AUTOSTART_FILE="$OPENBOX_CONF_DIR/autostart"
@@ -392,27 +442,50 @@ cat <<EOF > "$AUTOSTART_FILE"
 # Set a black root just in case
 xsetroot -solid black
 
-# Start picom in background
-picom &
+# Start picom in background quietly
+picom >/dev/null 2>&1 &
 EOF
 
+# Set permissions on Openbox autostart
 chown -R "$VIEWER_USER:$VIEWER_USER" "/home/$VIEWER_USER/.config/openbox"
 chmod +x "$AUTOSTART_FILE"
 
-echo "Done configuring Openbox autostart."
+# Create Picom configuration optimized for Raspberry Pi
+PICOM_CONF_DIR="/home/$VIEWER_USER/.config/picom"
+mkdir -p "$PICOM_CONF_DIR"
+PICOM_CONF_FILE="$PICOM_CONF_DIR/picom.conf"
+
+cat <<EOF > "$PICOM_CONF_FILE"
+backend = "xrender";
+
+fade = true;
+fade-delta = 4;
+
+fade-in-step = 0.03;
+fade-out-step = 0.03;
+
+use-damage = false;
+EOF
+
+# Set permissions on Picom configuration
+chown -R "$VIEWER_USER:$VIEWER_USER" "$PICOM_CONF_DIR"
+
+echo "Done configuring Openbox autologin, Picom configuration, and autostart."
 
 # -------------------------------------------------------
 # 9) Reboot (skip if AUTO_UPDATE)
 # -------------------------------------------------------
 if [[ "$AUTO_UPDATE" == "false" ]]; then
   echo
-  echo "========================================================"
-  echo "Setup is complete. The Pi will now reboot."
-  echo "Upon reboot:"
-  echo " - LightDM auto-logs into X/Openbox (DISPLAY=:0)"
-  echo " - openbox/autostart runs picom"
-  echo " - piviewer.service runs piviewer.py"
-  echo " - controller.service runs Flask at http://<Pi-IP>:8080"
+  echo "==============================================================="
+  echo "   Setup is complete! Your Pi will now reboot.                 "
+  echo "                                                               "
+  echo "   Upon reboot, you will see:                                  "
+  echo "    - LightDM auto-logging into X/Openbox (DISPLAY=:0)         "
+  echo "    - openbox/autostart launching picom                        "
+  echo "    - piviewer.service running piviewer.py                     "
+  echo "    - controller.service running Flask at http://<Pi-IP>:8080  "
+  echo "==============================================================="
   echo
   echo "Rebooting in 5 seconds..."
   sleep 5
