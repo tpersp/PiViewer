@@ -40,8 +40,8 @@ def init_config():
                 }
             },
             "overlay": {
-                "overlay_enabled": False,
-                "clock_enabled": True,
+                "overlay_enabled": True,
+                "clock_enabled": False,
                 "weather_enabled": False,
                 "background_enabled": True,
                 "font_color": "#FFFFFF",
@@ -56,8 +56,8 @@ def init_config():
                 "layout_style": "stacked",
                 "padding_x": 8,
                 "padding_y": 6,
-                "show_desc": True,
-                "show_temp": True,
+                "show_desc": False,
+                "show_temp": False,
                 "show_feels_like": False,
                 "show_humidity": False,
                 "monitor_selection": "All"
