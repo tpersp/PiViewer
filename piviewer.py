@@ -108,7 +108,6 @@ class DisplayWindow(QMainWindow):
                 self.setGeometry(screen.geometry())
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.showFullScreen()
-        self.setStyleSheet("background-color: black;")  # Ensure a black background to avoid grey flash
 
         # Central widget and child labels
         self.main_widget = QWidget(self)
@@ -124,7 +123,7 @@ class DisplayWindow(QMainWindow):
         self.foreground_label = QLabel(self.main_widget)
         self.foreground_label.setScaledContents(False)
         self.foreground_label.setAlignment(Qt.AlignCenter)
-        self.foreground_label.setStyleSheet("background-color: black;")
+        self.foreground_label.setStyleSheet("background-color: transparent;")
 
         # Overlay labels for clock and weather
         self.clock_label = NegativeTextLabel(self.main_widget)
@@ -452,8 +451,7 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setMovie(None)
         self.foreground_label.setText(message)
         self.foreground_label.setAlignment(Qt.AlignCenter)
-        # Changed background-color from transparent to black to avoid grey flashes
-        self.foreground_label.setStyleSheet("color: white; background-color: black;")
+        self.foreground_label.setStyleSheet("color: white; background-color: transparent;")
 
     def show_foreground_image(self, fullpath, is_spotify=False):
         if not os.path.exists(fullpath):
