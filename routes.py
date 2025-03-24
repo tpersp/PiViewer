@@ -14,7 +14,8 @@ from utils import (
     get_system_stats, get_subfolders, count_files_in_folder,
     get_remote_config, get_remote_monitors,
     pull_displays_from_remote, push_displays_to_remote,
-    get_hostname, get_ip_address, get_pi_model
+    get_hostname, get_ip_address, get_pi_model,
+    CONFIG_PATH
 )
 
 def detect_monitors_extended():
@@ -153,6 +154,7 @@ def stats_json():
 
 @main_bp.route("/list_monitors")
 def list_monitors():
+    # For remote devices, not heavily used in local
     return jsonify({"Display0": {"resolution": "1920x1080", "offset_x": 0, "offset_y": 0}})
 
 @main_bp.route("/list_folders")
@@ -255,7 +257,7 @@ def settings():
                 if f and f.filename:
                     f.save(WEB_BG)
 
-        # Updated weather settings using zip code API call only
+        # Updated weather settings
         w_api = request.form.get("weather_api_key", "").strip()
         w_zip = request.form.get("weather_zip_code", "").strip()
         w_cc = request.form.get("weather_country_code", "").strip()
@@ -316,6 +318,22 @@ def settings():
             update_branch=UPDATE_BRANCH,
             weather_info=weather_info
         )
+
+@main_bp.route("/clear_config", methods=["POST"])
+def clear_config():
+    """
+    Wipes the viewerconfig.json and resets it to defaults.
+    Then restarts piviewer.
+    """
+    if os.path.exists(CONFIG_PATH):
+        os.remove(CONFIG_PATH)
+        log_message("viewerconfig.json has been deleted. Re-initializing config.")
+    init_config()  # recreate default config
+    try:
+        subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
+    except subprocess.CalledProcessError as e:
+        log_message(f"Failed to restart piviewer.service after clearing config: {e}")
+    return redirect(url_for("main.settings"))
 
 @main_bp.route("/configure_spotify", methods=["GET", "POST"])
 def configure_spotify():
@@ -416,7 +434,8 @@ def callback():
 def overlay_config():
     cfg = load_config()
     if request.method == "POST":
-        # Iterate over each monitor in the displays config and update its overlay settings.
+        # Iterate over each monitor in the displays config and update its overlay settings,
+        # matching the separate "clock_position" and "weather_position" from overlay.html
         for monitor in cfg.get("displays", {}):
             new_overlay = {
                 "clock_enabled": (f"{monitor}_clock_enabled" in request.form),
@@ -425,7 +444,8 @@ def overlay_config():
                 "weather_font_size": int(request.form.get(f"{monitor}_weather_font_size", "22")),
                 "font_color": request.form.get(f"{monitor}_font_color", "#FFFFFF"),
                 "auto_negative_font": (f"{monitor}_auto_negative_font" in request.form),
-                "clock_weather_position": request.form.get(f"{monitor}_clock_weather_position", "bottom-center"),
+                "clock_position": request.form.get(f"{monitor}_clock_position", "bottom-center"),
+                "weather_position": request.form.get(f"{monitor}_weather_position", "bottom-center"),
                 "show_desc": (f"{monitor}_show_desc" in request.form),
                 "show_temp": (f"{monitor}_show_temp" in request.form),
                 "show_feels_like": (f"{monitor}_show_feels_like" in request.form),
@@ -440,7 +460,6 @@ def overlay_config():
             log_message(f"Failed to restart piviewer.service: {e}")
         return redirect(url_for("main.overlay_config"))
     else:
-        # For GET request, simply render the overlay configuration page.
         return render_template(
             "overlay.html",
             theme=cfg.get("theme", "dark"),
@@ -471,7 +490,7 @@ def index():
         if mon_name not in cfg["displays"]:
             cfg["displays"][mon_name] = {
                 "mode": "random_image",
-                "fallback_mode": "random_image",   # <-- Set default fallback for new monitors
+                "fallback_mode": "random_image",
                 "image_interval": 60,
                 "image_category": "",
                 "specific_image": "",
@@ -528,7 +547,7 @@ def index():
                 dcfg["specific_image"] = new_spec
                 dcfg["rotate"] = new_rotate
 
-                # Update Spotify mode settings
+                # If Spotify, store extra details
                 if new_mode == "spotify":
                     dcfg["fallback_mode"] = request.form.get(pre + "fallback_mode", dcfg.get("fallback_mode", "random_image"))
                     dcfg["spotify_show_song"] = True if request.form.get(pre + "spotify_show_song") else False
@@ -539,7 +558,8 @@ def index():
                     except:
                         dcfg["spotify_font_size"] = 18
                     dcfg["spotify_negative_font"] = True if request.form.get(pre + "spotify_negative_font") else False
-                    dcfg["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dcfg.get("spotify_info_position", "bottom-center"))         
+                    dcfg["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dcfg.get("spotify_info_position", "bottom-center"))
+
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list
                 else:
@@ -584,8 +604,9 @@ def index():
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
-    # Dynamic status for main devices
+    # Status row logic
     if cfg.get("role") == "main":
+        # Spotify status
         sp_cfg = cfg.get("spotify", {})
         if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
             spotify_cache_path = os.path.join(VIEWER_HOME, ".spotify_cache")
@@ -596,6 +617,7 @@ def index():
         else:
             spotify_status = "❌"
 
+        # Weather status
         w_cfg = cfg.get("weather", {})
         if w_cfg.get("api_key") and w_cfg.get("zip_code") and w_cfg.get("country_code"):
             weather_status = "✅"
@@ -841,7 +863,7 @@ def update_app():
     log_message("Update completed successfully.")
     subprocess.Popen(["sudo", "reboot"])
 
-    # Match the theme and add an auto-redirect/button:
+    # Simple page to show user a message while rebooting
     theme = cfg.get("theme", "dark")
     if theme == "dark":
         page_bg = "#121212"
