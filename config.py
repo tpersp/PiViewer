@@ -27,7 +27,7 @@ load_env()
 # Application Version & Paths
 # ------------------------------------------------------------
 
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 
 VIEWER_HOME = os.environ.get("VIEWER_HOME", "/home/pi/PiViewer")
 IMAGE_DIR   = os.environ.get("IMAGE_DIR", "/mnt/PiViewers")
@@ -39,4 +39,4 @@ WEB_BG      = os.path.join(VIEWER_HOME, "web_bg.jpg")
 # ------------------------------------------------------------
 # Git Update Branch
 # ------------------------------------------------------------
-UPDATE_BRANCH = os.environ.get("UPDATE_BRANCH", "main")
+UPDATE_BRANCH = os.environ.get("UPDATE_BRANCH", "dev")
