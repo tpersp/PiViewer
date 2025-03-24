@@ -4,164 +4,150 @@
 <div class="page-section" style="max-width:1200px;">
   <h2>Overlay Configuration</h2>
   <form method="POST" action="{{ url_for('main.overlay_config') }}">
-
-    <!-- Each monitor in a card, similarly to index.html, 
-         but using the absolute-positioned mini-screen style. -->
     <div class="cards-container">
       {% for monitor_name, monitor_cfg in monitors.items() %}
       <div class="card" style="text-align:center;">
         <h3>{{ monitor_name }} ({{ monitor_cfg.screen_name }})</h3>
-
-        <!-- Clock and Weather checkboxes -->
-        <div style="margin-bottom:8px;">
-          <label style="margin-right:10px;">
-            <input type="checkbox" name="{{ monitor_name }}_clock_enabled"
-                   {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_enabled %}checked{% endif %}>
+        <!-- Clock enable/size/color -->
+        <div style="margin-bottom:10px;">
+          <label>
+            <input type="checkbox" name="{{ monitor_name }}_clock_enabled" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_enabled %}checked{% endif %}>
             Show Clock
           </label>
+          <br><br>
+          <label>Clock Font Size:</label>
+          <input type="number" name="{{ monitor_name }}_clock_font_size"
+                 value="{{ monitor_cfg.overlay.clock_font_size if monitor_cfg.overlay and monitor_cfg.overlay.clock_font_size is defined else 26 }}">
+        </div>
+
+        <!-- Weather enable/size/color -->
+        <div style="margin-bottom:10px;">
           <label>
-            <input type="checkbox" name="{{ monitor_name }}_weather_enabled"
-                   {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_enabled %}checked{% endif %}>
+            <input type="checkbox" name="{{ monitor_name }}_weather_enabled" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_enabled %}checked{% endif %}>
             Show Weather
           </label>
+          <br><br>
+          <label>Weather Font Size:</label>
+          <input type="number" name="{{ monitor_name }}_weather_font_size"
+                 value="{{ monitor_cfg.overlay.weather_font_size if monitor_cfg.overlay and monitor_cfg.overlay.weather_font_size is defined else 22 }}">
+          <br><br>
+          <label>Weather Layout:</label>
+          <select name="{{ monitor_name }}_weather_layout">
+            <option value="inline"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == "inline" %}selected{% endif %}>
+              Inline
+            </option>
+            <option value="stacked"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == "stacked" %}selected{% endif %}>
+              Stacked
+            </option>
+          </select>
         </div>
 
-        <!-- Clock Font Size -->
-        <label>Clock Font Size:</label><br>
-        <input type="number" name="{{ monitor_name }}_clock_font_size"
-               value="{{ monitor_cfg.overlay.clock_font_size if monitor_cfg.overlay and monitor_cfg.overlay.clock_font_size is defined else 26 }}">
-        <br><br>
-
-        <!-- Weather Font Size -->
-        <label>Weather Font Size:</label><br>
-        <input type="number" name="{{ monitor_name }}_weather_font_size"
-               value="{{ monitor_cfg.overlay.weather_font_size if monitor_cfg.overlay and monitor_cfg.overlay.weather_font_size is defined else 22 }}">
-        <br><br>
-
-        <!-- Font Color and Auto Negative -->
-        <label>Font Color:</label><br>
-        <input type="color" name="{{ monitor_name }}_font_color"
-               value="{{ monitor_cfg.overlay.font_color if monitor_cfg.overlay and monitor_cfg.overlay.font_color is defined else '#FFFFFF' }}">
-        <br><br>
-        <label style="margin-right:10px;">
-          <input type="checkbox" name="{{ monitor_name }}_auto_negative_font"
-                 {% if monitor_cfg.overlay and monitor_cfg.overlay.auto_negative_font %}checked{% endif %}>
-          Auto Negative Font
-        </label>
-        <br><br>
-
-        <!-- Clock Position (absolute mini-screen) -->
-        <label>Clock Position:</label>
-        <div class="mini-screen-abs">
-          <div class="pos-dot-abs dot-top-left" data-pos="top-left"></div>
-          <div class="pos-dot-abs dot-top-center" data-pos="top-center"></div>
-          <div class="pos-dot-abs dot-top-right" data-pos="top-right"></div>
-          <div class="pos-dot-abs dot-bottom-left" data-pos="bottom-left"></div>
-          <div class="pos-dot-abs dot-bottom-center" data-pos="bottom-center"></div>
-          <div class="pos-dot-abs dot-bottom-right" data-pos="bottom-right"></div>
+        <!-- Color / auto negative font -->
+        <div style="margin-bottom:10px;">
+          <label>Font Color:</label>
+          <input type="color" name="{{ monitor_name }}_font_color"
+                 value="{{ monitor_cfg.overlay.font_color if monitor_cfg.overlay and monitor_cfg.overlay.font_color is defined else '#FFFFFF' }}">
+          <br><br>
+          <label>
+            <input type="checkbox" name="{{ monitor_name }}_auto_negative_font"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.auto_negative_font %}checked{% endif %}>
+            Auto Negative Font Color
+          </label>
         </div>
-        <input type="hidden"
-               id="{{ monitor_name }}_clockPosInput"
-               name="{{ monitor_name }}_clock_position"
-               value="{% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position is defined %}{{ monitor_cfg.overlay.clock_position }}{% else %}bottom-center{% endif %}">
 
-        <!-- Weather Position (absolute mini-screen) -->
-        <label>Weather Position:</label>
-        <div class="mini-screen-abs">
-          <div class="pos-dot-abs dot-top-left" data-pos="top-left"></div>
-          <div class="pos-dot-abs dot-top-center" data-pos="top-center"></div>
-          <div class="pos-dot-abs dot-top-right" data-pos="top-right"></div>
-          <div class="pos-dot-abs dot-bottom-left" data-pos="bottom-left"></div>
-          <div class="pos-dot-abs dot-bottom-center" data-pos="bottom-center"></div>
-          <div class="pos-dot-abs dot-bottom-right" data-pos="bottom-right"></div>
+        <!-- Independent positions for clock & weather -->
+        <div style="margin-bottom:10px;">
+          <label>Clock Position:</label>
+          <select name="{{ monitor_name }}_clock_position">
+            <option value="top-left"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "top-left" %}selected{% endif %}>
+              Top Left
+            </option>
+            <option value="top-center"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "top-center" %}selected{% endif %}>
+              Top Center
+            </option>
+            <option value="top-right"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "top-right" %}selected{% endif %}>
+              Top Right
+            </option>
+            <option value="bottom-left"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "bottom-left" %}selected{% endif %}>
+              Bottom Left
+            </option>
+            <option value="bottom-center"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "bottom-center" or not monitor_cfg.overlay or monitor_cfg.overlay.clock_position is undefined %}selected{% endif %}>
+              Bottom Center
+            </option>
+            <option value="bottom-right"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "bottom-right" %}selected{% endif %}>
+              Bottom Right
+            </option>
+          </select>
+          <br><br>
+          <label>Weather Position:</label>
+          <select name="{{ monitor_name }}_weather_position">
+            <option value="top-left"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-left" %}selected{% endif %}>
+              Top Left
+            </option>
+            <option value="top-center"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-center" %}selected{% endif %}>
+              Top Center
+            </option>
+            <option value="top-right"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-right" %}selected{% endif %}>
+              Top Right
+            </option>
+            <option value="bottom-left"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-left" %}selected{% endif %}>
+              Bottom Left
+            </option>
+            <option value="bottom-center"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-center" or not monitor_cfg.overlay or monitor_cfg.overlay.weather_position is undefined %}selected{% endif %}>
+              Bottom Center
+            </option>
+            <option value="bottom-right"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-right" %}selected{% endif %}>
+              Bottom Right
+            </option>
+          </select>
         </div>
-        <input type="hidden"
-               id="{{ monitor_name }}_weatherPosInput"
-               name="{{ monitor_name }}_weather_position"
-               value="{% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position is defined %}{{ monitor_cfg.overlay.weather_position }}{% else %}bottom-center{% endif %}">
 
-        <!-- Weather Layout -->
-        <br>
-        <label>Weather Layout:</label><br>
-        <select name="{{ monitor_name }}_weather_layout">
-          <option value="inline" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == "inline" %}selected{% endif %}>Inline</option>
-          <option value="stacked" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == "stacked" %}selected{% endif %}>Stacked</option>
-        </select>
-        <br><br>
-
-        <!-- Weather toggles (desc, temp, feels, humidity) -->
-        <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">
+        <!-- Weather toggles -->
+        <div style="margin-bottom:10px;">
           <label>
             <input type="checkbox" name="{{ monitor_name }}_show_desc"
-                   {% if monitor_cfg.overlay and monitor_cfg.overlay.show_desc %}checked{% endif %}>
-            Desc
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.show_desc %}checked{% endif %}>
+            Show Weather Description
           </label>
+          <br>
           <label>
             <input type="checkbox" name="{{ monitor_name }}_show_temp"
-                   {% if monitor_cfg.overlay and monitor_cfg.overlay.show_temp %}checked{% endif %}>
-            Temp
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.show_temp %}checked{% endif %}>
+            Show Temperature
           </label>
+          <br>
           <label>
             <input type="checkbox" name="{{ monitor_name }}_show_feels_like"
-                   {% if monitor_cfg.overlay and monitor_cfg.overlay.show_feels_like %}checked{% endif %}>
-            Feels
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.show_feels_like %}checked{% endif %}>
+            Show Feels Like Temp
           </label>
+          <br>
           <label>
             <input type="checkbox" name="{{ monitor_name }}_show_humidity"
-                   {% if monitor_cfg.overlay and monitor_cfg.overlay.show_humidity %}checked{% endif %}>
-            Humidity
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.show_humidity %}checked{% endif %}>
+            Show Humidity
           </label>
         </div>
-        <br>
-        <!-- We'll init the dot selection on DOMContentLoaded -->
-        <script>
-        document.addEventListener("DOMContentLoaded", function(){
-          // For the clock
-          initOverlayPosDots("{{ monitor_name }}_clockPosInput", "{{ monitor_name }}_clock_enabled");
-          // For the weather
-          initOverlayPosDots("{{ monitor_name }}_weatherPosInput", "{{ monitor_name }}_weather_enabled");
-        });
-        </script>
       </div>
       {% endfor %}
     </div>
-
     <div style="text-align:center; margin-top:20px;">
       <button type="submit">Save All Overlay Settings</button>
     </div>
   </form>
 </div>
-
-<script>
-/**
- * This function highlights the dot matching the hidden input's value,
- * and allows the user to change it by clicking the dot. 
- * It doesn't forcibly hide them if "clock_enabled" or "weather_enabled" is unchecked;
- * it just sets the position. 
- */
-function initOverlayPosDots(hiddenInputId, relatedCheckboxId) {
-  const hiddenEl = document.getElementById(hiddenInputId);
-  if (!hiddenEl) return;
-
-  // The relevant mini-screen is the .card that contains it
-  const cardEl = hiddenEl.closest(".card");
-  if (!cardEl) return;
-  // We'll find all .pos-dot-abs inside this card
-  const dots = cardEl.querySelectorAll(".pos-dot-abs");
-  const currentVal = hiddenEl.value;
-  // Mark whichever dot matches
-  dots.forEach(dot => {
-    const dp = dot.getAttribute("data-pos");
-    dot.classList.remove("selected");
-    if (dp === currentVal) {
-      dot.classList.add("selected");
-    }
-    dot.addEventListener("click", () => {
-      dots.forEach(d => d.classList.remove("selected"));
-      dot.classList.add("selected");
-      hiddenEl.value = dp;
-    });
-  });
-}
-</script>
 {% endblock %}
