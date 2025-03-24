@@ -8,12 +8,7 @@
       {% for monitor_name, monitor_cfg in monitors.items() %}
       <div class="card" style="flex: 1 1 300px; margin-bottom:20px; padding:15px; border:1px solid #ccc; border-radius:8px;">
         <h3>{{ monitor_name }} ({{ monitor_cfg.screen_name }})</h3>
-        <div class="form-group">
-          <label>
-            <input type="checkbox" name="{{ monitor_name }}_overlay_enabled" {% if monitor_cfg.overlay and monitor_cfg.overlay.overlay_enabled %}checked{% endif %}>
-            Enable Overlay
-          </label>
-        </div>
+        <!-- Removed enable overlay option -->
         <div class="form-group">
           <label>
             <input type="checkbox" name="{{ monitor_name }}_clock_enabled" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_enabled %}checked{% endif %}>
@@ -45,19 +40,15 @@
           </label>
         </div>
         <div class="form-group">
-          <label>Layout Style:</label>
-          <select name="{{ monitor_name }}_layout_style">
-            <option value="stacked" {% if monitor_cfg.overlay and monitor_cfg.overlay.layout_style == "stacked" %}selected{% endif %}>Stacked</option>
-            <option value="inline" {% if monitor_cfg.overlay and monitor_cfg.overlay.layout_style == "inline" %}selected{% endif %}>Inline</option>
+          <label>Clock/Weather Position:</label>
+          <select name="{{ monitor_name }}_clock_weather_position">
+            <option value="top-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "top-left" %}selected{% endif %}>Top Left</option>
+            <option value="top-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "top-center" %}selected{% endif %}>Top Center</option>
+            <option value="top-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "top-right" %}selected{% endif %}>Top Right</option>
+            <option value="bottom-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "bottom-left" %}selected{% endif %}>Bottom Left</option>
+            <option value="bottom-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "bottom-center" or monitor_cfg.overlay is not defined %}selected{% endif %}>Bottom Center</option>
+            <option value="bottom-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "bottom-right" %}selected{% endif %}>Bottom Right</option>
           </select>
-        </div>
-        <div class="form-group">
-          <label>Padding X:</label>
-          <input type="number" name="{{ monitor_name }}_padding_x" value="{{ monitor_cfg.overlay.padding_x if monitor_cfg.overlay and monitor_cfg.overlay.padding_x is defined else 8 }}">
-        </div>
-        <div class="form-group">
-          <label>Padding Y:</label>
-          <input type="number" name="{{ monitor_name }}_padding_y" value="{{ monitor_cfg.overlay.padding_y if monitor_cfg.overlay and monitor_cfg.overlay.padding_y is defined else 6 }}">
         </div>
         <div class="form-group">
           <label>
@@ -90,13 +81,5 @@
       <button type="submit">Save All Overlay Settings</button>
     </div>
   </form>
-  <hr>
-  <h3>Preview (for first monitor)</h3>
-  <div class="overlay-preview-container" style="border:1px solid #ccc; padding:10px; display:inline-block;">
-    <p>Monitor Preview (Scaled to {{ preview_size.width }}x{{ preview_size.height }})</p>
-    <div id="overlayPreviewBox" style="position: relative; width: {{ preview_size.width }}px; height: {{ preview_size.height }}px; background: #333;">
-      <div id="overlayDraggable" style="position: absolute; left: {{ preview_overlay.left }}px; top: {{ preview_overlay.top }}px; width: {{ preview_overlay.width }}px; height: {{ preview_overlay.height }}px; border: 2px dashed lime; cursor: move;"></div>
-    </div>
-  </div>
 </div>
 {% endblock %}

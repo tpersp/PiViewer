@@ -419,20 +419,17 @@ def overlay_config():
         # Iterate over each monitor in the displays config and update its overlay settings.
         for monitor in cfg.get("displays", {}):
             new_overlay = {
-                "overlay_enabled": (f"{monitor}_overlay_enabled" in request.form),
                 "clock_enabled": (f"{monitor}_clock_enabled" in request.form),
                 "weather_enabled": (f"{monitor}_weather_enabled" in request.form),
                 "clock_font_size": int(request.form.get(f"{monitor}_clock_font_size", "26")),
                 "weather_font_size": int(request.form.get(f"{monitor}_weather_font_size", "22")),
                 "font_color": request.form.get(f"{monitor}_font_color", "#FFFFFF"),
-                "layout_style": request.form.get(f"{monitor}_layout_style", "stacked"),
-                "padding_x": int(request.form.get(f"{monitor}_padding_x", "8")),
-                "padding_y": int(request.form.get(f"{monitor}_padding_y", "6")),
+                "auto_negative_font": (f"{monitor}_auto_negative_font" in request.form),
+                "clock_weather_position": request.form.get(f"{monitor}_clock_weather_position", "bottom-center"),
                 "show_desc": (f"{monitor}_show_desc" in request.form),
                 "show_temp": (f"{monitor}_show_temp" in request.form),
                 "show_feels_like": (f"{monitor}_show_feels_like" in request.form),
-                "show_humidity": (f"{monitor}_show_humidity" in request.form),
-                "auto_negative_font": (f"{monitor}_auto_negative_font" in request.form)
+                "show_humidity": (f"{monitor}_show_humidity" in request.form)
             }
             if "displays" in cfg and monitor in cfg["displays"]:
                 cfg["displays"][monitor]["overlay"] = new_overlay
@@ -443,20 +440,11 @@ def overlay_config():
             log_message(f"Failed to restart piviewer.service: {e}")
         return redirect(url_for("main.overlay_config"))
     else:
-        # For GET request, prepare a preview for the first monitor.
-        monitors_dict = get_local_monitors_from_config(cfg)
-        first_monitor = next(iter(monitors_dict), None)
-        if first_monitor:
-            overlay_cfg = cfg["displays"].get(first_monitor, {}).get("overlay", {})
-            pw, ph, preview_overlay = compute_overlay_preview(overlay_cfg, {first_monitor: monitors_dict[first_monitor]})
-        else:
-            pw, ph, preview_overlay = (400, 300, {"width": 120, "height": 60, "left": 20, "top": 20})
+        # For GET request, simply render the overlay configuration page.
         return render_template(
             "overlay.html",
             theme=cfg.get("theme", "dark"),
-            monitors=cfg.get("displays", {}),
-            preview_size={"width": pw, "height": ph},
-            preview_overlay=preview_overlay
+            monitors=cfg.get("displays", {})
         )
 
 @main_bp.route("/", methods=["GET", "POST"])
