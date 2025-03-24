@@ -239,3 +239,29 @@ function onMonitorChange() {
   const selForm = document.getElementById("monitorSelectForm");
   if (selForm) selForm.submit();
 }
+
+// ---- NEW: 6-dot position grid initializer ----
+function initPositionGrid(gridContainerId, hiddenInputId, defaultValue) {
+  const container = document.getElementById(gridContainerId);
+  if (!container) return;
+  const hiddenInput = document.getElementById(hiddenInputId);
+  if (!hiddenInput) return;
+
+  const dots = container.querySelectorAll(".pos-dot");
+  dots.forEach(dot => {
+    dot.addEventListener("click", () => {
+      const val = dot.getAttribute("data-pos");
+      hiddenInput.value = val;
+      dots.forEach(d => d.classList.remove("selected"));
+      dot.classList.add("selected");
+    });
+  });
+
+  // Set initial selection based on defaultValue
+  if (defaultValue) {
+    const initialDot = container.querySelector(`.pos-dot[data-pos="${defaultValue}"]`);
+    if (initialDot) {
+      initialDot.classList.add("selected");
+    }
+  }
+}

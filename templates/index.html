@@ -67,29 +67,28 @@
           <label>Spotify Font Size:</label>
           <input type="number" name="{{ dname }}_spotify_font_size" value="{{ dcfg.spotify_font_size|default(18) }}" style="width:60px;">
           <br><br>
-          <!-- New: Spotify Info Position Selector -->
+          <!-- New: Spotify Info Position (6-dot grid) -->
           <label>Spotify Info Position:</label>
-          <div class="position-selector" data-input-name="{{ dname }}_spotify_info_position" style="display: flex; flex-wrap: wrap; max-width: 150px;">
-            <div class="pos-option {% if dcfg.spotify_info_position == 'top-left' %}selected{% endif %}" data-value="top-left" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
-            <div class="pos-option {% if dcfg.spotify_info_position == 'top-center' %}selected{% endif %}" data-value="top-center" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
-            <div class="pos-option {% if dcfg.spotify_info_position == 'top-right' %}selected{% endif %}" data-value="top-right" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
-            <div class="pos-option {% if dcfg.spotify_info_position == 'bottom-left' %}selected{% endif %}" data-value="bottom-left" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
-            <div class="pos-option {% if dcfg.spotify_info_position == 'bottom-center' or dcfg.spotify_info_position is not defined %}selected{% endif %}" data-value="bottom-center" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
-            <div class="pos-option {% if dcfg.spotify_info_position == 'bottom-right' %}selected{% endif %}" data-value="bottom-right" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
+          <div id="{{ dname }}_spotifyPositionGrid" class="position-grid">
+            <div class="pos-dot" data-pos="top-left"></div>
+            <div class="pos-dot" data-pos="top-center"></div>
+            <div class="pos-dot" data-pos="top-right"></div>
+            <div class="pos-dot" data-pos="bottom-left"></div>
+            <div class="pos-dot" data-pos="bottom-center"></div>
+            <div class="pos-dot" data-pos="bottom-right"></div>
           </div>
-          <input type="hidden" name="{{ dname }}_spotify_info_position" value="{{ dcfg.spotify_info_position if dcfg.spotify_info_position is defined else 'bottom-center' }}">
+          <input type="hidden" id="{{ dname }}_spotifyPositionInput"
+                 name="{{ dname }}_spotify_info_position"
+                 value="{{ dcfg.spotify_info_position|default('bottom-center') }}">
+          <script>
+            document.addEventListener("DOMContentLoaded", function(){
+              initPositionGrid(
+                "{{ dname }}_spotifyPositionGrid",
+                "{{ dname }}_spotifyPositionInput",
+                "{{ dcfg.spotify_info_position|default('bottom-center') }}"
+              );
+            });
+          </script>
           <br><br>
           {% endif %}
           <!-- Interval (only for random/mixed) -->

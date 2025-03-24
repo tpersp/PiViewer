@@ -425,12 +425,13 @@ def overlay_config():
                 "weather_font_size": int(request.form.get(f"{monitor}_weather_font_size", "22")),
                 "font_color": request.form.get(f"{monitor}_font_color", "#FFFFFF"),
                 "auto_negative_font": (f"{monitor}_auto_negative_font" in request.form),
-                "clock_position": request.form.get(f"{monitor}_clock_position", "top-center"),
+                "clock_position": request.form.get(f"{monitor}_clock_position", "bottom-center"),
                 "weather_position": request.form.get(f"{monitor}_weather_position", "bottom-center"),
                 "show_desc": (f"{monitor}_show_desc" in request.form),
                 "show_temp": (f"{monitor}_show_temp" in request.form),
                 "show_feels_like": (f"{monitor}_show_feels_like" in request.form),
-                "show_humidity": (f"{monitor}_show_humidity" in request.form)
+                "show_humidity": (f"{monitor}_show_humidity" in request.form),
+                "weather_layout": request.form.get(f"{monitor}_weather_layout", "inline")
             }
             if "displays" in cfg and monitor in cfg["displays"]:
                 cfg["displays"][monitor]["overlay"] = new_overlay
@@ -540,7 +541,7 @@ def index():
                     except:
                         dcfg["spotify_font_size"] = 18
                     dcfg["spotify_negative_font"] = True if request.form.get(pre + "spotify_negative_font") else False
-                    dcfg["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dcfg.get("spotify_info_position", "bottom-center"))         
+                    dcfg["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dcfg.get("spotify_info_position", "bottom-center"))
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list
                 else:
@@ -842,7 +843,6 @@ def update_app():
     log_message("Update completed successfully.")
     subprocess.Popen(["sudo", "reboot"])
 
-    # Match the theme and add an auto-redirect/button:
     theme = cfg.get("theme", "dark")
     if theme == "dark":
         page_bg = "#121212"

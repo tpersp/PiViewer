@@ -39,43 +39,44 @@
             Auto Negative Font Color
           </label>
         </div>
-        <!-- New: Weather Layout Selector -->
+        <!-- Clock Position (6-dot) -->
+        <div class="form-group">
+          <label>Clock Position:</label>
+          <div id="{{ monitor_name }}_clockPosGrid" class="position-grid">
+            <div class="pos-dot" data-pos="top-left"></div>
+            <div class="pos-dot" data-pos="top-center"></div>
+            <div class="pos-dot" data-pos="top-right"></div>
+            <div class="pos-dot" data-pos="bottom-left"></div>
+            <div class="pos-dot" data-pos="bottom-center"></div>
+            <div class="pos-dot" data-pos="bottom-right"></div>
+          </div>
+          <input type="hidden"
+                 id="{{ monitor_name }}_clockPosInput"
+                 name="{{ monitor_name }}_clock_position"
+                 value="{% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position is defined %}{{ monitor_cfg.overlay.clock_position }}{% else %}bottom-center{% endif %}">
+        </div>
+        <!-- Weather Position (6-dot) -->
+        <div class="form-group">
+          <label>Weather Position:</label>
+          <div id="{{ monitor_name }}_weatherPosGrid" class="position-grid">
+            <div class="pos-dot" data-pos="top-left"></div>
+            <div class="pos-dot" data-pos="top-center"></div>
+            <div class="pos-dot" data-pos="top-right"></div>
+            <div class="pos-dot" data-pos="bottom-left"></div>
+            <div class="pos-dot" data-pos="bottom-center"></div>
+            <div class="pos-dot" data-pos="bottom-right"></div>
+          </div>
+          <input type="hidden"
+                 id="{{ monitor_name }}_weatherPosInput"
+                 name="{{ monitor_name }}_weather_position"
+                 value="{% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position is defined %}{{ monitor_cfg.overlay.weather_position }}{% else %}bottom-center{% endif %}">
+        </div>
         <div class="form-group">
           <label>Weather Layout:</label>
-          <div class="position-layout-selector" data-input-name="{{ monitor_name }}_weather_layout" style="display: flex; gap:10px;">
-            <div class="layout-option {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == 'stacked' or monitor_cfg.overlay is not defined %}selected{% endif %}" data-value="stacked" style="width: 50px; height: 50px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              Stacked
-            </div>
-            <div class="layout-option {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == 'inline' %}selected{% endif %}" data-value="inline" style="width: 50px; height: 50px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              Inline
-            </div>
-          </div>
-          <input type="hidden" name="{{ monitor_name }}_weather_layout" value="{{ monitor_cfg.overlay.weather_layout if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout is defined else 'stacked' }}">
-        </div>
-        <!-- New: Clock/Weather Position Graphic Selector -->
-        <div class="form-group">
-          <label>Clock/Weather Position:</label>
-          <div class="position-selector" data-input-name="{{ monitor_name }}_clock_weather_position" style="display: flex; flex-wrap: wrap; max-width: 150px;">
-            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'top-left' %}selected{% endif %}" data-value="top-left" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
-            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'top-center' %}selected{% endif %}" data-value="top-center" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
-            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'top-right' %}selected{% endif %}" data-value="top-right" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
-            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'bottom-left' %}selected{% endif %}" data-value="bottom-left" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
-            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'bottom-center' or monitor_cfg.overlay is not defined %}selected{% endif %}" data-value="bottom-center" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
-            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'bottom-right' %}selected{% endif %}" data-value="bottom-right" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
-            </div>
-          </div>
-          <input type="hidden" name="{{ monitor_name }}_clock_weather_position" value="{{ monitor_cfg.overlay.clock_weather_position if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position is defined else 'bottom-center' }}">
+          <select name="{{ monitor_name }}_weather_layout">
+            <option value="inline" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == "inline" %}selected{% endif %}>Inline</option>
+            <option value="stacked" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == "stacked" %}selected{% endif %}>Stacked</option>
+          </select>
         </div>
         <div class="form-group">
           <label>
@@ -101,6 +102,20 @@
             Show Humidity
           </label>
         </div>
+        <script>
+          document.addEventListener("DOMContentLoaded", function(){
+            initPositionGrid(
+              "{{ monitor_name }}_clockPosGrid",
+              "{{ monitor_name }}_clockPosInput",
+              "{% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position is defined %}{{ monitor_cfg.overlay.clock_position }}{% else %}bottom-center{% endif %}"
+            );
+            initPositionGrid(
+              "{{ monitor_name }}_weatherPosGrid",
+              "{{ monitor_name }}_weatherPosInput",
+              "{% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position is defined %}{{ monitor_cfg.overlay.weather_position }}{% else %}bottom-center{% endif %}"
+            );
+          });
+        </script>
       </div>
       {% endfor %}
     </div>
@@ -108,40 +123,5 @@
       <button type="submit">Save All Overlay Settings</button>
     </div>
   </form>
-  <script>
-    // Handle graphic selectors for position and layout
-    document.querySelectorAll('.position-selector').forEach(function(selector) {
-      selector.querySelectorAll('.pos-option').forEach(function(option) {
-        option.addEventListener('click', function() {
-          // Remove selected class from siblings
-          selector.querySelectorAll('.pos-option').forEach(function(sibling) {
-            sibling.classList.remove('selected');
-          });
-          option.classList.add('selected');
-          // Set the corresponding hidden input value
-          var inputName = selector.getAttribute('data-input-name');
-          var hiddenInput = document.querySelector('input[name="' + inputName + '"]');
-          if (hiddenInput) {
-            hiddenInput.value = option.getAttribute('data-value');
-          }
-        });
-      });
-    });
-    document.querySelectorAll('.position-layout-selector').forEach(function(selector) {
-      selector.querySelectorAll('.layout-option').forEach(function(option) {
-        option.addEventListener('click', function() {
-          selector.querySelectorAll('.layout-option').forEach(function(sibling) {
-            sibling.classList.remove('selected');
-          });
-          option.classList.add('selected');
-          var inputName = selector.getAttribute('data-input-name');
-          var hiddenInput = document.querySelector('input[name="' + inputName + '"]');
-          if (hiddenInput) {
-            hiddenInput.value = option.getAttribute('data-value');
-          }
-        });
-      });
-    });
-  </script>
 </div>
 {% endblock %}

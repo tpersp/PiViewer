@@ -307,10 +307,27 @@ table td button {
   background-color: var(--dropdown-hover-bg);
 }
 
-/* New graphic selector styles */
-.position-selector .pos-option.selected {
-  border: 2px solid #77ff77;
+/* -----------------------------------------
+   Position grid for clock/weather/Spotify
+   ----------------------------------------- */
+.position-grid {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 20px);
+  gap: 8px;
+  justify-content: center;
+  margin-top: 5px;
 }
-.position-layout-selector .layout-option.selected {
-  border: 2px solid #77ff77;
+.position-grid .pos-dot {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-muted);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.position-grid .pos-dot:hover {
+  background: var(--collapsible-hover);
+}
+.position-grid .pos-dot.selected {
+  background: var(--nav-active);
+  border-color: var(--nav-active-fg);
 }
