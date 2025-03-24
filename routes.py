@@ -154,7 +154,6 @@ def stats_json():
 
 @main_bp.route("/list_monitors")
 def list_monitors():
-    # For remote devices, not heavily used in local
     return jsonify({"Display0": {"resolution": "1920x1080", "offset_x": 0, "offset_y": 0}})
 
 @main_bp.route("/list_folders")
@@ -264,8 +263,8 @@ def settings():
         if w_api and w_zip and w_cc:
             try:
                 weather_url = f"http://api.openweathermap.org/data/2.5/weather?zip={w_zip},{w_cc}&appid={w_api}&units=metric"
-                r = requests.get(weather_url, timeout=5)
-            except Exception as e:
+                requests.get(weather_url, timeout=5)
+            except:
                 pass
         cfg["weather"]["api_key"] = w_api
         cfg["weather"]["zip_code"] = w_zip
@@ -309,7 +308,7 @@ def settings():
                         "timezone": data.get("timezone", "Unknown"),
                         "country": data.get("sys", {}).get("country", "Unknown")
                     }
-            except Exception as e:
+            except:
                 weather_info = None
         return render_template(
             "settings.html",
@@ -434,8 +433,7 @@ def callback():
 def overlay_config():
     cfg = load_config()
     if request.method == "POST":
-        # Iterate over each monitor in the displays config and update its overlay settings,
-        # matching the separate "clock_position" and "weather_position" from overlay.html
+        # Now storing weather_layout along with everything else
         for monitor in cfg.get("displays", {}):
             new_overlay = {
                 "clock_enabled": (f"{monitor}_clock_enabled" in request.form),
@@ -446,6 +444,7 @@ def overlay_config():
                 "auto_negative_font": (f"{monitor}_auto_negative_font" in request.form),
                 "clock_position": request.form.get(f"{monitor}_clock_position", "bottom-center"),
                 "weather_position": request.form.get(f"{monitor}_weather_position", "bottom-center"),
+                "weather_layout": request.form.get(f"{monitor}_weather_layout", "inline"),
                 "show_desc": (f"{monitor}_show_desc" in request.form),
                 "show_temp": (f"{monitor}_show_temp" in request.form),
                 "show_feels_like": (f"{monitor}_show_feels_like" in request.form),
@@ -547,7 +546,7 @@ def index():
                 dcfg["specific_image"] = new_spec
                 dcfg["rotate"] = new_rotate
 
-                # If Spotify, store extra details
+                # If Spotify, store extras
                 if new_mode == "spotify":
                     dcfg["fallback_mode"] = request.form.get(pre + "fallback_mode", dcfg.get("fallback_mode", "random_image"))
                     dcfg["spotify_show_song"] = True if request.form.get(pre + "spotify_show_song") else False
@@ -604,9 +603,8 @@ def index():
         if cfg["main_ip"]:
             sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
-    # Status row logic
+    # Status logic
     if cfg.get("role") == "main":
-        # Spotify status
         sp_cfg = cfg.get("spotify", {})
         if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
             spotify_cache_path = os.path.join(VIEWER_HOME, ".spotify_cache")
@@ -617,7 +615,6 @@ def index():
         else:
             spotify_status = "❌"
 
-        # Weather status
         w_cfg = cfg.get("weather", {})
         if w_cfg.get("api_key") and w_cfg.get("zip_code") and w_cfg.get("country_code"):
             weather_status = "✅"
@@ -744,7 +741,6 @@ def sync_config():
 
 @main_bp.route("/update_config", methods=["POST"])
 def update_config():
-    # Called by push_displays_to_remote from a "main" device
     incoming = request.get_json()
     if not incoming:
         return "No JSON received", 400
@@ -755,7 +751,6 @@ def update_config():
         cfg["theme"] = incoming["theme"]
     save_config(cfg)
     log_message("Local config partially updated via /update_config")
-    # Force remote piviewer to reload new config
     try:
         subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
     except subprocess.CalledProcessError as e:
@@ -863,7 +858,6 @@ def update_app():
     log_message("Update completed successfully.")
     subprocess.Popen(["sudo", "reboot"])
 
-    # Simple page to show user a message while rebooting
     theme = cfg.get("theme", "dark")
     if theme == "dark":
         page_bg = "#121212"
