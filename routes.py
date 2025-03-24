@@ -415,63 +415,46 @@ def callback():
 @main_bp.route("/overlay_config", methods=["GET", "POST"])
 def overlay_config():
     cfg = load_config()
-    monitors_dict = get_local_monitors_from_config(cfg)
-    selected_monitor = request.args.get("monitor", "All")
     if request.method == "POST":
-        selected_monitor = request.form.get("selected_monitor", "All")
-        new_overlay = {
-            "overlay_enabled": ("overlay_enabled" in request.form),
-            "clock_enabled": ("clock_enabled" in request.form),
-            "weather_enabled": ("weather_enabled" in request.form),
-            "clock_font_size": int(request.form.get("clock_font_size", "26")),
-            "weather_font_size": int(request.form.get("weather_font_size", "22")),
-            "font_color": request.form.get("font_color", "#FFFFFF"),
-            "layout_style": request.form.get("layout_style", "stacked"),
-            "padding_x": int(request.form.get("padding_x", "8")),
-            "padding_y": int(request.form.get("padding_y", "6")),
-            "show_desc": ("show_desc" in request.form),
-            "show_temp": ("show_temp" in request.form),
-            "show_feels_like": ("show_feels_like" in request.form),
-            "show_humidity": ("show_humidity" in request.form),
-            "auto_negative_font": ("auto_negative_font" in request.form)
-        }
-        if selected_monitor == "All":
-            cfg["overlay"] = new_overlay
-        else:
-            if "displays" in cfg and selected_monitor in cfg["displays"]:
-                cfg["displays"][selected_monitor]["overlay"] = new_overlay
+        # Iterate over each monitor in the displays config and update its overlay settings.
+        for monitor in cfg.get("displays", {}):
+            new_overlay = {
+                "overlay_enabled": (f"{monitor}_overlay_enabled" in request.form),
+                "clock_enabled": (f"{monitor}_clock_enabled" in request.form),
+                "weather_enabled": (f"{monitor}_weather_enabled" in request.form),
+                "clock_font_size": int(request.form.get(f"{monitor}_clock_font_size", "26")),
+                "weather_font_size": int(request.form.get(f"{monitor}_weather_font_size", "22")),
+                "font_color": request.form.get(f"{monitor}_font_color", "#FFFFFF"),
+                "layout_style": request.form.get(f"{monitor}_layout_style", "stacked"),
+                "padding_x": int(request.form.get(f"{monitor}_padding_x", "8")),
+                "padding_y": int(request.form.get(f"{monitor}_padding_y", "6")),
+                "show_desc": (f"{monitor}_show_desc" in request.form),
+                "show_temp": (f"{monitor}_show_temp" in request.form),
+                "show_feels_like": (f"{monitor}_show_feels_like" in request.form),
+                "show_humidity": (f"{monitor}_show_humidity" in request.form),
+                "auto_negative_font": (f"{monitor}_auto_negative_font" in request.form)
+            }
+            if "displays" in cfg and monitor in cfg["displays"]:
+                cfg["displays"][monitor]["overlay"] = new_overlay
         save_config(cfg)
         try:
             subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
         except subprocess.CalledProcessError as e:
             log_message(f"Failed to restart piviewer.service: {e}")
-        return redirect(url_for("main.overlay_config", monitor=selected_monitor))
+        return redirect(url_for("main.overlay_config"))
     else:
-        if selected_monitor == "All":
-            overlay_cfg = cfg.get("overlay", {})
+        # For GET request, prepare a preview for the first monitor.
+        monitors_dict = get_local_monitors_from_config(cfg)
+        first_monitor = next(iter(monitors_dict), None)
+        if first_monitor:
+            overlay_cfg = cfg["displays"].get(first_monitor, {}).get("overlay", {})
+            pw, ph, preview_overlay = compute_overlay_preview(overlay_cfg, {first_monitor: monitors_dict[first_monitor]})
         else:
-            overlay_cfg = {}
-            if "displays" in cfg and selected_monitor in cfg["displays"]:
-                overlay_cfg = cfg["displays"][selected_monitor].get("overlay", {})
-            if not overlay_cfg:
-                overlay_cfg = cfg.get("overlay", {})
-        preview_mon = {}
-        if selected_monitor == "All":
-            # Use a default resolution for preview when all monitors are combined
-            max_res = "1920x1080"
-            for m in monitors_dict.values():
-                max_res = m.get("resolution", "1920x1080")
-                break
-            preview_mon["All"] = {"resolution": max_res}
-        else:
-            preview_mon[selected_monitor] = monitors_dict.get(selected_monitor, {"resolution": "1920x1080"})
-        pw, ph, preview_overlay = compute_overlay_preview(overlay_cfg, preview_mon)
+            pw, ph, preview_overlay = (400, 300, {"width": 120, "height": 60, "left": 20, "top": 20})
         return render_template(
             "overlay.html",
             theme=cfg.get("theme", "dark"),
-            overlay=overlay_cfg,
-            monitors=monitors_dict,
-            selected_monitor=selected_monitor,
+            monitors=cfg.get("displays", {}),
             preview_size={"width": pw, "height": ph},
             preview_overlay=preview_overlay
         )
