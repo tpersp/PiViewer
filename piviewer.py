@@ -210,9 +210,11 @@ class DisplayWindow(QMainWindow):
             self.spotify_info_label.move(x, y)
         self.spotify_info_label.raise_()
 
-        # Position clock and weather overlays using separate settings.
-        clock_pos = self.disp_cfg.get("clock_position", "top-center")
-        weather_pos = self.disp_cfg.get("weather_position", "bottom-center")
+        # POSITIONING FIX: Get clock and weather positions from the overlay config.
+        overlay_cfg = self.disp_cfg.get("overlay", {})
+        clock_pos = overlay_cfg.get("clock_position", "top-center")
+        weather_pos = overlay_cfg.get("weather_position", "bottom-center")
+
         self.clock_label.adjustSize()
         self.weather_label.adjustSize()
         # Compute clock label position
