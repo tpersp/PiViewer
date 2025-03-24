@@ -67,7 +67,7 @@
           <label>Spotify Font Size:</label>
           <input type="number" name="{{ dname }}_spotify_font_size" value="{{ dcfg.spotify_font_size|default(18) }}" style="width:60px;">
           <br><br>
-          <!-- New: Spotify Info Position in a labeled mini-screen -->
+          <!-- 6-dot grid for Spotify Info Position (unchanged) -->
           <label>Spotify Info Position:</label>
           <div class="mini-screen">
             <div id="{{ dname }}_spotifyPositionGrid" class="position-grid">
@@ -84,6 +84,7 @@
                  value="{{ dcfg.spotify_info_position|default('bottom-center') }}">
           <script>
             document.addEventListener("DOMContentLoaded", function(){
+              // This was our older approach for a grid-based dot layout:
               initPositionGrid(
                 "{{ dname }}_spotifyPositionGrid",
                 "{{ dname }}_spotifyPositionInput",

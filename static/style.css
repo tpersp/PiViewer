@@ -263,6 +263,7 @@ table td button {
   position: relative;
   display: inline-block;
 }
+
 .nav-item.dropdown .dropbtn {
   background: transparent;
   border: none;
@@ -270,6 +271,7 @@ table td button {
   font-size: 14px;
   cursor: pointer;
 }
+
 .nav-item.dropdown .dropdown-content {
   display: none;
   position: absolute;
@@ -282,12 +284,15 @@ table td button {
   border-radius: 4px;
   padding: 5px 0;
 }
+
 .nav-item.dropdown:hover .dropdown-content {
   display: block;
 }
+
 .nav-item.dropdown .dropdown-content form {
   margin: 0;
 }
+
 .nav-item.dropdown .dropdown-content button {
   width: 100%;
   text-align: left;
@@ -297,15 +302,43 @@ table td button {
   color: inherit;
   cursor: pointer;
 }
+
 .nav-item.dropdown .dropdown-content button:hover {
   background-color: var(--dropdown-hover-bg);
 }
 
 /* -----------------------------------------
-   Larger, absolute-positioned 6-dot "mini-screen"
-   for more intuitive corner selection.
+   For index.html: 6-dot grid for Spotify
+   (unchanged from original, so it remains working)
    ----------------------------------------- */
-.mini-screen {
+.position-grid {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 20px);
+  gap: 8px;
+  justify-content: center;
+  margin-top: 5px;
+}
+.position-grid .pos-dot {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-muted);
+  border-radius: 50%;
+  cursor: pointer;
+  background: transparent;
+  transition: background 0.2s, border-color 0.2s;
+}
+.position-grid .pos-dot:hover {
+  background: var(--collapsible-hover);
+}
+.position-grid .pos-dot.selected {
+  background: var(--nav-active);
+  border-color: var(--nav-active-fg);
+}
+
+/* -----------------------------------------
+   For overlay.html: bigger absolute-positioned mini-screen
+   ----------------------------------------- */
+.mini-screen-abs {
   width: 160px;
   height: 90px;
   border: 2px solid var(--border-muted);
@@ -313,8 +346,7 @@ table td button {
   margin: 10px auto;
   position: relative;
 }
-
-.pos-dot {
+.mini-screen-abs .pos-dot-abs {
   position: absolute;
   width: 24px;
   height: 24px;
@@ -324,43 +356,24 @@ table td button {
   background: transparent;
   transition: background 0.2s, border-color 0.2s;
 }
-
-.pos-dot:hover {
+.mini-screen-abs .pos-dot-abs:hover {
   background: var(--collapsible-hover);
 }
-
-/* "Selected" version */
-.pos-dot.selected {
+.mini-screen-abs .pos-dot-abs.selected {
   background: var(--nav-active);
   border-color: var(--nav-active-fg);
 }
-
-/* Top row */
-.pos-dot.dot-top-left {
-  top: 5px;
-  left: 5px;
-}
-.pos-dot.dot-top-center {
-  top: 5px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-.pos-dot.dot-top-right {
-  top: 5px;
-  right: 5px;
-}
-
-/* Bottom row */
-.pos-dot.dot-bottom-left {
-  bottom: 5px;
-  left: 5px;
-}
-.pos-dot.dot-bottom-center {
+/* corners & centers */
+.mini-screen-abs .dot-top-left    { top: 5px; left: 5px; }
+.mini-screen-abs .dot-top-center  { top: 5px; left: 50%; transform: translateX(-50%); }
+.mini-screen-abs .dot-top-right   { top: 5px; right: 5px; }
+.mini-screen-abs .dot-bottom-left { bottom: 5px; left: 5px; }
+.mini-screen-abs .dot-bottom-center {
   bottom: 5px;
   left: 50%;
   transform: translateX(-50%);
 }
-.pos-dot.dot-bottom-right {
+.mini-screen-abs .dot-bottom-right {
   bottom: 5px;
   right: 5px;
 }

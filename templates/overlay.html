@@ -5,7 +5,8 @@
   <h2>Overlay Configuration</h2>
   <form method="POST" action="{{ url_for('main.overlay_config') }}">
 
-    <!-- Each monitor in a card, like index.html -->
+    <!-- Each monitor in a card, similarly to index.html, 
+         but using the absolute-positioned mini-screen style. -->
     <div class="cards-container">
       {% for monitor_name, monitor_cfg in monitors.items() %}
       <div class="card" style="text-align:center;">
@@ -49,30 +50,30 @@
         </label>
         <br><br>
 
-        <!-- Clock Position (mini-screen) -->
+        <!-- Clock Position (absolute mini-screen) -->
         <label>Clock Position:</label>
-        <div class="mini-screen">
-          <div class="pos-dot dot-top-left" data-pos="top-left"></div>
-          <div class="pos-dot dot-top-center" data-pos="top-center"></div>
-          <div class="pos-dot dot-top-right" data-pos="top-right"></div>
-          <div class="pos-dot dot-bottom-left" data-pos="bottom-left"></div>
-          <div class="pos-dot dot-bottom-center" data-pos="bottom-center"></div>
-          <div class="pos-dot dot-bottom-right" data-pos="bottom-right"></div>
+        <div class="mini-screen-abs">
+          <div class="pos-dot-abs dot-top-left" data-pos="top-left"></div>
+          <div class="pos-dot-abs dot-top-center" data-pos="top-center"></div>
+          <div class="pos-dot-abs dot-top-right" data-pos="top-right"></div>
+          <div class="pos-dot-abs dot-bottom-left" data-pos="bottom-left"></div>
+          <div class="pos-dot-abs dot-bottom-center" data-pos="bottom-center"></div>
+          <div class="pos-dot-abs dot-bottom-right" data-pos="bottom-right"></div>
         </div>
         <input type="hidden"
                id="{{ monitor_name }}_clockPosInput"
                name="{{ monitor_name }}_clock_position"
                value="{% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position is defined %}{{ monitor_cfg.overlay.clock_position }}{% else %}bottom-center{% endif %}">
 
-        <!-- Weather Position (mini-screen) -->
+        <!-- Weather Position (absolute mini-screen) -->
         <label>Weather Position:</label>
-        <div class="mini-screen">
-          <div class="pos-dot dot-top-left" data-pos="top-left"></div>
-          <div class="pos-dot dot-top-center" data-pos="top-center"></div>
-          <div class="pos-dot dot-top-right" data-pos="top-right"></div>
-          <div class="pos-dot dot-bottom-left" data-pos="bottom-left"></div>
-          <div class="pos-dot dot-bottom-center" data-pos="bottom-center"></div>
-          <div class="pos-dot dot-bottom-right" data-pos="bottom-right"></div>
+        <div class="mini-screen-abs">
+          <div class="pos-dot-abs dot-top-left" data-pos="top-left"></div>
+          <div class="pos-dot-abs dot-top-center" data-pos="top-center"></div>
+          <div class="pos-dot-abs dot-top-right" data-pos="top-right"></div>
+          <div class="pos-dot-abs dot-bottom-left" data-pos="bottom-left"></div>
+          <div class="pos-dot-abs dot-bottom-center" data-pos="bottom-center"></div>
+          <div class="pos-dot-abs dot-bottom-right" data-pos="bottom-right"></div>
         </div>
         <input type="hidden"
                id="{{ monitor_name }}_weatherPosInput"
@@ -111,21 +112,15 @@
             Humidity
           </label>
         </div>
-
-        <!-- JS initializers for the "mini-screen" dots -->
+        <br>
+        <!-- We'll init the dot selection on DOMContentLoaded -->
         <script>
-          document.addEventListener("DOMContentLoaded", function(){
-            // For Clock
-            initPositionGrid(
-              "{{ monitor_name }}_clockPosInput",
-              "{{ monitor_name }}_clockPosGridClockDots_{{ loop.index }}"
-            );
-            // For Weather
-            initPositionGrid(
-              "{{ monitor_name }}_weatherPosInput",
-              "{{ monitor_name }}_weatherPosGridClockDots_{{ loop.index }}"
-            );
-          });
+        document.addEventListener("DOMContentLoaded", function(){
+          // For the clock
+          initOverlayPosDots("{{ monitor_name }}_clockPosInput", "{{ monitor_name }}_clock_enabled");
+          // For the weather
+          initOverlayPosDots("{{ monitor_name }}_weatherPosInput", "{{ monitor_name }}_weather_enabled");
+        });
         </script>
       </div>
       {% endfor %}
@@ -139,38 +134,26 @@
 
 <script>
 /**
- * Overriding the simpler approach: we want to highlight the dot that
- * matches the hiddenInput's current value, and update that hiddenInput
- * on clicks.
+ * This function highlights the dot matching the hidden input's value,
+ * and allows the user to change it by clicking the dot. 
+ * It doesn't forcibly hide them if "clock_enabled" or "weather_enabled" is unchecked;
+ * it just sets the position. 
  */
-function initPositionGrid(hiddenInputId, randomPrefix) {
-  // The approach here is:
-  // 1. We find the hidden input by ID
-  // 2. We find the relevant mini-screen by scanning the next siblings
-  //    or we can rely on class naming with "dot-xxxx"
-  // For simplicity we can just do a querySelectorAll near the script location.
-  var hiddenEl = document.getElementById(hiddenInputId);
+function initOverlayPosDots(hiddenInputId, relatedCheckboxId) {
+  const hiddenEl = document.getElementById(hiddenInputId);
   if (!hiddenEl) return;
 
-  // We want to find the two mini-screen elements right above or below. 
-  // But to keep it simpler: we'll just find all pos-dot's in the entire doc,
-  // filter by data-pos, then see which is correct.
-  var val = hiddenEl.value;
-  // The best approach might be to find the next sibling mini-screen or so.
-
-  // But we have an ID or a unique approach for each mini-screen?
-  // Let's do a simpler approach: all .pos-dot might exist, so we highlight 
-  // the one that matches val if it shares the same data-pos.
-
-  // We'll do a minimal approach: highlight the one that matches.
-  // Then on click, we set the hidden input. 
-  var container = hiddenEl.closest(".card");
-  if (!container) container = document;
-  var dots = container.querySelectorAll(".pos-dot");
+  // The relevant mini-screen is the .card that contains it
+  const cardEl = hiddenEl.closest(".card");
+  if (!cardEl) return;
+  // We'll find all .pos-dot-abs inside this card
+  const dots = cardEl.querySelectorAll(".pos-dot-abs");
+  const currentVal = hiddenEl.value;
+  // Mark whichever dot matches
   dots.forEach(dot => {
-    var dp = dot.getAttribute("data-pos");
+    const dp = dot.getAttribute("data-pos");
     dot.classList.remove("selected");
-    if (dp === val) {
+    if (dp === currentVal) {
       dot.classList.add("selected");
     }
     dot.addEventListener("click", () => {
