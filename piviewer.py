@@ -172,7 +172,7 @@ class DisplayWindow(QMainWindow):
         self.bg_label.setGeometry(rect)
         self.foreground_label.setGeometry(rect)
         self.bg_label.lower()
-        # Position Spotify info label (unchanged)
+        # Position Spotify info label based on configuration
         pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
         if pos in ["top-left", "top-right", "bottom-left", "bottom-right"]:
             self.spotify_info_label.setWordWrap(True)
@@ -247,9 +247,15 @@ class DisplayWindow(QMainWindow):
             over = self.disp_cfg["overlay"]
         else:
             over = self.cfg.get("overlay", {})
-        # Always show clock and weather (enable option removed)
-        self.clock_label.show()
-        self.weather_label.show()
+        # Show or hide clock based on configuration (clock_enabled default is False)
+        if over.get("clock_enabled", False):
+            self.clock_label.show()
+        else:
+            self.clock_label.hide()
+        if over.get("weather_enabled", False):
+            self.weather_label.show()
+        else:
+            self.weather_label.hide()
         cfsize = over.get("clock_font_size", 24)
         wfsize = over.get("weather_font_size", 18)
         if over.get("auto_negative_font", False):
@@ -285,6 +291,7 @@ class DisplayWindow(QMainWindow):
         except:
             self.fg_scale_percent = 100
 
+        # In Spotify mode, poll every 5 sec for updates
         interval_s = self.disp_cfg.get("image_interval", 60)
         if self.disp_cfg.get("mode") == "spotify":
             interval_s = 5
@@ -805,7 +812,7 @@ class PiViewerGUI:
                 if mon_name not in self.cfg["displays"]:
                     self.cfg["displays"][mon_name] = {
                         "mode": "random_image",
-                        "fallback_mode": "random_image",
+                        "fallback_mode": "random_image",   # <-- Set default fallback for new monitors
                         "image_interval": 60,
                         "image_category": "",
                         "specific_image": "",
