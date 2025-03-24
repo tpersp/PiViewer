@@ -4,6 +4,12 @@
 piviewer.py
 Shows images in random/mixed/specific/spotify mode on each connected monitor,
 and can display an overlay with clock, weather, and Spotify track info.
+
+UPDATED:
+ - Reverted the forced black background in DisplayWindow to preserve the blurred background effect.
+ - Added a call to setAttribute(Qt.WA_OpaquePaintEvent, True) and an immediate repaint request to help reduce the grey flash.
+ - Reverted clear_foreground_label to use a transparent background as originally intended.
+Note: If the grey flash still occurs, it is likely due to picom’s compositing behavior. Adjusting picom’s settings (e.g. disabling fading or using a different backend) may help.
 '''
 
 import sys
@@ -108,6 +114,9 @@ class DisplayWindow(QMainWindow):
                 self.setGeometry(screen.geometry())
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.showFullScreen()
+        # Set the opaque paint event attribute and force an immediate repaint
+        self.setAttribute(Qt.WA_OpaquePaintEvent, True)
+        QTimer.singleShot(0, self.repaint)
 
         # Central widget and child labels
         self.main_widget = QWidget(self)
@@ -123,6 +132,7 @@ class DisplayWindow(QMainWindow):
         self.foreground_label = QLabel(self.main_widget)
         self.foreground_label.setScaledContents(False)
         self.foreground_label.setAlignment(Qt.AlignCenter)
+        # Revert to transparent to let the blurred background show through without black bars
         self.foreground_label.setStyleSheet("background-color: transparent;")
 
         # Overlay labels for clock and weather
@@ -179,13 +189,11 @@ class DisplayWindow(QMainWindow):
         # Position and raise Spotify info label based on configuration
         pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
         if pos in ["top-left", "top-right", "bottom-left", "bottom-right"]:
-            # For corner positions, use dynamic sizing with word wrap.
             self.spotify_info_label.setWordWrap(True)
             if "left" in pos:
                 self.spotify_info_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             else:
                 self.spotify_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            # Set a maximum width of 40% of the screen width.
             max_width = int(rect.width() * 0.4)
             self.spotify_info_label.setFixedWidth(max_width)
             self.spotify_info_label.adjustSize()
@@ -201,7 +209,6 @@ class DisplayWindow(QMainWindow):
         elif pos == "top-center":
             self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
             self.spotify_info_label.setWordWrap(True)
-            # Use nearly full width with some margins.
             self.spotify_info_label.setFixedWidth(rect.width() - 20)
             self.spotify_info_label.adjustSize()
             x = (rect.width() - self.spotify_info_label.width()) // 2
@@ -451,6 +458,7 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setMovie(None)
         self.foreground_label.setText(message)
         self.foreground_label.setAlignment(Qt.AlignCenter)
+        # Revert to transparent background (as originally)
         self.foreground_label.setStyleSheet("color: white; background-color: transparent;")
 
     def show_foreground_image(self, fullpath, is_spotify=False):
@@ -537,7 +545,6 @@ class DisplayWindow(QMainWindow):
         if self.overlay_config.get("auto_negative_font", False):
             self.clock_label.update()
             self.weather_label.update()
-        # Ensure the Spotify info label stays on top during GIF updates
         self.spotify_info_label.raise_()
 
     def calc_bounding_for_window(self, first_frame):
