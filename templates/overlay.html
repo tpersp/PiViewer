@@ -39,27 +39,43 @@
             Auto Negative Font Color
           </label>
         </div>
+        <!-- New: Weather Layout Selector -->
         <div class="form-group">
-          <label>Clock Position:</label>
-          <select name="{{ monitor_name }}_clock_position">
-            <option value="top-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "top-left" %}selected{% endif %}>Top Left</option>
-            <option value="top-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "top-center" %}selected{% endif %}>Top Center</option>
-            <option value="top-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "top-right" %}selected{% endif %}>Top Right</option>
-            <option value="bottom-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "bottom-left" %}selected{% endif %}>Bottom Left</option>
-            <option value="bottom-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "bottom-center" %}selected{% endif %}>Bottom Center</option>
-            <option value="bottom-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "bottom-right" %}selected{% endif %}>Bottom Right</option>
-          </select>
+          <label>Weather Layout:</label>
+          <div class="position-layout-selector" data-input-name="{{ monitor_name }}_weather_layout" style="display: flex; gap:10px;">
+            <div class="layout-option {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == 'stacked' or monitor_cfg.overlay is not defined %}selected{% endif %}" data-value="stacked" style="width: 50px; height: 50px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
+              Stacked
+            </div>
+            <div class="layout-option {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == 'inline' %}selected{% endif %}" data-value="inline" style="width: 50px; height: 50px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
+              Inline
+            </div>
+          </div>
+          <input type="hidden" name="{{ monitor_name }}_weather_layout" value="{{ monitor_cfg.overlay.weather_layout if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout is defined else 'stacked' }}">
         </div>
+        <!-- New: Clock/Weather Position Graphic Selector -->
         <div class="form-group">
-          <label>Weather Position:</label>
-          <select name="{{ monitor_name }}_weather_position">
-            <option value="top-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-left" %}selected{% endif %}>Top Left</option>
-            <option value="top-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-center" %}selected{% endif %}>Top Center</option>
-            <option value="top-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-right" %}selected{% endif %}>Top Right</option>
-            <option value="bottom-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-left" %}selected{% endif %}>Bottom Left</option>
-            <option value="bottom-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-center" %}selected{% endif %}>Bottom Center</option>
-            <option value="bottom-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-right" %}selected{% endif %}>Bottom Right</option>
-          </select>
+          <label>Clock/Weather Position:</label>
+          <div class="position-selector" data-input-name="{{ monitor_name }}_clock_weather_position" style="display: flex; flex-wrap: wrap; max-width: 150px;">
+            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'top-left' %}selected{% endif %}" data-value="top-left" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
+            </div>
+            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'top-center' %}selected{% endif %}" data-value="top-center" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
+            </div>
+            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'top-right' %}selected{% endif %}" data-value="top-right" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
+            </div>
+            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'bottom-left' %}selected{% endif %}" data-value="bottom-left" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
+            </div>
+            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'bottom-center' or monitor_cfg.overlay is not defined %}selected{% endif %}" data-value="bottom-center" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
+            </div>
+            <div class="pos-option {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == 'bottom-right' %}selected{% endif %}" data-value="bottom-right" style="width: 30px; height: 30px; margin: 5px; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; cursor:pointer;">
+              <div style="width: 6px; height: 6px; border-radius: 50%; background: #000;"></div>
+            </div>
+          </div>
+          <input type="hidden" name="{{ monitor_name }}_clock_weather_position" value="{{ monitor_cfg.overlay.clock_weather_position if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position is defined else 'bottom-center' }}">
         </div>
         <div class="form-group">
           <label>
@@ -92,5 +108,40 @@
       <button type="submit">Save All Overlay Settings</button>
     </div>
   </form>
+  <script>
+    // Handle graphic selectors for position and layout
+    document.querySelectorAll('.position-selector').forEach(function(selector) {
+      selector.querySelectorAll('.pos-option').forEach(function(option) {
+        option.addEventListener('click', function() {
+          // Remove selected class from siblings
+          selector.querySelectorAll('.pos-option').forEach(function(sibling) {
+            sibling.classList.remove('selected');
+          });
+          option.classList.add('selected');
+          // Set the corresponding hidden input value
+          var inputName = selector.getAttribute('data-input-name');
+          var hiddenInput = document.querySelector('input[name="' + inputName + '"]');
+          if (hiddenInput) {
+            hiddenInput.value = option.getAttribute('data-value');
+          }
+        });
+      });
+    });
+    document.querySelectorAll('.position-layout-selector').forEach(function(selector) {
+      selector.querySelectorAll('.layout-option').forEach(function(option) {
+        option.addEventListener('click', function() {
+          selector.querySelectorAll('.layout-option').forEach(function(sibling) {
+            sibling.classList.remove('selected');
+          });
+          option.classList.add('selected');
+          var inputName = selector.getAttribute('data-input-name');
+          var hiddenInput = document.querySelector('input[name="' + inputName + '"]');
+          if (hiddenInput) {
+            hiddenInput.value = option.getAttribute('data-value');
+          }
+        });
+      });
+    });
+  </script>
 </div>
 {% endblock %}

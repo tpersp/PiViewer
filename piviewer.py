@@ -210,57 +210,57 @@ class DisplayWindow(QMainWindow):
             self.spotify_info_label.move(x, y)
         self.spotify_info_label.raise_()
 
-        # POSITIONING FIX: Get clock and weather positions from the overlay config.
-        overlay_cfg = self.disp_cfg.get("overlay", {})
-        clock_pos = overlay_cfg.get("clock_position", "top-center")
-        weather_pos = overlay_cfg.get("weather_position", "bottom-center")
-
+        # Position clock and weather overlays with inline or stacked layout
         self.clock_label.adjustSize()
         self.weather_label.adjustSize()
-        # Compute clock label position
-        if clock_pos == "top-left":
-            clock_x, clock_y = 10, 10
-        elif clock_pos == "top-center":
-            clock_x = (rect.width() - self.clock_label.width()) // 2
-            clock_y = 10
-        elif clock_pos == "top-right":
-            clock_x = rect.width() - self.clock_label.width() - 10
-            clock_y = 10
-        elif clock_pos == "bottom-left":
-            clock_x = 10
-            clock_y = rect.height() - self.clock_label.height() - 10
-        elif clock_pos == "bottom-center":
-            clock_x = (rect.width() - self.clock_label.width()) // 2
-            clock_y = rect.height() - self.clock_label.height() - 10
-        elif clock_pos == "bottom-right":
-            clock_x = rect.width() - self.clock_label.width() - 10
-            clock_y = rect.height() - self.clock_label.height() - 10
-        else:
-            clock_x, clock_y = (rect.width() - self.clock_label.width()) // 2, 10
+        spacing = 10
+        clock_w = self.clock_label.width()
+        clock_h = self.clock_label.height()
+        weather_w = self.weather_label.width()
+        weather_h = self.weather_label.height()
 
-        # Compute weather label position
-        if weather_pos == "top-left":
-            weather_x, weather_y = 10, 10
-        elif weather_pos == "top-center":
-            weather_x = (rect.width() - self.weather_label.width()) // 2
-            weather_y = 10
-        elif weather_pos == "top-right":
-            weather_x = rect.width() - self.weather_label.width() - 10
-            weather_y = 10
-        elif weather_pos == "bottom-left":
-            weather_x = 10
-            weather_y = rect.height() - self.weather_label.height() - 10
-        elif weather_pos == "bottom-center":
-            weather_x = (rect.width() - self.weather_label.width()) // 2
-            weather_y = rect.height() - self.weather_label.height() - 10
-        elif weather_pos == "bottom-right":
-            weather_x = rect.width() - self.weather_label.width() - 10
-            weather_y = rect.height() - self.weather_label.height() - 10
-        else:
-            weather_x, weather_y = (rect.width() - self.weather_label.width()) // 2, rect.height() - self.weather_label.height() - 10
+        if self.weather_layout == "inline":
+            combined_w = clock_w + spacing + weather_w
+            combined_h = max(clock_h, weather_h)
+        else:  # stacked
+            combined_w = max(clock_w, weather_w)
+            combined_h = clock_h + spacing + weather_h
 
-        self.clock_label.move(clock_x, clock_y)
-        self.weather_label.move(weather_x, weather_y)
+        # Determine overall position based on clock_weather_position
+        pos_cw = self.disp_cfg.get("clock_weather_position", "bottom-center")
+        if pos_cw == "top-left":
+            start_x, start_y = 10, 10
+        elif pos_cw == "top-center":
+            start_x = (rect.width() - combined_w) // 2
+            start_y = 10
+        elif pos_cw == "top-right":
+            start_x = rect.width() - combined_w - 10
+            start_y = 10
+        elif pos_cw == "bottom-left":
+            start_x = 10
+            start_y = rect.height() - combined_h - 10
+        elif pos_cw == "bottom-center":
+            start_x = (rect.width() - combined_w) // 2
+            start_y = rect.height() - combined_h - 10
+        elif pos_cw == "bottom-right":
+            start_x = rect.width() - combined_w - 10
+            start_y = rect.height() - combined_h - 10
+        else:
+            start_x, start_y = 10, 10
+
+        if self.weather_layout == "inline":
+            # Align vertically centered
+            clock_y = start_y + (combined_h - clock_h) // 2
+            weather_y = start_y + (combined_h - weather_h) // 2
+            self.clock_label.move(start_x, clock_y)
+            self.weather_label.move(start_x + clock_w + spacing, weather_y)
+        else:
+            # stacked: clock on top, weather below, both centered horizontally in combined width
+            clock_x = start_x + (combined_w - clock_w) // 2
+            weather_x = start_x + (combined_w - weather_w) // 2
+            self.clock_label.move(clock_x, start_y)
+            self.weather_label.move(weather_x, start_y + clock_h + spacing)
+
         if self.current_pixmap and not self.handling_gif_frames:
             self.updateForegroundScaled()
 
@@ -304,6 +304,8 @@ class DisplayWindow(QMainWindow):
             self.clock_label.setStyleSheet(f"color: {fcolor}; font-size: {cfsize}px; background: transparent;")
             self.weather_label.setStyleSheet(f"color: {fcolor}; font-size: {wfsize}px; background: transparent;")
         self.overlay_config = over
+        # NEW: set weather layout (inline or stacked)
+        self.weather_layout = over.get("weather_layout", "stacked")
 
         gui_cfg = self.cfg.get("gui", {})
         try:
@@ -762,7 +764,10 @@ class DisplayWindow(QMainWindow):
                     parts.append(f"Feels: {data['main']['feels_like']}\u00B0C")
                 if over.get("show_humidity", False):
                     parts.append(f"Humidity: {data['main']['humidity']}%")
-                weather_text = " | ".join(parts)
+                if self.weather_layout == "stacked":
+                    weather_text = "\n".join(parts)
+                else:
+                    weather_text = " | ".join(parts)
                 self.weather_label.setText(weather_text)
             else:
                 self.weather_label.setText("Weather: error")

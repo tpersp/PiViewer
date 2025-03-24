@@ -306,3 +306,11 @@ table td button {
 .nav-item.dropdown .dropdown-content button:hover {
   background-color: var(--dropdown-hover-bg);
 }
+
+/* New graphic selector styles */
+.position-selector .pos-option.selected {
+  border: 2px solid #77ff77;
+}
+.position-layout-selector .layout-option.selected {
+  border: 2px solid #77ff77;
+}
