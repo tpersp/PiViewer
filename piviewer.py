@@ -134,7 +134,7 @@ class DisplayWindow(QMainWindow):
         self.weather_label.setAlignment(Qt.AlignCenter)
         self.weather_label.setStyleSheet("background: transparent;")
 
-        # Spotify info (track details) and label – now as child of main_widget so it stays on top
+        # Spotify info (track details) label
         self.spotify_info = None
         self.spotify_info_label = NegativeTextLabel(self.main_widget)
         self.spotify_info_label.setAlignment(Qt.AlignCenter)
@@ -421,6 +421,7 @@ class DisplayWindow(QMainWindow):
             if path:
                 self.show_foreground_image(path, is_spotify=True)
                 self.spotify_info_label.show()
+
                 info_parts = []
                 if self.disp_cfg.get("spotify_show_song", True) and self.spotify_info and self.spotify_info.get("song"):
                     info_parts.append(self.spotify_info["song"])
@@ -428,11 +429,14 @@ class DisplayWindow(QMainWindow):
                     info_parts.append(self.spotify_info["artist"])
                 if self.disp_cfg.get("spotify_show_album", True) and self.spotify_info and self.spotify_info.get("album"):
                     info_parts.append(self.spotify_info["album"])
+
                 pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
+                # If the position is left or right, display lines separately:
                 if "left" in pos or "right" in pos:
                     text = "\n".join(info_parts)
                 else:
                     text = " | ".join(info_parts)
+
                 self.spotify_info_label.setText(text)
                 font_size = self.disp_cfg.get("spotify_font_size", 18)
                 if self.disp_cfg.get("spotify_negative_font", True):
@@ -444,7 +448,10 @@ class DisplayWindow(QMainWindow):
                 else:
                     self.spotify_info_label.useDifference = False
                     self.spotify_info_label.setStyleSheet(f"color: #FFFFFF; font-size: {font_size}px; background: transparent;")
+
                 self.spotify_info_label.raise_()
+                self.setup_layout()  # NEW: force re-layout so the overlay re-engages properly
+
             else:
                 fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
                 if fallback_mode in ("random_image", "mixed", "specific_image"):
