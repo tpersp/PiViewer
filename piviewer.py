@@ -247,15 +247,24 @@ class DisplayWindow(QMainWindow):
             over = self.disp_cfg["overlay"]
         else:
             over = self.cfg.get("overlay", {})
-        # Show or hide clock based on configuration (clock_enabled default is False)
-        if over.get("clock_enabled", False):
+
+        # Coerce clock_enabled and weather_enabled to booleans in case they're stored as strings.
+        clock_enabled = over.get("clock_enabled", False)
+        if isinstance(clock_enabled, str):
+            clock_enabled = clock_enabled.lower() == "true"
+        weather_enabled = over.get("weather_enabled", False)
+        if isinstance(weather_enabled, str):
+            weather_enabled = weather_enabled.lower() == "true"
+
+        if clock_enabled:
             self.clock_label.show()
         else:
             self.clock_label.hide()
-        if over.get("weather_enabled", False):
+        if weather_enabled:
             self.weather_label.show()
         else:
             self.weather_label.hide()
+
         cfsize = over.get("clock_font_size", 24)
         wfsize = over.get("weather_font_size", 18)
         if over.get("auto_negative_font", False):
@@ -291,7 +300,6 @@ class DisplayWindow(QMainWindow):
         except:
             self.fg_scale_percent = 100
 
-        # In Spotify mode, poll every 5 sec for updates
         interval_s = self.disp_cfg.get("image_interval", 60)
         if self.disp_cfg.get("mode") == "spotify":
             interval_s = 5
