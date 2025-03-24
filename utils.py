@@ -53,6 +53,8 @@ def init_config():
                 "overlay_height": 150,
                 "clock_font_size": 26,
                 "weather_font_size": 22,
+                "clock_position": "top-center",
+                "weather_position": "bottom-center",
                 "layout_style": "stacked",
                 "padding_x": 8,
                 "padding_y": 6,

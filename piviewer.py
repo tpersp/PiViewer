@@ -210,29 +210,55 @@ class DisplayWindow(QMainWindow):
             self.spotify_info_label.move(x, y)
         self.spotify_info_label.raise_()
 
-        # Position clock and weather overlays using the new clock_weather_position setting.
-        pos_cw = self.disp_cfg.get("clock_weather_position", "bottom-center")
+        # Position clock and weather overlays using separate settings.
+        clock_pos = self.disp_cfg.get("clock_position", "top-center")
+        weather_pos = self.disp_cfg.get("weather_position", "bottom-center")
         self.clock_label.adjustSize()
         self.weather_label.adjustSize()
-        if pos_cw == "top-left":
-            self.clock_label.move(10, 10)
-            self.weather_label.move(10, self.clock_label.y() + self.clock_label.height() + 10)
-        elif pos_cw == "top-center":
-            self.clock_label.move((rect.width() - self.clock_label.width()) // 2, 10)
-            self.weather_label.move((rect.width() - self.weather_label.width()) // 2, self.clock_label.y() + self.clock_label.height() + 10)
-        elif pos_cw == "top-right":
-            self.clock_label.move(rect.width() - self.clock_label.width() - 10, 10)
-            self.weather_label.move(rect.width() - self.weather_label.width() - 10, self.clock_label.y() + self.clock_label.height() + 10)
-        elif pos_cw == "bottom-left":
-            self.clock_label.move(10, rect.height() - self.clock_label.height() - self.weather_label.height() - 20)
-            self.weather_label.move(10, self.clock_label.y() + self.clock_label.height() + 10)
-        elif pos_cw == "bottom-center":
-            self.clock_label.move((rect.width() - self.clock_label.width()) // 2, rect.height() - self.clock_label.height() - self.weather_label.height() - 20)
-            self.weather_label.move((rect.width() - self.weather_label.width()) // 2, self.clock_label.y() + self.clock_label.height() + 10)
-        elif pos_cw == "bottom-right":
-            self.clock_label.move(rect.width() - self.clock_label.width() - 10, rect.height() - self.clock_label.height() - self.weather_label.height() - 20)
-            self.weather_label.move(rect.width() - self.weather_label.width() - 10, self.clock_label.y() + self.clock_label.height() + 10)
+        # Compute clock label position
+        if clock_pos == "top-left":
+            clock_x, clock_y = 10, 10
+        elif clock_pos == "top-center":
+            clock_x = (rect.width() - self.clock_label.width()) // 2
+            clock_y = 10
+        elif clock_pos == "top-right":
+            clock_x = rect.width() - self.clock_label.width() - 10
+            clock_y = 10
+        elif clock_pos == "bottom-left":
+            clock_x = 10
+            clock_y = rect.height() - self.clock_label.height() - 10
+        elif clock_pos == "bottom-center":
+            clock_x = (rect.width() - self.clock_label.width()) // 2
+            clock_y = rect.height() - self.clock_label.height() - 10
+        elif clock_pos == "bottom-right":
+            clock_x = rect.width() - self.clock_label.width() - 10
+            clock_y = rect.height() - self.clock_label.height() - 10
+        else:
+            clock_x, clock_y = (rect.width() - self.clock_label.width()) // 2, 10
 
+        # Compute weather label position
+        if weather_pos == "top-left":
+            weather_x, weather_y = 10, 10
+        elif weather_pos == "top-center":
+            weather_x = (rect.width() - self.weather_label.width()) // 2
+            weather_y = 10
+        elif weather_pos == "top-right":
+            weather_x = rect.width() - self.weather_label.width() - 10
+            weather_y = 10
+        elif weather_pos == "bottom-left":
+            weather_x = 10
+            weather_y = rect.height() - self.weather_label.height() - 10
+        elif weather_pos == "bottom-center":
+            weather_x = (rect.width() - self.weather_label.width()) // 2
+            weather_y = rect.height() - self.weather_label.height() - 10
+        elif weather_pos == "bottom-right":
+            weather_x = rect.width() - self.weather_label.width() - 10
+            weather_y = rect.height() - self.weather_label.height() - 10
+        else:
+            weather_x, weather_y = (rect.width() - self.weather_label.width()) // 2, rect.height() - self.weather_label.height() - 10
+
+        self.clock_label.move(clock_x, clock_y)
+        self.weather_label.move(weather_x, weather_y)
         if self.current_pixmap and not self.handling_gif_frames:
             self.updateForegroundScaled()
 
@@ -247,24 +273,15 @@ class DisplayWindow(QMainWindow):
             over = self.disp_cfg["overlay"]
         else:
             over = self.cfg.get("overlay", {})
-
-        # Coerce clock_enabled and weather_enabled to booleans in case they're stored as strings.
-        clock_enabled = over.get("clock_enabled", False)
-        if isinstance(clock_enabled, str):
-            clock_enabled = clock_enabled.lower() == "true"
-        weather_enabled = over.get("weather_enabled", False)
-        if isinstance(weather_enabled, str):
-            weather_enabled = weather_enabled.lower() == "true"
-
-        if clock_enabled:
+        # Show or hide clock based on configuration (clock_enabled default is False)
+        if over.get("clock_enabled", False):
             self.clock_label.show()
         else:
             self.clock_label.hide()
-        if weather_enabled:
+        if over.get("weather_enabled", False):
             self.weather_label.show()
         else:
             self.weather_label.hide()
-
         cfsize = over.get("clock_font_size", 24)
         wfsize = over.get("weather_font_size", 18)
         if over.get("auto_negative_font", False):
@@ -300,6 +317,7 @@ class DisplayWindow(QMainWindow):
         except:
             self.fg_scale_percent = 100
 
+        # In Spotify mode, poll every 5 sec for updates
         interval_s = self.disp_cfg.get("image_interval", 60)
         if self.disp_cfg.get("mode") == "spotify":
             interval_s = 5

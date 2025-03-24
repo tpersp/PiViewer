@@ -40,14 +40,25 @@
           </label>
         </div>
         <div class="form-group">
-          <label>Clock/Weather Position:</label>
-          <select name="{{ monitor_name }}_clock_weather_position">
-            <option value="top-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "top-left" %}selected{% endif %}>Top Left</option>
-            <option value="top-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "top-center" %}selected{% endif %}>Top Center</option>
-            <option value="top-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "top-right" %}selected{% endif %}>Top Right</option>
-            <option value="bottom-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "bottom-left" %}selected{% endif %}>Bottom Left</option>
-            <option value="bottom-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "bottom-center" or monitor_cfg.overlay is not defined %}selected{% endif %}>Bottom Center</option>
-            <option value="bottom-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_weather_position == "bottom-right" %}selected{% endif %}>Bottom Right</option>
+          <label>Clock Position:</label>
+          <select name="{{ monitor_name }}_clock_position">
+            <option value="top-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "top-left" %}selected{% endif %}>Top Left</option>
+            <option value="top-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "top-center" %}selected{% endif %}>Top Center</option>
+            <option value="top-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "top-right" %}selected{% endif %}>Top Right</option>
+            <option value="bottom-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "bottom-left" %}selected{% endif %}>Bottom Left</option>
+            <option value="bottom-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "bottom-center" %}selected{% endif %}>Bottom Center</option>
+            <option value="bottom-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "bottom-right" %}selected{% endif %}>Bottom Right</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Weather Position:</label>
+          <select name="{{ monitor_name }}_weather_position">
+            <option value="top-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-left" %}selected{% endif %}>Top Left</option>
+            <option value="top-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-center" %}selected{% endif %}>Top Center</option>
+            <option value="top-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-right" %}selected{% endif %}>Top Right</option>
+            <option value="bottom-left" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-left" %}selected{% endif %}>Bottom Left</option>
+            <option value="bottom-center" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-center" %}selected{% endif %}>Bottom Center</option>
+            <option value="bottom-right" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-right" %}selected{% endif %}>Bottom Right</option>
           </select>
         </div>
         <div class="form-group">
