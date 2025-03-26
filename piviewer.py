@@ -44,7 +44,9 @@ class NegativeTextLabel(QLabel):
             painter.setCompositionMode(QPainter.CompositionMode_Difference)
             painter.setPen(Qt.white)
             painter.setFont(self.font())
-            painter.drawText(self.rect(), self.alignment(), self.text())
+            # Combine current alignment with TextWordWrap flag.
+            flags = self.alignment() | Qt.TextWordWrap
+            painter.drawText(self.rect(), flags, self.text())
         else:
             super().paintEvent(event)
 
@@ -196,11 +198,9 @@ class DisplayWindow(QMainWindow):
 
         # Helper function for dynamic overlay labels (clock and weather)
         def place_overlay_label(lbl, position, container_rect, y_offset=0):
-            # Set the label width to span nearly the full container width (leaving margin on both sides)
             full_width = container_rect.width() - 2 * margin
             lbl.setFixedWidth(full_width)
             lbl.setWordWrap(True)
-            # Set size policy to Expanding so that the text wraps at the edge.
             lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             if "left" in position:
                 lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -208,8 +208,8 @@ class DisplayWindow(QMainWindow):
                 lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             else:
                 lbl.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-            # Recompute the height based on the text and fixed width.
             lbl.adjustSize()
+            # Force re-wrap by using sizeHint() for height.
             required_height = lbl.sizeHint().height()
             lbl.setFixedHeight(required_height)
             h = required_height
@@ -222,7 +222,6 @@ class DisplayWindow(QMainWindow):
             lbl.move(margin, y)
             return (y + h + margin)
 
-        # Place clock and weather overlays if enabled.
         if self.clock_label.isVisible() or self.weather_label.isVisible():
             clock_pos = self.overlay_config.get("clock_position", "bottom-center")
             weather_pos = self.overlay_config.get("weather_position", "bottom-center")
@@ -230,7 +229,6 @@ class DisplayWindow(QMainWindow):
             if self.clock_label.isVisible():
                 offset_after_clock = place_overlay_label(self.clock_label, clock_pos, rect, 0)
             if self.weather_label.isVisible():
-                # If both overlays share the same vertical position, offset the second one.
                 if weather_pos == clock_pos and self.clock_label.isVisible():
                     place_overlay_label(self.weather_label, weather_pos, rect, offset_after_clock)
                 else:
@@ -251,19 +249,16 @@ class DisplayWindow(QMainWindow):
         else:
             over = self.cfg.get("overlay", {})
 
-        # Show or hide clock
         if over.get("clock_enabled", False):
             self.clock_label.show()
         else:
             self.clock_label.hide()
 
-        # Show or hide weather
         if over.get("weather_enabled", False):
             self.weather_label.show()
         else:
             self.weather_label.hide()
 
-        # Set clock and weather font sizes and colors
         cfsize = over.get("clock_font_size", 24)
         wfsize = over.get("weather_font_size", 18)
         if over.get("auto_negative_font", False):
