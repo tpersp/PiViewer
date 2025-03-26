@@ -213,33 +213,38 @@ class DisplayWindow(QMainWindow):
 
         # Place clock & weather using new separate positions
         def place_overlay_label(lbl, position, container_rect, y_offset=0):
-            lbl.adjustSize()
             margin = 10
+            # Set a fixed width based on placement so text can wordwrap properly.
+            if position in ["top-center", "bottom-center"]:
+                max_width = container_rect.width() - 2 * margin
+                lbl.setFixedWidth(max_width)
+            else:
+                max_width = int(container_rect.width() * 0.4)
+                lbl.setFixedWidth(max_width)
+            lbl.adjustSize()
             lw = lbl.width()
             lh = lbl.height()
-            x = 0
-            y = 0
-            if position == "top-left":
+            # Determine x coordinate based on horizontal alignment.
+            if "left" in position:
                 x = margin
-                y = margin + y_offset
-            elif position == "top-center":
+            elif "center" in position:
                 x = (container_rect.width() - lw) // 2
-                y = margin + y_offset
-            elif position == "top-right":
+            elif "right" in position:
                 x = container_rect.width() - lw - margin
-                y = margin + y_offset
-            elif position == "bottom-left":
-                y = container_rect.height() - lh - margin - y_offset
-                x = margin
-            elif position == "bottom-center":
+            else:
                 x = (container_rect.width() - lw) // 2
+            # Determine y coordinate based on vertical alignment.
+            if "top" in position:
+                y = margin + y_offset
+            elif "bottom" in position:
                 y = container_rect.height() - lh - margin - y_offset
-            elif position == "bottom-right":
-                x = container_rect.width() - lw - margin
-                y = container_rect.height() - lh - margin - y_offset
-
+            else:
+                y = (container_rect.height() - lh) // 2
+            # If text extends below the container, adjust upward.
+            if y + lh > container_rect.height():
+                y = container_rect.height() - lh - margin
             lbl.move(x, y)
-            return (lbl.y() + lbl.height() + margin)
+            return (y + lh + margin)
 
         if self.clock_label.isVisible() or self.weather_label.isVisible():
             clock_pos = self.overlay_config.get("clock_position", "bottom-center")
@@ -450,7 +455,7 @@ class DisplayWindow(QMainWindow):
                     self.spotify_info_label.setStyleSheet(f"color: #FFFFFF; font-size: {font_size}px; background: transparent;")
 
                 self.spotify_info_label.raise_()
-                self.setup_layout()  # NEW: force re-layout so the overlay re-engages properly
+                self.setup_layout()  # force re-layout so the overlay re-engages properly
 
             else:
                 fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
@@ -768,6 +773,9 @@ class DisplayWindow(QMainWindow):
         country_code = wcfg.get("country_code", "")
         if not (api_key and zip_code and country_code):
             self.weather_label.setText("Weather: config missing")
+            # Refresh layout to ensure text is fully visible
+            if self.weather_label.isVisible():
+                self.setup_layout()
             return
 
         try:
@@ -785,7 +793,6 @@ class DisplayWindow(QMainWindow):
                 if over.get("show_humidity", False):
                     parts.append(f"Humidity: {data['main']['humidity']}%")
 
-                # Respect user layout: inline vs stacked
                 layout_mode = over.get("weather_layout", "inline")
                 if layout_mode == "stacked":
                     weather_text = "\n".join(parts)
@@ -799,6 +806,9 @@ class DisplayWindow(QMainWindow):
         except Exception as e:
             self.weather_label.setText("Weather: error")
             log_message(f"Error updating weather: {e}")
+        # Refresh layout so the weather label repositions based on its updated size.
+        if self.weather_label.isVisible():
+            self.setup_layout()
 
     def fetch_spotify_album_art(self):
         try:
