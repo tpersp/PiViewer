@@ -22,7 +22,7 @@ from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRect, QRectF
 from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader, QTransform, QFont
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel,
-    QGraphicsScene, QGraphicsPixmapItem, QGraphicsBlurEffect
+    QGraphicsScene, QGraphicsPixmapItem, QGraphicsBlurEffect, QSizePolicy
 )
 
 from spotipy.oauth2 import SpotifyOAuth
@@ -200,13 +200,15 @@ class DisplayWindow(QMainWindow):
             full_width = container_rect.width() - 2 * margin
             lbl.setFixedWidth(full_width)
             lbl.setWordWrap(True)
+            # Set size policy to Expanding so that the text wraps at the edge.
+            lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             if "left" in position:
                 lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             elif "right" in position:
                 lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             else:
                 lbl.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-            # Force the label to compute its height based on current text and fixed width.
+            # Recompute the height based on the text and fixed width.
             lbl.adjustSize()
             required_height = lbl.sizeHint().height()
             lbl.setFixedHeight(required_height)
