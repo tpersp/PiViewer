@@ -30,7 +30,7 @@ from config import APP_VERSION, IMAGE_DIR, LOG_PATH, VIEWER_HOME
 from utils import load_config, save_config, log_message
 
 
-# --- New custom label for negative (difference) text drawing ---
+# --- Custom label for negative (difference) text drawing ---
 class NegativeTextLabel(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -173,89 +173,60 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setGeometry(rect)
         self.bg_label.lower()
 
-        # Position Spotify info label based on configuration
+        margin = 10
+
+        # Position Spotify info label – its text box spans nearly the full screen width.
         pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
-        if pos in ["top-left", "top-right", "bottom-left", "bottom-right"]:
-            self.spotify_info_label.setWordWrap(True)
-            if "left" in pos:
-                self.spotify_info_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            else:
-                self.spotify_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            max_width = int(rect.width() * 0.4)
-            self.spotify_info_label.setFixedWidth(max_width)
-            self.spotify_info_label.adjustSize()
-            if "left" in pos:
-                x = 10
-            else:
-                x = rect.width() - self.spotify_info_label.width() - 10
-            if "top" in pos:
-                y = 10
-            else:
-                y = rect.height() - self.spotify_info_label.height() - 10
-            self.spotify_info_label.move(x, y)
-        elif pos == "top-center":
-            self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
-            self.spotify_info_label.setWordWrap(True)
-            self.spotify_info_label.setFixedWidth(rect.width() - 20)
-            self.spotify_info_label.adjustSize()
-            x = (rect.width() - self.spotify_info_label.width()) // 2
-            y = 10
-            self.spotify_info_label.move(x, y)
+        self.spotify_info_label.setWordWrap(True)
+        self.spotify_info_label.setFixedWidth(rect.width() - 2 * margin)
+        self.spotify_info_label.adjustSize()
+        if "left" in pos:
+            self.spotify_info_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        elif "right" in pos:
+            self.spotify_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         else:
-            self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
-            self.spotify_info_label.setWordWrap(True)
-            self.spotify_info_label.setFixedWidth(rect.width() - 20)
-            self.spotify_info_label.adjustSize()
-            x = (rect.width() - self.spotify_info_label.width()) // 2
-            y = rect.height() - self.spotify_info_label.height() - 10
-            self.spotify_info_label.move(x, y)
+            self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+        if "top" in pos:
+            y = margin
+        elif "bottom" in pos:
+            y = rect.height() - self.spotify_info_label.height() - margin
+        else:
+            y = (rect.height() - self.spotify_info_label.height()) // 2
+        self.spotify_info_label.move(margin, y)
         self.spotify_info_label.raise_()
 
-        # Place clock & weather using new separate positions
+        # Helper function for dynamic overlay labels (clock and weather)
         def place_overlay_label(lbl, position, container_rect, y_offset=0):
-            margin = 10
-            # Set a fixed width based on placement so text can wordwrap properly.
-            if position in ["top-center", "bottom-center"]:
-                max_width = container_rect.width() - 2 * margin
-                lbl.setFixedWidth(max_width)
-            else:
-                max_width = int(container_rect.width() * 0.4)
-                lbl.setFixedWidth(max_width)
-            lbl.adjustSize()
-            lw = lbl.width()
-            lh = lbl.height()
-            # Determine x coordinate based on horizontal alignment.
+            # Set the label width to span nearly the full container width (leaving margin on both sides)
+            full_width = container_rect.width() - 2 * margin
+            lbl.setFixedWidth(full_width)
+            lbl.setWordWrap(True)
             if "left" in position:
-                x = margin
-            elif "center" in position:
-                x = (container_rect.width() - lw) // 2
+                lbl.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
             elif "right" in position:
-                x = container_rect.width() - lw - margin
+                lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             else:
-                x = (container_rect.width() - lw) // 2
-            # Determine y coordinate based on vertical alignment.
+                lbl.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+            lbl.adjustSize()  # height adjusts based on content
+            h = lbl.height()
             if "top" in position:
                 y = margin + y_offset
             elif "bottom" in position:
-                y = container_rect.height() - lh - margin - y_offset
+                y = container_rect.height() - h - margin - y_offset
             else:
-                y = (container_rect.height() - lh) // 2
-            # If text extends below the container, adjust upward.
-            if y + lh > container_rect.height():
-                y = container_rect.height() - lh - margin
-            lbl.move(x, y)
-            return (y + lh + margin)
+                y = (container_rect.height() - h) // 2
+            lbl.move(margin, y)
+            return (y + h + margin)
 
+        # Place clock and weather overlays if enabled.
         if self.clock_label.isVisible() or self.weather_label.isVisible():
             clock_pos = self.overlay_config.get("clock_position", "bottom-center")
             weather_pos = self.overlay_config.get("weather_position", "bottom-center")
-
             offset_after_clock = 0
             if self.clock_label.isVisible():
                 offset_after_clock = place_overlay_label(self.clock_label, clock_pos, rect, 0)
-
             if self.weather_label.isVisible():
-                # If weather is at the same position as clock, offset it
+                # If both overlays share the same vertical position, offset the second one.
                 if weather_pos == clock_pos and self.clock_label.isVisible():
                     place_overlay_label(self.weather_label, weather_pos, rect, offset_after_clock)
                 else:
@@ -288,10 +259,9 @@ class DisplayWindow(QMainWindow):
         else:
             self.weather_label.hide()
 
-        # Clock / weather font sizes & color
+        # Set clock and weather font sizes and colors
         cfsize = over.get("clock_font_size", 24)
         wfsize = over.get("weather_font_size", 18)
-
         if over.get("auto_negative_font", False):
             self.clock_label.useDifference = True
             self.weather_label.useDifference = True
@@ -309,11 +279,8 @@ class DisplayWindow(QMainWindow):
             fcolor = over.get("font_color", "#FFFFFF")
             self.clock_label.setStyleSheet(f"color: {fcolor}; font-size: {cfsize}px; background: transparent;")
             self.weather_label.setStyleSheet(f"color: {fcolor}; font-size: {wfsize}px; background: transparent;")
-
-        # Store overlay config for use in update_weather, layout, etc.
         self.overlay_config = over
 
-        # GUI background/foreground scaling
         gui_cfg = self.cfg.get("gui", {})
         try:
             self.bg_blur_radius = int(gui_cfg.get("background_blur_radius", 0))
@@ -328,23 +295,18 @@ class DisplayWindow(QMainWindow):
         except:
             self.fg_scale_percent = 100
 
-        # Slideshow interval
         interval_s = self.disp_cfg.get("image_interval", 60)
         self.current_mode = self.disp_cfg.get("mode", "random_image")
         if self.current_mode == "spotify":
-            # Poll every 5 seconds in Spotify mode
             interval_s = 5
-
         self.slideshow_timer.setInterval(interval_s * 1000)
         self.slideshow_timer.start()
 
-        # Build local image list if needed
         self.image_list = []
         self.index = 0
         if self.current_mode in ("random_image", "mixed", "specific_image"):
             self.build_local_image_list()
 
-        # If user just switched to Spotify, do an immediate check
         if self.current_mode == "spotify":
             self.next_image(force=True)
 
@@ -436,12 +398,10 @@ class DisplayWindow(QMainWindow):
                     info_parts.append(self.spotify_info["album"])
 
                 pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
-                # If the position is left or right, display lines separately:
                 if "left" in pos or "right" in pos:
                     text = "\n".join(info_parts)
                 else:
                     text = " | ".join(info_parts)
-
                 self.spotify_info_label.setText(text)
                 font_size = self.disp_cfg.get("spotify_font_size", 18)
                 if self.disp_cfg.get("spotify_negative_font", True):
@@ -453,10 +413,8 @@ class DisplayWindow(QMainWindow):
                 else:
                     self.spotify_info_label.useDifference = False
                     self.spotify_info_label.setStyleSheet(f"color: #FFFFFF; font-size: {font_size}px; background: transparent;")
-
                 self.spotify_info_label.raise_()
-                self.setup_layout()  # force re-layout so the overlay re-engages properly
-
+                self.setup_layout()
             else:
                 fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
                 if fallback_mode in ("random_image", "mixed", "specific_image"):
@@ -533,7 +491,6 @@ class DisplayWindow(QMainWindow):
                 self.foreground_label.setMovie(self.current_movie)
                 self.current_movie.start()
                 self.handling_gif_frames = False
-
                 if not ff.isNull():
                     pm = QPixmap.fromImage(ff)
                     blurred = self.make_background_cover(pm)
@@ -545,11 +502,9 @@ class DisplayWindow(QMainWindow):
                 if ff.isNull():
                     self.clear_foreground_label("GIF error")
                     return
-
                 pm = QPixmap.fromImage(ff)
                 blurred = self.make_background_cover(pm)
                 self.bg_label.setPixmap(blurred if blurred else QPixmap())
-
                 bw, bh = self.calc_bounding_for_window(ff)
                 self.gif_bounds = (bw, bh)
                 self.current_movie.frameChanged.connect(self.on_gif_frame_changed)
@@ -561,7 +516,6 @@ class DisplayWindow(QMainWindow):
                 self.current_pixmap = QPixmap(fullpath)
             self.handling_gif_frames = False
             self.updateForegroundScaled()
-
             blurred = self.make_background_cover(self.current_pixmap)
             self.bg_label.setPixmap(blurred if blurred else QPixmap())
         self.spotify_info_label.raise_()
@@ -575,22 +529,18 @@ class DisplayWindow(QMainWindow):
         src_pm = QPixmap.fromImage(frm_img)
         degraded = self.degrade_foreground(src_pm, self.gif_bounds)
         rotated = self.apply_rotation_if_any(degraded)
-
         fw = self.foreground_label.width()
         fh = self.foreground_label.height()
         bw, bh = self.gif_bounds
         final_img = QImage(fw, fh, QImage.Format_ARGB32)
         final_img.fill(Qt.transparent)
-
         painter = QPainter(final_img)
         xoff = (fw - bw) // 2
         yoff = (fh - bh) // 2
         painter.drawPixmap(xoff, yoff, rotated)
         painter.end()
-
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
         self.last_scaled_foreground_image = final_img
-
         if self.overlay_config.get("auto_negative_font", False):
             self.clock_label.update()
             self.weather_label.update()
@@ -605,7 +555,6 @@ class DisplayWindow(QMainWindow):
         ih = first_frame.height()
         if iw < 1 or ih < 1:
             return (fw, fh)
-
         image_aspect = float(iw) / float(ih)
         screen_aspect = float(fw) / float(fh)
         if image_aspect > screen_aspect:
@@ -629,26 +578,20 @@ class DisplayWindow(QMainWindow):
         ih = self.current_pixmap.height()
         if iw < 1 or ih < 1:
             return
-
         bw, bh = self.calc_fill_size(iw, ih, fw, fh)
         degraded = self.degrade_foreground(self.current_pixmap, (bw, bh))
         rotated = self.apply_rotation_if_any(degraded)
-
         self.current_drawn_image = rotated.toImage()
-
         final_img = QImage(fw, fh, QImage.Format_ARGB32)
         final_img.fill(Qt.transparent)
         painter = QPainter(final_img)
-
         rw = rotated.width()
         rh = rotated.height()
         xoff = (fw - rw) // 2
         yoff = (fh - rh) // 2
         painter.drawPixmap(xoff, yoff, rotated)
         painter.end()
-
         self.foreground_drawn_rect = QRect(xoff, yoff, rw, rh)
-
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
         self.last_scaled_foreground_image = final_img
         if self.overlay_config.get("auto_negative_font", False):
@@ -703,7 +646,6 @@ class DisplayWindow(QMainWindow):
         screen_ratio = float(sw) / float(sh)
         img_ratio = float(pw) / float(ph)
         tmode = Qt.FastTransformation
-
         if img_ratio > screen_ratio:
             new_h = sh
             new_w = int(new_h * img_ratio)
@@ -714,7 +656,6 @@ class DisplayWindow(QMainWindow):
         xoff = (scaled.width() - sw) // 2
         yoff = (scaled.height() - sh) // 2
         final_cover = scaled.copy(xoff, yoff, sw, sh)
-
         if self.bg_scale_percent < 100:
             sf = float(self.bg_scale_percent) / 100.0
             down_w = int(sw * sf)
@@ -730,7 +671,6 @@ class DisplayWindow(QMainWindow):
                 final_bg = self.blur_pixmap_once(final_cover, self.bg_blur_radius)
         else:
             final_bg = self.blur_pixmap_once(final_cover, self.bg_blur_radius)
-
         return final_bg
 
     def blur_pixmap_once(self, pm, radius):
@@ -743,7 +683,6 @@ class DisplayWindow(QMainWindow):
         blur.setBlurHints(QGraphicsBlurEffect.PerformanceHint)
         item.setGraphicsEffect(blur)
         scene.addItem(item)
-
         result = QImage(pm.width(), pm.height(), QImage.Format_ARGB32)
         result.fill(Qt.transparent)
         painter = QPainter(result)
@@ -762,22 +701,17 @@ class DisplayWindow(QMainWindow):
             over = self.disp_cfg["overlay"]
         else:
             over = cfg.get("overlay", {})
-
-        # If weather not enabled, do nothing
         if not over.get("weather_enabled", False):
             return
-
         wcfg = cfg.get("weather", {})
         api_key = wcfg.get("api_key", "")
         zip_code = wcfg.get("zip_code", "")
         country_code = wcfg.get("country_code", "")
         if not (api_key and zip_code and country_code):
             self.weather_label.setText("Weather: config missing")
-            # Refresh layout to ensure text is fully visible
             if self.weather_label.isVisible():
                 self.setup_layout()
             return
-
         try:
             url = f"https://api.openweathermap.org/data/2.5/weather?zip={zip_code},{country_code}&units=metric&appid={api_key}"
             r = requests.get(url, timeout=5)
@@ -792,13 +726,11 @@ class DisplayWindow(QMainWindow):
                     parts.append(f"Feels: {data['main']['feels_like']}\u00B0C")
                 if over.get("show_humidity", False):
                     parts.append(f"Humidity: {data['main']['humidity']}%")
-
                 layout_mode = over.get("weather_layout", "inline")
                 if layout_mode == "stacked":
                     weather_text = "\n".join(parts)
                 else:
                     weather_text = " | ".join(parts)
-
                 self.weather_label.setWordWrap(True)
                 self.weather_label.setText(weather_text)
             else:
@@ -806,7 +738,6 @@ class DisplayWindow(QMainWindow):
         except Exception as e:
             self.weather_label.setText("Weather: error")
             log_message(f"Error updating weather: {e}")
-        # Refresh layout so the weather label repositions based on its updated size.
         if self.weather_label.isVisible():
             self.setup_layout()
 
@@ -821,7 +752,6 @@ class DisplayWindow(QMainWindow):
             if not (cid and csec and ruri):
                 self.spotify_info = None
                 return None
-
             auth = SpotifyOAuth(client_id=cid, client_secret=csec,
                                 redirect_uri=ruri, scope=scope,
                                 cache_path=".spotify_cache")
@@ -831,7 +761,6 @@ class DisplayWindow(QMainWindow):
                 return None
             if auth.is_token_expired(token_info):
                 token_info = auth.refresh_access_token(token_info["refresh_token"])
-
             sp = spotipy.Spotify(auth=token_info["access_token"])
             current = sp.current_playback()
             if not current or not current.get("item") or not current.get("is_playing", False):
@@ -869,7 +798,6 @@ class PiViewerGUI:
         self.cfg = load_config()
         self.app = QApplication(sys.argv)
 
-        # Fallback monitor detection via xrandr
         fallback_mons = detect_monitors()
         if fallback_mons:
             if "displays" not in self.cfg:
