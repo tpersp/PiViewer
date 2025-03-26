@@ -168,12 +168,11 @@ class DisplayWindow(QMainWindow):
             if screen:
                 self.setGeometry(screen.geometry())
         rect = self.main_widget.rect()
+        margin = 10
 
         self.bg_label.setGeometry(rect)
         self.foreground_label.setGeometry(rect)
         self.bg_label.lower()
-
-        margin = 10
 
         # Position Spotify info label – its text box spans nearly the full screen width.
         pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
@@ -207,8 +206,11 @@ class DisplayWindow(QMainWindow):
                 lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             else:
                 lbl.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-            lbl.adjustSize()  # height adjusts based on content
-            h = lbl.height()
+            # Force the label to compute its height based on current text and fixed width.
+            lbl.adjustSize()
+            required_height = lbl.sizeHint().height()
+            lbl.setFixedHeight(required_height)
+            h = required_height
             if "top" in position:
                 y = margin + y_offset
             elif "bottom" in position:
