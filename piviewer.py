@@ -34,7 +34,7 @@ from utils import load_config, save_config, log_message
 class NegativeTextLabel(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
-        # When useDifference is True, the text is drawn using difference mode.
+        # When useDifference is True, the text is drawn with CompositionMode.Difference
         self.useDifference = False
 
     def paintEvent(self, event):
@@ -44,7 +44,6 @@ class NegativeTextLabel(QLabel):
             painter.setCompositionMode(QPainter.CompositionMode_Difference)
             painter.setPen(Qt.white)
             painter.setFont(self.font())
-            # Combine current alignment with TextWordWrap flag.
             flags = self.alignment() | Qt.TextWordWrap
             painter.drawText(self.rect(), flags, self.text())
         else:
@@ -83,7 +82,7 @@ def detect_monitors():
 OWM_ICON_MAP = {
     800: "\uf00d",  # day-sunny
     801: "\uf00c",  # day-cloudy
-    # fallback etc. below if not found
+    # fallback => \uf07b
 }
 
 
@@ -105,7 +104,6 @@ class DisplayWindow(QMainWindow):
         self.handling_gif_frames = False
         self.last_scaled_foreground_image = None
 
-        # Variables for auto-negative sampling (no longer used for difference mode)
         self.current_drawn_image = None
         self.foreground_drawn_rect = None
 
@@ -119,7 +117,7 @@ class DisplayWindow(QMainWindow):
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.showFullScreen()
 
-        # Central widget and child labels
+        # Central widget
         self.main_widget = QWidget(self)
         self.setCentralWidget(self.main_widget)
         self.main_widget.setStyleSheet("background-color: black;")
@@ -140,16 +138,17 @@ class DisplayWindow(QMainWindow):
         self.clock_label.setText("00:00:00")
         self.clock_label.setAlignment(Qt.AlignCenter)
         self.clock_label.setStyleSheet("background: transparent;")
+
         self.weather_label = NegativeTextLabel(self.main_widget)
         self.weather_label.setAlignment(Qt.AlignCenter)
         self.weather_label.setStyleSheet("background: transparent;")
 
-        # Spotify info (track details) label
+        # Spotify info label
         self.spotify_info = None
         self.spotify_info_label = NegativeTextLabel(self.main_widget)
         self.spotify_info_label.setAlignment(Qt.AlignCenter)
         self.spotify_info_label.setStyleSheet("background: transparent;")
-        self.spotify_info_label.hide()  # Hidden unless in spotify mode
+        self.spotify_info_label.hide()
 
         # Timers
         self.slideshow_timer = QTimer(self)
@@ -162,7 +161,7 @@ class DisplayWindow(QMainWindow):
         self.weather_timer.start(60000)
         self.update_weather()
 
-        # Load config and start
+        # Load config and begin
         self.cfg = load_config()
         self.reload_settings()
         self.next_image(force=True)
@@ -174,9 +173,9 @@ class DisplayWindow(QMainWindow):
         if self.assigned_screen:
             self.setGeometry(self.assigned_screen.geometry())
         else:
-            screen = self.screen()
-            if screen:
-                self.setGeometry(screen.geometry())
+            scr = self.screen()
+            if scr:
+                self.setGeometry(scr.geometry())
         rect = self.main_widget.rect()
         margin = 10
 
@@ -184,7 +183,7 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setGeometry(rect)
         self.bg_label.lower()
 
-        # Position Spotify info label
+        # Spotify info label
         pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
         self.spotify_info_label.setWordWrap(True)
         self.spotify_info_label.setFixedWidth(rect.width() - 2 * margin)
@@ -204,7 +203,7 @@ class DisplayWindow(QMainWindow):
         self.spotify_info_label.move(margin, y)
         self.spotify_info_label.raise_()
 
-        # Helper function for dynamic overlay labels (clock and weather)
+        # Helper to place overlays
         def place_overlay_label(lbl, position, container_rect, y_offset=0):
             full_width = container_rect.width() - 2 * margin
             lbl.setFixedWidth(full_width)
@@ -217,9 +216,8 @@ class DisplayWindow(QMainWindow):
             else:
                 lbl.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             lbl.adjustSize()
-            required_height = lbl.sizeHint().height()
-            lbl.setFixedHeight(required_height)
-            h = required_height
+            h = lbl.sizeHint().height()
+            lbl.setFixedHeight(h)
             if "top" in position:
                 y = margin + y_offset
             elif "bottom" in position:
@@ -285,6 +283,7 @@ class DisplayWindow(QMainWindow):
             fcolor = over.get("font_color", "#FFFFFF")
             self.clock_label.setStyleSheet(f"color: {fcolor}; font-size: {cfsize}px; background: transparent;")
             self.weather_label.setStyleSheet(f"color: {fcolor}; font-size: {wfsize}px; background: transparent;")
+
         self.overlay_config = over
 
         gui_cfg = self.cfg.get("gui", {})
@@ -418,7 +417,9 @@ class DisplayWindow(QMainWindow):
                     self.spotify_info_label.setFont(font)
                 else:
                     self.spotify_info_label.useDifference = False
-                    self.spotify_info_label.setStyleSheet(f"color: #FFFFFF; font-size: {font_size}px; background: transparent;")
+                    self.spotify_info_label.setStyleSheet(
+                        f"color: #FFFFFF; font-size: {font_size}px; background: transparent;"
+                    )
                 self.spotify_info_label.raise_()
                 self.setup_layout()
             else:
@@ -593,13 +594,11 @@ class DisplayWindow(QMainWindow):
         final_img = QImage(fw, fh, QImage.Format_ARGB32)
         final_img.fill(Qt.transparent)
         painter = QPainter(final_img)
-        rw = rotated.width()
-        rh = rotated.height()
-        xoff = (fw - rw) // 2
-        yoff = (fh - rh) // 2
+        xoff = (fw - rotated.width()) // 2
+        yoff = (fh - rotated.height()) // 2
         painter.drawPixmap(xoff, yoff, rotated)
         painter.end()
-        self.foreground_drawn_rect = QRect(xoff, yoff, rw, rh)
+        self.foreground_drawn_rect = QRect(xoff, yoff, rotated.width(), rotated.height())
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
         self.last_scaled_foreground_image = final_img
         if self.overlay_config.get("auto_negative_font", False):
@@ -711,8 +710,10 @@ class DisplayWindow(QMainWindow):
             over = self.disp_cfg["overlay"]
         else:
             over = cfg.get("overlay", {})
+
         if not over.get("weather_enabled", False):
             return
+
         wcfg = cfg.get("weather", {})
         api_key = wcfg.get("api_key", "")
         zip_code = wcfg.get("zip_code", "")
@@ -722,42 +723,63 @@ class DisplayWindow(QMainWindow):
             if self.weather_label.isVisible():
                 self.setup_layout()
             return
+
         try:
             url = f"https://api.openweathermap.org/data/2.5/weather?zip={zip_code},{country_code}&units=metric&appid={api_key}"
             r = requests.get(url, timeout=5)
             if r.status_code == 200:
                 data = r.json()
 
-                # Build normal text
-                parts = []
+                # Step 1: Build text from user toggles
+                text_parts = []
                 if over.get("show_desc", True):
-                    parts.append(data["weather"][0]["description"].title())
+                    text_parts.append(data["weather"][0]["description"].title())
                 if over.get("show_temp", True):
-                    parts.append(f"{data['main']['temp']}\u00B0C")
+                    text_parts.append(f"{data['main']['temp']}\u00B0C")
                 if over.get("show_feels_like", False):
-                    parts.append(f"Feels: {data['main']['feels_like']}\u00B0C")
+                    text_parts.append(f"Feels: {data['main']['feels_like']}\u00B0C")
                 if over.get("show_humidity", False):
-                    parts.append(f"Humidity: {data['main']['humidity']}%")
+                    text_parts.append(f"Humidity: {data['main']['humidity']}%")
 
                 layout_mode = over.get("weather_layout", "inline")
                 if layout_mode == "stacked":
-                    weather_text = "\n".join(parts)
+                    text_str = "\n".join(text_parts)
                 else:
-                    weather_text = " | ".join(parts)
+                    text_str = " | ".join(text_parts)
 
-                # If "show_icon" is enabled, prepend a Weather Icons glyph:
-                if over.get("show_icon", False):
-                    weather_id = data["weather"][0].get("id", 0)
-                    icon_char = OWM_ICON_MAP.get(weather_id, "\uf07b")  # '\uf07b' = "na" icon
-                    weather_text = icon_char + "  " + weather_text
+                # Step 2: Check weather_display_mode
+                display_mode = over.get("weather_display_mode", "text_only")
+                wid = data["weather"][0].get("id", 0)
+                icon_char = OWM_ICON_MAP.get(wid, "\uf07b")  # fallback 'na'
+                final_str = ""
+
+                if display_mode == "icon_only":
+                    # Show only icon, ignore text
+                    final_str = icon_char
+                elif display_mode == "text_only":
+                    # Show only text
+                    final_str = text_str if text_str else ""
+                elif display_mode == "icon_and_text":
+                    # Both icon + text
+                    if text_str.strip():
+                        final_str = icon_char + "  " + text_str
+                    else:
+                        final_str = icon_char
+                else:
+                    # fallback if user somehow had a weird value
+                    final_str = text_str
 
                 self.weather_label.setWordWrap(True)
-                self.weather_label.setText(weather_text)
+                if final_str.strip():
+                    self.weather_label.setText(final_str)
+                else:
+                    self.weather_label.setText(" ")
             else:
                 self.weather_label.setText("Weather: error")
         except Exception as e:
             self.weather_label.setText("Weather: error")
             log_message(f"Error updating weather: {e}")
+
         if self.weather_label.isVisible():
             self.setup_layout()
 
@@ -818,15 +840,15 @@ class PiViewerGUI:
         self.cfg = load_config()
         self.app = QApplication(sys.argv)
 
-        # --- LOAD WEATHER ICONS FONT so we can display them in NegativeTextLabel ---
+        # Load Weather Icons TTF
         font_path = os.path.join(VIEWER_HOME, "static", "weather-icons", "font", "weathericons-regular-webfont.ttf")
         if os.path.exists(font_path):
-            font_id = QFontDatabase.addApplicationFont(font_path)
-            if font_id < 0:
+            fid = QFontDatabase.addApplicationFont(font_path)
+            if fid < 0:
                 log_message("Failed to load Weather Icons TTF font.")
             else:
-                families = QFontDatabase.applicationFontFamilies(font_id)
-                log_message(f"Loaded Weather Icons font family: {families}")
+                fams = QFontDatabase.applicationFontFamilies(fid)
+                log_message(f"Loaded Weather Icons font family: {fams}")
         else:
             log_message(f"Weather Icons TTF not found at: {font_path}")
 
@@ -836,7 +858,7 @@ class PiViewerGUI:
                 self.cfg["displays"] = {}
             if "Display0" in self.cfg["displays"]:
                 del self.cfg["displays"]["Display0"]
-            for mon_name, mon_info in fallback_mons.items():
+            for mon_name, minfo in fallback_mons.items():
                 if mon_name not in self.cfg["displays"]:
                     self.cfg["displays"][mon_name] = {
                         "mode": "random_image",
@@ -847,9 +869,9 @@ class PiViewerGUI:
                         "shuffle_mode": False,
                         "mixed_folders": [],
                         "rotate": 0,
-                        "screen_name": mon_info["screen_name"]
+                        "screen_name": minfo["screen_name"]
                     }
-                    log_message(f"Added fallback monitor to config: {mon_info['screen_name']}")
+                    log_message(f"Added fallback monitor to config: {minfo['screen_name']}")
             save_config(self.cfg)
 
         self.windows = []

@@ -20,8 +20,9 @@ from utils import (
 
 def detect_monitors_extended():
     """
-    Calls xrandr --props to find connected monitors, their preferred/current resolution,
-    plus a list of possible modes, plus a 'monitor name' from EDID if available.
+    Calls xrandr --props to find connected monitors, their preferred/current
+    resolution, plus a list of possible modes, plus a 'monitor name' from EDID
+    if available.
     We do NOT use these to change resolution.
     """
     result = {}
@@ -87,9 +88,8 @@ def get_local_monitors_from_config(cfg):
 
 def compute_overlay_preview(overlay_cfg, monitors_dict):
     """
-    Used for overlay preview, only.
-    This new version ignores manual sizing settings (removed) and
-    computes a preview overlay box automatically.
+    Used for overlay preview, only. (Not relevant in typical usage.)
+    *Question: can this be removed if it's not used?*
     """
     selection = overlay_cfg.get("monitor_selection", "All")
     if selection == "All":
@@ -127,7 +127,6 @@ def compute_overlay_preview(overlay_cfg, monitors_dict):
     preview_width = int(total_w * scale_factor)
     preview_height = int(total_h * scale_factor)
 
-    # Auto-compute overlay preview box as a fixed proportion of preview size
     overlay_box_width = int(preview_width * 0.3)
     overlay_box_height = int(preview_height * 0.2)
     overlay_box_left = int(preview_width * 0.05)
@@ -328,7 +327,7 @@ def clear_config():
     if os.path.exists(CONFIG_PATH):
         os.remove(CONFIG_PATH)
         log_message("viewerconfig.json has been deleted. Re-initializing config.")
-    init_config()  # recreate default config
+    init_config()
     try:
         subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
     except subprocess.CalledProcessError as e:
@@ -422,7 +421,8 @@ def callback():
           </head>
           <body>
             <h2>Spotify Authorization Complete</h2>
-            <p>If you are not redirected automatically, <a href="{redirect_url}">click here</a>.</p>
+            <p>If you are not redirected automatically,
+               <a href="{redirect_url}">click here</a>.</p>
           </body>
         </html>
         """
@@ -434,7 +434,6 @@ def callback():
 def overlay_config():
     cfg = load_config()
     if request.method == "POST":
-        # Storing weather_layout and our new "show_icon" as well
         for monitor in cfg.get("displays", {}):
             new_overlay = {
                 "clock_enabled": (f"{monitor}_clock_enabled" in request.form),
@@ -446,12 +445,14 @@ def overlay_config():
                 "clock_position": request.form.get(f"{monitor}_clock_position", "bottom-center"),
                 "weather_position": request.form.get(f"{monitor}_weather_position", "bottom-center"),
                 "weather_layout": request.form.get(f"{monitor}_weather_layout", "inline"),
+
                 "show_desc": (f"{monitor}_show_desc" in request.form),
                 "show_temp": (f"{monitor}_show_temp" in request.form),
                 "show_feels_like": (f"{monitor}_show_feels_like" in request.form),
                 "show_humidity": (f"{monitor}_show_humidity" in request.form),
-                # NEW: store "show_icon"
-                "show_icon": (f"{monitor}_show_icon" in request.form)
+
+                # NEW: store the "weather_display_mode"
+                "weather_display_mode": request.form.get(f"{monitor}_weather_display_mode", "text_only")
             }
             if "displays" in cfg and monitor in cfg["displays"]:
                 cfg["displays"][monitor]["overlay"] = new_overlay
