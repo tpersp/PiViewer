@@ -719,7 +719,10 @@ class DisplayWindow(QMainWindow):
         self.clock_label.setText(now_str)
 
     def update_weather(self):
-        # Overly simplified usage of the new icon map
+        # Offload weather update to a background thread to avoid blocking the GUI.
+        threading.Thread(target=self.fetch_and_update_weather, daemon=True).start()
+
+    def fetch_and_update_weather(self):
         cfg = load_config()
         over = self.disp_cfg.get("overlay") or cfg.get("overlay", {})
         if not over.get("weather_enabled", False):
@@ -730,9 +733,10 @@ class DisplayWindow(QMainWindow):
         zip_code = wcfg.get("zip_code", "")
         country_code = wcfg.get("country_code", "")
         if not (api_key and zip_code and country_code):
-            self.weather_label.setText("Weather: config missing")
-            if self.weather_label.isVisible():
+            def update_missing():
+                self.weather_label.setText("Weather: config missing")
                 self.setup_layout()
+            QTimer.singleShot(0, update_missing)
             return
 
         try:
@@ -784,11 +788,8 @@ class DisplayWindow(QMainWindow):
                 else:
                     text_str = " | ".join(text_parts)
 
-                # If user selects icon_only but has enabled additional data, force icon_and_text.
+                # IMPORTANT: When "icon only" is selected, show only the icon.
                 display_mode = over.get("weather_display_mode", "text_only")
-                if display_mode == "icon_only" and text_str.strip():
-                    display_mode = "icon_and_text"
-
                 if display_mode == "icon_only":
                     final_str = icon_char
                 elif display_mode == "text_only":
@@ -801,19 +802,22 @@ class DisplayWindow(QMainWindow):
                 else:
                     final_str = text_str
 
-                self.weather_label.setWordWrap(True)
-                if final_str.strip():
+                def update_label():
+                    self.weather_label.setWordWrap(True)
                     self.weather_label.setText(final_str)
-                else:
-                    self.weather_label.setText(" ")
+                    self.setup_layout()
+                QTimer.singleShot(0, update_label)
             else:
-                self.weather_label.setText("Weather: error")
+                def update_error():
+                    self.weather_label.setText("Weather: error")
+                    self.setup_layout()
+                QTimer.singleShot(0, update_error)
         except Exception as exc:
-            self.weather_label.setText("Weather: error")
+            def update_exc():
+                self.weather_label.setText("Weather: error")
+                self.setup_layout()
+            QTimer.singleShot(0, update_exc)
             log_message(f"Error updating weather: {exc}")
-
-        if self.weather_label.isVisible():
-            self.setup_layout()
 
     def fetch_spotify_album_art(self):
         try:
