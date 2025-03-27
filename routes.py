@@ -450,6 +450,7 @@ def overlay_config():
                 "show_temp": (f"{monitor}_show_temp" in request.form),
                 "show_feels_like": (f"{monitor}_show_feels_like" in request.form),
                 "show_humidity": (f"{monitor}_show_humidity" in request.form),
+                "show_windspeed": (f"{monitor}_show_windspeed" in request.form),
 
                 # NEW: store the "weather_display_mode"
                 "weather_display_mode": request.form.get(f"{monitor}_weather_display_mode", "text_only")

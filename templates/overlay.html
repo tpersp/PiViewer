@@ -164,6 +164,12 @@
               {% if monitor_cfg.overlay and monitor_cfg.overlay.show_humidity %}checked{% endif %}>
             Show Humidity
           </label>
+          <br>
+          <label>
+            <input type="checkbox" name="{{ monitor_name }}_show_windspeed"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.show_windspeed %}checked{% endif %}>
+            Show Wind Speed
+          </label>
         </div>
       </div>
       {% endfor %}

@@ -742,16 +742,42 @@ class DisplayWindow(QMainWindow):
             if r.status_code == 200:
                 data = r.json()
 
+                # Use API icon code for day/night variants
+                api_icon = data["weather"][0].get("icon", "01d")
+                ICON_MAP = {
+                    "01d": ALL_WEATHER_ICONS.get("wi-day-sunny", FALLBACK_ICON),
+                    "01n": ALL_WEATHER_ICONS.get("wi-night-clear", FALLBACK_ICON),
+                    "02d": ALL_WEATHER_ICONS.get("wi-day-cloudy", FALLBACK_ICON),
+                    "02n": ALL_WEATHER_ICONS.get("wi-night-cloudy", FALLBACK_ICON),
+                    "03d": ALL_WEATHER_ICONS.get("wi-cloud", FALLBACK_ICON),
+                    "03n": ALL_WEATHER_ICONS.get("wi-cloud", FALLBACK_ICON),
+                    "04d": ALL_WEATHER_ICONS.get("wi-cloudy", FALLBACK_ICON),
+                    "04n": ALL_WEATHER_ICONS.get("wi-cloudy", FALLBACK_ICON),
+                    "09d": ALL_WEATHER_ICONS.get("wi-day-rain", FALLBACK_ICON),
+                    "09n": ALL_WEATHER_ICONS.get("wi-night-rain", FALLBACK_ICON),
+                    "10d": ALL_WEATHER_ICONS.get("wi-day-rain", FALLBACK_ICON),
+                    "10n": ALL_WEATHER_ICONS.get("wi-night-rain", FALLBACK_ICON),
+                    "11d": ALL_WEATHER_ICONS.get("wi-day-thunderstorm", FALLBACK_ICON),
+                    "11n": ALL_WEATHER_ICONS.get("wi-night-thunderstorm", FALLBACK_ICON),
+                    "13d": ALL_WEATHER_ICONS.get("wi-day-snow", FALLBACK_ICON),
+                    "13n": ALL_WEATHER_ICONS.get("wi-night-snow", FALLBACK_ICON),
+                    "50d": ALL_WEATHER_ICONS.get("wi-day-fog", FALLBACK_ICON),
+                    "50n": ALL_WEATHER_ICONS.get("wi-night-fog", FALLBACK_ICON)
+                }
+                icon_char = ICON_MAP.get(api_icon, FALLBACK_ICON)
+
                 # Gather text
                 text_parts = []
                 if over.get("show_desc", True):
                     text_parts.append(data["weather"][0]["description"].title())
                 if over.get("show_temp", True):
-                    text_parts.append(f"{data['main']['temp']}\u00B0C")
+                    text_parts.append(f"{ALL_WEATHER_ICONS.get('wi-thermometer', '')} {data['main']['temp']}\u00B0C")
                 if over.get("show_feels_like", False):
-                    text_parts.append(f"Feels: {data['main']['feels_like']}\u00B0C")
+                    text_parts.append(f"{ALL_WEATHER_ICONS.get('wi-thermometer-exterior', '')} {data['main']['feels_like']}\u00B0C")
                 if over.get("show_humidity", False):
-                    text_parts.append(f"Humidity: {data['main']['humidity']}%")
+                    text_parts.append(f"{ALL_WEATHER_ICONS.get('wi-humidity', '')} {data['main']['humidity']}%")
+                if over.get("show_windspeed", False) and "wind" in data and "speed" in data["wind"]:
+                    text_parts.append(f"{ALL_WEATHER_ICONS.get('wi-wind-default', '')} {data['wind']['speed']} m/s")
 
                 layout_mode = over.get("weather_layout", "inline")
                 if layout_mode == "stacked":
@@ -760,9 +786,6 @@ class DisplayWindow(QMainWindow):
                     text_str = " | ".join(text_parts)
 
                 display_mode = over.get("weather_display_mode", "text_only")
-                wid = data["weather"][0].get("id", 0)
-                icon_char = OWM_ICON_MAP.get(wid, FALLBACK_ICON)
-
                 if display_mode == "icon_only":
                     final_str = icon_char
                 elif display_mode == "text_only":
