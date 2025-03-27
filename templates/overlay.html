@@ -78,7 +78,7 @@
               Bottom Left
             </option>
             <option value="bottom-center"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.clock_position == "bottom-center" or not monitor_cfg.overlay or monitor_cfg.overlay.clock_position is undefined %}selected{% endif %}>
+              {% if monitor_cfg.overlay and (monitor_cfg.overlay.clock_position == "bottom-center" or monitor_cfg.overlay.clock_position is undefined) %}selected{% endif %}>
               Bottom Center
             </option>
             <option value="bottom-right"
@@ -106,7 +106,7 @@
               Bottom Left
             </option>
             <option value="bottom-center"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-center" or not monitor_cfg.overlay or monitor_cfg.overlay.weather_position is undefined %}selected{% endif %}>
+              {% if monitor_cfg.overlay and (monitor_cfg.overlay.weather_position == "bottom-center" or monitor_cfg.overlay.weather_position is undefined) %}selected{% endif %}>
               Bottom Center
             </option>
             <option value="bottom-right"
@@ -140,6 +140,13 @@
             <input type="checkbox" name="{{ monitor_name }}_show_humidity"
               {% if monitor_cfg.overlay and monitor_cfg.overlay.show_humidity %}checked{% endif %}>
             Show Humidity
+          </label>
+          <br>
+          <!-- NEW: Show Weather Icon -->
+          <label>
+            <input type="checkbox" name="{{ monitor_name }}_show_icon"
+              {% if monitor_cfg.overlay and monitor_cfg.overlay.show_icon %}checked{% endif %}>
+            Show Weather Icon <i class="wi wi-day-sunny"></i>
           </label>
         </div>
       </div>

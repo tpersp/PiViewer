@@ -19,7 +19,7 @@ from datetime import datetime
 from collections import OrderedDict
 
 from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRect, QRectF
-from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader, QTransform, QFont
+from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader, QTransform, QFont, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel,
     QGraphicsScene, QGraphicsPixmapItem, QGraphicsBlurEffect, QSizePolicy
@@ -77,6 +77,14 @@ def detect_monitors():
     except Exception as e:
         log_message(f"Monitor detection error (fallback): {e}")
     return monitors
+
+
+# Minimal sample mapping for demonstration:
+OWM_ICON_MAP = {
+    800: "\uf00d",  # day-sunny
+    801: "\uf00c",  # day-cloudy
+    # fallback etc. below if not found
+}
 
 
 class DisplayWindow(QMainWindow):
@@ -176,7 +184,7 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setGeometry(rect)
         self.bg_label.lower()
 
-        # Position Spotify info label – its text box spans nearly the full screen width.
+        # Position Spotify info label
         pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
         self.spotify_info_label.setWordWrap(True)
         self.spotify_info_label.setFixedWidth(rect.width() - 2 * margin)
@@ -209,7 +217,6 @@ class DisplayWindow(QMainWindow):
             else:
                 lbl.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             lbl.adjustSize()
-            # Force re-wrap by using sizeHint() for height.
             required_height = lbl.sizeHint().height()
             lbl.setFixedHeight(required_height)
             h = required_height
@@ -562,8 +569,10 @@ class DisplayWindow(QMainWindow):
         else:
             bounding_h = fh
             bounding_w = int(bounding_h * image_aspect)
-        if bounding_w < 1: bounding_w = 1
-        if bounding_h < 1: bounding_h = 1
+        if bounding_w < 1:
+            bounding_w = 1
+        if bounding_h < 1:
+            bounding_h = 1
         return (bounding_w, bounding_h)
 
     def updateForegroundScaled(self):
@@ -608,8 +617,10 @@ class DisplayWindow(QMainWindow):
         else:
             new_h = fh
             new_w = int(new_h * image_aspect)
-        if new_w < 1: new_w = 1
-        if new_h < 1: new_h = 1
+        if new_w < 1:
+            new_w = 1
+        if new_h < 1:
+            new_h = 1
         return (new_w, new_h)
 
     def degrade_foreground(self, src_pm, bounding):
@@ -716,6 +727,8 @@ class DisplayWindow(QMainWindow):
             r = requests.get(url, timeout=5)
             if r.status_code == 200:
                 data = r.json()
+
+                # Build normal text
                 parts = []
                 if over.get("show_desc", True):
                     parts.append(data["weather"][0]["description"].title())
@@ -725,11 +738,19 @@ class DisplayWindow(QMainWindow):
                     parts.append(f"Feels: {data['main']['feels_like']}\u00B0C")
                 if over.get("show_humidity", False):
                     parts.append(f"Humidity: {data['main']['humidity']}%")
+
                 layout_mode = over.get("weather_layout", "inline")
                 if layout_mode == "stacked":
                     weather_text = "\n".join(parts)
                 else:
                     weather_text = " | ".join(parts)
+
+                # If "show_icon" is enabled, prepend a Weather Icons glyph:
+                if over.get("show_icon", False):
+                    weather_id = data["weather"][0].get("id", 0)
+                    icon_char = OWM_ICON_MAP.get(weather_id, "\uf07b")  # '\uf07b' = "na" icon
+                    weather_text = icon_char + "  " + weather_text
+
                 self.weather_label.setWordWrap(True)
                 self.weather_label.setText(weather_text)
             else:
@@ -796,6 +817,18 @@ class PiViewerGUI:
     def __init__(self):
         self.cfg = load_config()
         self.app = QApplication(sys.argv)
+
+        # --- LOAD WEATHER ICONS FONT so we can display them in NegativeTextLabel ---
+        font_path = os.path.join(VIEWER_HOME, "static", "weather-icons", "font", "weathericons-regular-webfont.ttf")
+        if os.path.exists(font_path):
+            font_id = QFontDatabase.addApplicationFont(font_path)
+            if font_id < 0:
+                log_message("Failed to load Weather Icons TTF font.")
+            else:
+                families = QFontDatabase.applicationFontFamilies(font_id)
+                log_message(f"Loaded Weather Icons font family: {families}")
+        else:
+            log_message(f"Weather Icons TTF not found at: {font_path}")
 
         fallback_mons = detect_monitors()
         if fallback_mons:

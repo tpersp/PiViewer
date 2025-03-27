@@ -434,7 +434,7 @@ def callback():
 def overlay_config():
     cfg = load_config()
     if request.method == "POST":
-        # Now storing weather_layout along with everything else
+        # Storing weather_layout and our new "show_icon" as well
         for monitor in cfg.get("displays", {}):
             new_overlay = {
                 "clock_enabled": (f"{monitor}_clock_enabled" in request.form),
@@ -449,7 +449,9 @@ def overlay_config():
                 "show_desc": (f"{monitor}_show_desc" in request.form),
                 "show_temp": (f"{monitor}_show_temp" in request.form),
                 "show_feels_like": (f"{monitor}_show_feels_like" in request.form),
-                "show_humidity": (f"{monitor}_show_humidity" in request.form)
+                "show_humidity": (f"{monitor}_show_humidity" in request.form),
+                # NEW: store "show_icon"
+                "show_icon": (f"{monitor}_show_icon" in request.form)
             }
             if "displays" in cfg and monitor in cfg["displays"]:
                 cfg["displays"][monitor]["overlay"] = new_overlay
@@ -653,7 +655,7 @@ def index():
         load1=round(load1, 2),
         temp=temp,
         host=host,
-        ipaddr=ipaddr,
+        ipaddr=ip_address,
         model=model,
         theme=theme,
         version=APP_VERSION,
