@@ -734,6 +734,7 @@ class DisplayWindow(QMainWindow):
         country_code = wcfg.get("country_code", "")
         if not (api_key and zip_code and country_code):
             def update_missing():
+                self.weather_label.show()
                 self.weather_label.setText("Weather: config missing")
                 self.setup_layout()
             QTimer.singleShot(0, update_missing)
@@ -803,17 +804,20 @@ class DisplayWindow(QMainWindow):
                     final_str = text_str
 
                 def update_label():
+                    self.weather_label.show()
                     self.weather_label.setWordWrap(True)
                     self.weather_label.setText(final_str)
                     self.setup_layout()
                 QTimer.singleShot(0, update_label)
             else:
                 def update_error():
+                    self.weather_label.show()
                     self.weather_label.setText("Weather: error")
                     self.setup_layout()
                 QTimer.singleShot(0, update_error)
         except Exception as exc:
             def update_exc():
+                self.weather_label.show()
                 self.weather_label.setText("Weather: error")
                 self.setup_layout()
             QTimer.singleShot(0, update_exc)
