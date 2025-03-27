@@ -29,12 +29,18 @@ from spotipy.oauth2 import SpotifyOAuth
 from config import APP_VERSION, IMAGE_DIR, LOG_PATH, VIEWER_HOME
 from utils import load_config, save_config, log_message
 
+# NEW: import our expanded weather icon map and fallback:
+from weathericonmap import OWM_ICON_MAP, FALLBACK_ICON, ALL_WEATHER_ICONS
 
-# --- Custom label for negative (difference) text drawing ---
+
+
 class NegativeTextLabel(QLabel):
+    """
+    Custom label that optionally uses a negative (difference) composition mode
+    to invert text over bright backgrounds.
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
-        # When useDifference is True, the text is drawn with CompositionMode.Difference
         self.useDifference = False
 
     def paintEvent(self, event):
@@ -78,14 +84,6 @@ def detect_monitors():
     return monitors
 
 
-# Minimal sample mapping for demonstration:
-OWM_ICON_MAP = {
-    800: "\uf00d",  # day-sunny
-    801: "\uf00c",  # day-cloudy
-    # fallback => \uf07b
-}
-
-
 class DisplayWindow(QMainWindow):
     def __init__(self, disp_name, disp_cfg, assigned_screen=None):
         super().__init__()
@@ -94,7 +92,7 @@ class DisplayWindow(QMainWindow):
         self.assigned_screen = assigned_screen
         self.running = True
 
-        # Caching
+        # For caching images/gifs
         self.image_cache = OrderedDict()
         self.cache_capacity = 15
 
@@ -103,11 +101,9 @@ class DisplayWindow(QMainWindow):
         self.current_movie = None
         self.handling_gif_frames = False
         self.last_scaled_foreground_image = None
-
         self.current_drawn_image = None
         self.foreground_drawn_rect = None
 
-        # Set window geometry
         if self.assigned_screen:
             self.setGeometry(self.assigned_screen.geometry())
         else:
@@ -117,7 +113,7 @@ class DisplayWindow(QMainWindow):
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.showFullScreen()
 
-        # Central widget
+        # Main widget
         self.main_widget = QWidget(self)
         self.setCentralWidget(self.main_widget)
         self.main_widget.setStyleSheet("background-color: black;")
@@ -127,13 +123,13 @@ class DisplayWindow(QMainWindow):
         self.bg_label.setScaledContents(False)
         self.bg_label.setStyleSheet("background-color: black;")
 
-        # Foreground label for images
+        # Foreground label for displaying images/gifs
         self.foreground_label = QLabel(self.main_widget)
         self.foreground_label.setScaledContents(False)
         self.foreground_label.setAlignment(Qt.AlignCenter)
         self.foreground_label.setStyleSheet("background-color: transparent;")
 
-        # Overlay labels for clock and weather
+        # Overlays
         self.clock_label = NegativeTextLabel(self.main_widget)
         self.clock_label.setText("00:00:00")
         self.clock_label.setAlignment(Qt.AlignCenter)
@@ -143,7 +139,7 @@ class DisplayWindow(QMainWindow):
         self.weather_label.setAlignment(Qt.AlignCenter)
         self.weather_label.setStyleSheet("background: transparent;")
 
-        # Spotify info label
+        # Spotify
         self.spotify_info = None
         self.spotify_info_label = NegativeTextLabel(self.main_widget)
         self.spotify_info_label.setAlignment(Qt.AlignCenter)
@@ -161,7 +157,7 @@ class DisplayWindow(QMainWindow):
         self.weather_timer.start(60000)
         self.update_weather()
 
-        # Load config and begin
+        # Load config, start
         self.cfg = load_config()
         self.reload_settings()
         self.next_image(force=True)
@@ -176,6 +172,7 @@ class DisplayWindow(QMainWindow):
             scr = self.screen()
             if scr:
                 self.setGeometry(scr.geometry())
+
         rect = self.main_widget.rect()
         margin = 10
 
@@ -183,7 +180,7 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setGeometry(rect)
         self.bg_label.lower()
 
-        # Spotify info label
+        # Place Spotify label
         pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
         self.spotify_info_label.setWordWrap(True)
         self.spotify_info_label.setFixedWidth(rect.width() - 2 * margin)
@@ -194,6 +191,7 @@ class DisplayWindow(QMainWindow):
             self.spotify_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         else:
             self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+
         if "top" in pos:
             y = margin
         elif "bottom" in pos:
@@ -203,10 +201,9 @@ class DisplayWindow(QMainWindow):
         self.spotify_info_label.move(margin, y)
         self.spotify_info_label.raise_()
 
-        # Helper to place overlays
         def place_overlay_label(lbl, position, container_rect, y_offset=0):
-            full_width = container_rect.width() - 2 * margin
-            lbl.setFixedWidth(full_width)
+            width_avail = container_rect.width() - 2 * margin
+            lbl.setFixedWidth(width_avail)
             lbl.setWordWrap(True)
             lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             if "left" in position:
@@ -230,6 +227,7 @@ class DisplayWindow(QMainWindow):
         if self.clock_label.isVisible() or self.weather_label.isVisible():
             clock_pos = self.overlay_config.get("clock_position", "bottom-center")
             weather_pos = self.overlay_config.get("weather_position", "bottom-center")
+
             offset_after_clock = 0
             if self.clock_label.isVisible():
                 offset_after_clock = place_overlay_label(self.clock_label, clock_pos, rect, 0)
@@ -239,6 +237,7 @@ class DisplayWindow(QMainWindow):
                 else:
                     place_overlay_label(self.weather_label, weather_pos, rect, 0)
 
+        # If we already loaded an image, re-scale it
         if self.current_pixmap and not self.handling_gif_frames:
             self.updateForegroundScaled()
 
@@ -249,21 +248,21 @@ class DisplayWindow(QMainWindow):
     @Slot()
     def reload_settings(self):
         self.cfg = load_config()
-        if "overlay" in self.disp_cfg:
-            over = self.disp_cfg["overlay"]
-        else:
-            over = self.cfg.get("overlay", {})
+        over = self.disp_cfg.get("overlay") or self.cfg.get("overlay", {})
 
+        # Clock
         if over.get("clock_enabled", False):
             self.clock_label.show()
         else:
             self.clock_label.hide()
 
+        # Weather
         if over.get("weather_enabled", False):
             self.weather_label.show()
         else:
             self.weather_label.hide()
 
+        # Font sizes, negative mode
         cfsize = over.get("clock_font_size", 24)
         wfsize = over.get("weather_font_size", 18)
         if over.get("auto_negative_font", False):
@@ -271,12 +270,12 @@ class DisplayWindow(QMainWindow):
             self.weather_label.useDifference = True
             self.clock_label.setStyleSheet("background: transparent;")
             self.weather_label.setStyleSheet("background: transparent;")
-            font_clock = QFont(self.clock_label.font())
-            font_clock.setPixelSize(cfsize)
-            self.clock_label.setFont(font_clock)
-            font_weather = QFont(self.weather_label.font())
-            font_weather.setPixelSize(wfsize)
-            self.weather_label.setFont(font_weather)
+            f1 = QFont(self.clock_label.font())
+            f1.setPixelSize(cfsize)
+            self.clock_label.setFont(f1)
+            f2 = QFont(self.weather_label.font())
+            f2.setPixelSize(wfsize)
+            self.weather_label.setFont(f2)
         else:
             self.clock_label.useDifference = False
             self.weather_label.useDifference = False
@@ -286,6 +285,7 @@ class DisplayWindow(QMainWindow):
 
         self.overlay_config = over
 
+        # GUI scale
         gui_cfg = self.cfg.get("gui", {})
         try:
             self.bg_blur_radius = int(gui_cfg.get("background_blur_radius", 0))
@@ -300,6 +300,7 @@ class DisplayWindow(QMainWindow):
         except:
             self.fg_scale_percent = 100
 
+        # Slideshow interval
         interval_s = self.disp_cfg.get("image_interval", 60)
         self.current_mode = self.disp_cfg.get("mode", "random_image")
         if self.current_mode == "spotify":
@@ -307,6 +308,7 @@ class DisplayWindow(QMainWindow):
         self.slideshow_timer.setInterval(interval_s * 1000)
         self.slideshow_timer.start()
 
+        # Build or rebuild image list if needed
         self.image_list = []
         self.index = 0
         if self.current_mode in ("random_image", "mixed", "specific_image"):
@@ -325,12 +327,12 @@ class DisplayWindow(QMainWindow):
             self.image_list = images
         elif mode == "mixed":
             folder_list = self.disp_cfg.get("mixed_folders", [])
-            allimg = []
-            for folder in folder_list:
-                allimg += self.gather_images(folder)
+            coll = []
+            for fd in folder_list:
+                coll += self.gather_images(fd)
             if self.disp_cfg.get("shuffle_mode", False):
-                random.shuffle(allimg)
-            self.image_list = allimg
+                random.shuffle(coll)
+            self.image_list = coll
         elif mode == "specific_image":
             cat = self.disp_cfg.get("image_category", "")
             spec = self.disp_cfg.get("specific_image", "")
@@ -345,99 +347,108 @@ class DisplayWindow(QMainWindow):
         base = os.path.join(IMAGE_DIR, category) if category else IMAGE_DIR
         if not os.path.isdir(base):
             return []
-        results = []
-        for fname in os.listdir(base):
-            lf = fname.lower()
+        found = []
+        for fn in os.listdir(base):
+            lf = fn.lower()
             if lf.endswith((".jpg", ".jpeg", ".png", ".gif")):
-                results.append(os.path.join(base, fname))
-        results.sort()
-        return results
+                found.append(os.path.join(base, fn))
+        found.sort()
+        return found
 
     def load_and_cache_image(self, fullpath):
         ext = os.path.splitext(fullpath)[1].lower()
         if ext == ".gif":
-            movie = QMovie(fullpath)
-            tmp_reader = QImageReader(fullpath)
-            tmp_reader.setAutoDetectImageFormat(True)
-            first_frame = tmp_reader.read()
-            return {"type": "gif", "movie": movie, "first_frame": first_frame}
+            mv = QMovie(fullpath)
+            r = QImageReader(fullpath)
+            r.setAutoDetectImageFormat(True)
+            ff = r.read()
+            return {"type": "gif", "movie": mv, "first_frame": ff}
         else:
-            pixmap = QPixmap(fullpath)
-            return {"type": "static", "pixmap": pixmap}
+            px = QPixmap(fullpath)
+            return {"type": "static", "pixmap": px}
 
     def get_cached_image(self, fullpath):
         if fullpath in self.image_cache:
             self.image_cache.move_to_end(fullpath)
             return self.image_cache[fullpath]
-        data = self.load_and_cache_image(fullpath)
-        self.image_cache[fullpath] = data
+        info = self.load_and_cache_image(fullpath)
+        self.image_cache[fullpath] = info
         if len(self.image_cache) > self.cache_capacity:
             self.image_cache.popitem(last=False)
-        return data
+        return info
 
     def preload_next_images(self):
         if not self.image_list:
             return
         for i in range(1, 4):
             idx = (self.index + i) % len(self.image_list)
-            path = self.image_list[idx]
-            if path not in self.image_cache:
-                self.get_cached_image(path)
+            pth = self.image_list[idx]
+            if pth not in self.image_cache:
+                self.get_cached_image(pth)
 
     def next_image(self, force=False):
         if not self.running:
             return
 
+        # If Spotify
         if self.current_mode == "spotify":
             path = self.fetch_spotify_album_art()
             if path:
                 self.show_foreground_image(path, is_spotify=True)
                 self.spotify_info_label.show()
 
+                # Info
+                sp_song = self.spotify_info.get("song") if self.spotify_info else ""
+                sp_art = self.spotify_info.get("artist") if self.spotify_info else ""
+                sp_alb = self.spotify_info.get("album") if self.spotify_info else ""
+
                 info_parts = []
-                if self.disp_cfg.get("spotify_show_song", True) and self.spotify_info and self.spotify_info.get("song"):
-                    info_parts.append(self.spotify_info["song"])
-                if self.disp_cfg.get("spotify_show_artist", True) and self.spotify_info and self.spotify_info.get("artist"):
-                    info_parts.append(self.spotify_info["artist"])
-                if self.disp_cfg.get("spotify_show_album", True) and self.spotify_info and self.spotify_info.get("album"):
-                    info_parts.append(self.spotify_info["album"])
+                if self.disp_cfg.get("spotify_show_song", True) and sp_song:
+                    info_parts.append(sp_song)
+                if self.disp_cfg.get("spotify_show_artist", True) and sp_art:
+                    info_parts.append(sp_art)
+                if self.disp_cfg.get("spotify_show_album", True) and sp_alb:
+                    info_parts.append(sp_alb)
 
                 pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
                 if "left" in pos or "right" in pos:
-                    text = "\n".join(info_parts)
+                    textval = "\n".join(info_parts)
                 else:
-                    text = " | ".join(info_parts)
-                self.spotify_info_label.setText(text)
-                font_size = self.disp_cfg.get("spotify_font_size", 18)
+                    textval = " | ".join(info_parts)
+
+                self.spotify_info_label.setText(textval)
+                fsize = self.disp_cfg.get("spotify_font_size", 18)
                 if self.disp_cfg.get("spotify_negative_font", True):
                     self.spotify_info_label.useDifference = True
                     self.spotify_info_label.setStyleSheet("background: transparent;")
-                    font = QFont(self.spotify_info_label.font())
-                    font.setPixelSize(font_size)
-                    self.spotify_info_label.setFont(font)
+                    fnt = QFont(self.spotify_info_label.font())
+                    fnt.setPixelSize(fsize)
+                    self.spotify_info_label.setFont(fnt)
                 else:
                     self.spotify_info_label.useDifference = False
                     self.spotify_info_label.setStyleSheet(
-                        f"color: #FFFFFF; font-size: {font_size}px; background: transparent;"
+                        f"color: #FFFFFF; font-size: {fsize}px; background: transparent;"
                     )
                 self.spotify_info_label.raise_()
                 self.setup_layout()
+
             else:
+                # fallback
                 fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
                 if fallback_mode in ("random_image", "mixed", "specific_image"):
-                    image_list_backup = self.image_list
-                    mode_backup = self.current_mode
+                    original_list = self.image_list
+                    original_mode = self.current_mode
                     self.current_mode = fallback_mode
                     self.build_local_image_list()
                     if not self.image_list:
                         self.clear_foreground_label("No fallback images found")
                     else:
                         self.index = (self.index + 1) % len(self.image_list)
-                        new_path = self.image_list[self.index]
-                        self.last_displayed_path = new_path
-                        self.show_foreground_image(new_path)
-                    self.current_mode = mode_backup
-                    self.image_list = image_list_backup
+                        newp = self.image_list[self.index]
+                        self.last_displayed_path = newp
+                        self.show_foreground_image(newp)
+                    self.current_mode = original_mode
+                    self.image_list = original_list
                     self.spotify_info_label.setText("")
                     self.spotify_info_label.hide()
                 else:
@@ -446,6 +457,7 @@ class DisplayWindow(QMainWindow):
                     self.spotify_info_label.hide()
             return
 
+        # Otherwise
         if not self.image_list:
             self.clear_foreground_label("No images found")
             return
@@ -456,10 +468,10 @@ class DisplayWindow(QMainWindow):
         self.index += 1
         if self.index >= len(self.image_list):
             self.index = 0
-        new_path = self.image_list[self.index]
-        self.last_displayed_path = new_path
+        newp = self.image_list[self.index]
+        self.last_displayed_path = newp
 
-        self.show_foreground_image(new_path)
+        self.show_foreground_image(newp)
         self.preload_next_images()
         if self.overlay_config.get("auto_negative_font", False):
             self.clock_label.update()
@@ -489,6 +501,7 @@ class DisplayWindow(QMainWindow):
 
         data = self.get_cached_image(fullpath)
         if data["type"] == "gif" and not is_spotify:
+            # For GIF
             if self.fg_scale_percent == 100:
                 self.current_movie = data["movie"]
                 ff = data["first_frame"]
@@ -517,6 +530,7 @@ class DisplayWindow(QMainWindow):
                 self.current_movie.frameChanged.connect(self.on_gif_frame_changed)
                 self.current_movie.start()
         else:
+            # Static
             if data["type"] == "static":
                 self.current_pixmap = data["pixmap"]
             else:
@@ -530,10 +544,10 @@ class DisplayWindow(QMainWindow):
     def on_gif_frame_changed(self, frame_index):
         if not self.current_movie or not self.handling_gif_frames:
             return
-        frm_img = self.current_movie.currentImage()
-        if frm_img.isNull():
+        frm = self.current_movie.currentImage()
+        if frm.isNull():
             return
-        src_pm = QPixmap.fromImage(frm_img)
+        src_pm = QPixmap.fromImage(frm)
         degraded = self.degrade_foreground(src_pm, self.gif_bounds)
         rotated = self.apply_rotation_if_any(degraded)
         fw = self.foreground_label.width()
@@ -548,6 +562,7 @@ class DisplayWindow(QMainWindow):
         painter.end()
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
         self.last_scaled_foreground_image = final_img
+
         if self.overlay_config.get("auto_negative_font", False):
             self.clock_label.update()
             self.weather_label.update()
@@ -562,14 +577,14 @@ class DisplayWindow(QMainWindow):
         ih = first_frame.height()
         if iw < 1 or ih < 1:
             return (fw, fh)
-        image_aspect = float(iw) / float(ih)
-        screen_aspect = float(fw) / float(fh)
-        if image_aspect > screen_aspect:
+        img_aspect = float(iw) / float(ih)
+        scr_aspect = float(fw) / float(fh)
+        if img_aspect > scr_aspect:
             bounding_w = fw
-            bounding_h = int(bounding_w / image_aspect)
+            bounding_h = int(bounding_w / img_aspect)
         else:
             bounding_h = fh
-            bounding_w = int(bounding_h * image_aspect)
+            bounding_w = int(bounding_h * img_aspect)
         if bounding_w < 1:
             bounding_w = 1
         if bounding_h < 1:
@@ -601,6 +616,7 @@ class DisplayWindow(QMainWindow):
         self.foreground_drawn_rect = QRect(xoff, yoff, rotated.width(), rotated.height())
         self.foreground_label.setPixmap(QPixmap.fromImage(final_img))
         self.last_scaled_foreground_image = final_img
+
         if self.overlay_config.get("auto_negative_font", False):
             self.clock_label.update()
             self.weather_label.update()
@@ -608,14 +624,14 @@ class DisplayWindow(QMainWindow):
     def calc_fill_size(self, iw, ih, fw, fh):
         if iw <= 0 or ih <= 0 or fw <= 0 or fh <= 0:
             return (fw, fh)
-        image_aspect = float(iw) / float(ih)
-        screen_aspect = float(fw) / float(fh)
-        if image_aspect > screen_aspect:
+        img_aspect = float(iw) / float(ih)
+        scr_aspect = float(fw) / float(fh)
+        if img_aspect > scr_aspect:
             new_w = fw
-            new_h = int(new_w / image_aspect)
+            new_h = int(new_w / img_aspect)
         else:
             new_h = fh
-            new_w = int(new_h * image_aspect)
+            new_w = int(new_h * img_aspect)
         if new_w < 1:
             new_w = 1
         if new_h < 1:
@@ -630,11 +646,11 @@ class DisplayWindow(QMainWindow):
         if self.fg_scale_percent >= 100:
             return scaled
         sf = float(self.fg_scale_percent) / 100.0
-        down_w = int(bw * sf)
-        down_h = int(bh * sf)
-        if down_w < 1 or down_h < 1:
+        dw = int(bw * sf)
+        dh = int(bh * sf)
+        if dw < 1 or dh < 1:
             return scaled
-        smaller = scaled.scaled(down_w, down_h, Qt.IgnoreAspectRatio, Qt.FastTransformation)
+        smaller = scaled.scaled(dw, dh, Qt.IgnoreAspectRatio, Qt.FastTransformation)
         final_pm = smaller.scaled(bw, bh, Qt.IgnoreAspectRatio, Qt.FastTransformation)
         return final_pm
 
@@ -652,65 +668,61 @@ class DisplayWindow(QMainWindow):
         pw, ph = pixmap.width(), pixmap.height()
         if sw < 1 or sh < 1 or pw < 1 or ph < 1:
             return None
-        screen_ratio = float(sw) / float(sh)
-        img_ratio = float(pw) / float(ph)
+        scr_aspect = float(sw) / float(sh)
+        img_aspect = float(pw) / float(ph)
         tmode = Qt.FastTransformation
-        if img_ratio > screen_ratio:
+        if img_aspect > scr_aspect:
             new_h = sh
-            new_w = int(new_h * img_ratio)
+            new_w = int(new_h * img_aspect)
         else:
             new_w = sw
-            new_h = int(new_w / img_ratio)
+            new_h = int(new_w / img_aspect)
         scaled = pixmap.scaled(new_w, new_h, Qt.KeepAspectRatio, tmode)
         xoff = (scaled.width() - sw) // 2
         yoff = (scaled.height() - sh) // 2
         final_cover = scaled.copy(xoff, yoff, sw, sh)
         if self.bg_scale_percent < 100:
             sf = float(self.bg_scale_percent) / 100.0
-            down_w = int(sw * sf)
-            down_h = int(sh * sf)
-            if down_w > 0 and down_h > 0:
-                temp_down = final_cover.scaled(down_w, down_h, Qt.IgnoreAspectRatio, tmode)
+            dw = int(sw * sf)
+            dh = int(sh * sf)
+            if dw > 0 and dh > 0:
+                temp_down = final_cover.scaled(dw, dh, Qt.IgnoreAspectRatio, tmode)
                 blurred = self.blur_pixmap_once(temp_down, self.bg_blur_radius)
                 if blurred:
-                    final_bg = blurred.scaled(sw, sh, Qt.IgnoreAspectRatio, tmode)
+                    return blurred.scaled(sw, sh, Qt.IgnoreAspectRatio, tmode)
                 else:
-                    final_bg = temp_down.scaled(sw, sh, Qt.IgnoreAspectRatio, tmode)
+                    return temp_down.scaled(sw, sh, Qt.IgnoreAspectRatio, tmode)
             else:
-                final_bg = self.blur_pixmap_once(final_cover, self.bg_blur_radius)
+                return self.blur_pixmap_once(final_cover, self.bg_blur_radius)
         else:
-            final_bg = self.blur_pixmap_once(final_cover, self.bg_blur_radius)
-        return final_bg
+            return self.blur_pixmap_once(final_cover, self.bg_blur_radius)
 
     def blur_pixmap_once(self, pm, radius):
         if radius <= 0:
             return pm
-        scene = QGraphicsScene()
-        item = QGraphicsPixmapItem(pm)
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(radius)
-        blur.setBlurHints(QGraphicsBlurEffect.PerformanceHint)
-        item.setGraphicsEffect(blur)
-        scene.addItem(item)
-        result = QImage(pm.width(), pm.height(), QImage.Format_ARGB32)
-        result.fill(Qt.transparent)
-        painter = QPainter(result)
-        scene.render(painter, QRectF(0, 0, pm.width(), pm.height()),
-                     QRectF(0, 0, pm.width(), pm.height()))
+        sc = QGraphicsScene()
+        it = QGraphicsPixmapItem(pm)
+        bl = QGraphicsBlurEffect()
+        bl.setBlurRadius(radius)
+        bl.setBlurHints(QGraphicsBlurEffect.PerformanceHint)
+        it.setGraphicsEffect(bl)
+        sc.addItem(it)
+        out = QImage(pm.width(), pm.height(), QImage.Format_ARGB32)
+        out.fill(Qt.transparent)
+        painter = QPainter(out)
+        sc.render(painter, QRectF(0, 0, pm.width(), pm.height()),
+                  QRectF(0, 0, pm.width(), pm.height()))
         painter.end()
-        return QPixmap.fromImage(result)
+        return QPixmap.fromImage(out)
 
     def update_clock(self):
         now_str = datetime.now().strftime("%H:%M:%S")
         self.clock_label.setText(now_str)
 
     def update_weather(self):
+        # Overly simplified usage of the new icon map
         cfg = load_config()
-        if "overlay" in self.disp_cfg:
-            over = self.disp_cfg["overlay"]
-        else:
-            over = cfg.get("overlay", {})
-
+        over = self.disp_cfg.get("overlay") or cfg.get("overlay", {})
         if not over.get("weather_enabled", False):
             return
 
@@ -730,7 +742,7 @@ class DisplayWindow(QMainWindow):
             if r.status_code == 200:
                 data = r.json()
 
-                # Step 1: Build text from user toggles
+                # Gather text
                 text_parts = []
                 if over.get("show_desc", True):
                     text_parts.append(data["weather"][0]["description"].title())
@@ -747,26 +759,20 @@ class DisplayWindow(QMainWindow):
                 else:
                     text_str = " | ".join(text_parts)
 
-                # Step 2: Check weather_display_mode
                 display_mode = over.get("weather_display_mode", "text_only")
                 wid = data["weather"][0].get("id", 0)
-                icon_char = OWM_ICON_MAP.get(wid, "\uf07b")  # fallback 'na'
-                final_str = ""
+                icon_char = OWM_ICON_MAP.get(wid, FALLBACK_ICON)
 
                 if display_mode == "icon_only":
-                    # Show only icon, ignore text
                     final_str = icon_char
                 elif display_mode == "text_only":
-                    # Show only text
                     final_str = text_str if text_str else ""
                 elif display_mode == "icon_and_text":
-                    # Both icon + text
                     if text_str.strip():
-                        final_str = icon_char + "  " + text_str
+                        final_str = f"{icon_char}  {text_str}"
                     else:
                         final_str = icon_char
                 else:
-                    # fallback if user somehow had a weird value
                     final_str = text_str
 
                 self.weather_label.setWordWrap(True)
@@ -776,9 +782,9 @@ class DisplayWindow(QMainWindow):
                     self.weather_label.setText(" ")
             else:
                 self.weather_label.setText("Weather: error")
-        except Exception as e:
+        except Exception as exc:
             self.weather_label.setText("Weather: error")
-            log_message(f"Error updating weather: {e}")
+            log_message(f"Error updating weather: {exc}")
 
         if self.weather_label.isVisible():
             self.setup_layout()
@@ -804,23 +810,24 @@ class DisplayWindow(QMainWindow):
             if auth.is_token_expired(token_info):
                 token_info = auth.refresh_access_token(token_info["refresh_token"])
             sp = spotipy.Spotify(auth=token_info["access_token"])
-            current = sp.current_playback()
-            if not current or not current.get("item") or not current.get("is_playing", False):
+            curr = sp.current_playback()
+            if not curr or not curr.get("item") or not curr.get("is_playing", False):
                 self.spotify_info = None
                 return None
-            item = current["item"]
-            track_name = item.get("name", "")
-            artists = ", ".join([a.get("name", "") for a in item.get("artists", [])])
-            album_name = item.get("album", {}).get("name", "")
+
+            itm = curr["item"]
+            track_name = itm.get("name", "")
+            artists = ", ".join(a.get("name", "") for a in itm.get("artists", []))
+            album_name = itm.get("album", {}).get("name", "")
             self.spotify_info = {
                 "song": track_name,
                 "artist": artists,
                 "album": album_name
             }
-            album_imgs = item["album"]["images"]
-            if not album_imgs:
+            imgs = itm["album"]["images"]
+            if not imgs:
                 return None
-            url = album_imgs[0]["url"]
+            url = imgs[0]["url"]
             resp = requests.get(url, stream=True, timeout=5)
             if resp.status_code == 200:
                 tmpf = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
@@ -858,7 +865,7 @@ class PiViewerGUI:
                 self.cfg["displays"] = {}
             if "Display0" in self.cfg["displays"]:
                 del self.cfg["displays"]["Display0"]
-            for mon_name, minfo in fallback_mons.items():
+            for mon_name, mon_info in fallback_mons.items():
                 if mon_name not in self.cfg["displays"]:
                     self.cfg["displays"][mon_name] = {
                         "mode": "random_image",
@@ -869,9 +876,9 @@ class PiViewerGUI:
                         "shuffle_mode": False,
                         "mixed_folders": [],
                         "rotate": 0,
-                        "screen_name": minfo["screen_name"]
+                        "screen_name": mon_info["screen_name"]
                     }
-                    log_message(f"Added fallback monitor to config: {minfo['screen_name']}")
+                    log_message(f"Added fallback monitor to config: {mon_info['screen_name']}")
             save_config(self.cfg)
 
         self.windows = []
