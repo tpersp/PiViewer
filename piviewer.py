@@ -736,6 +736,7 @@ class DisplayWindow(QMainWindow):
             def update_missing():
                 self.weather_label.show()
                 self.weather_label.setText("Weather: config missing")
+                self.weather_label.raise_()
                 self.setup_layout()
             QTimer.singleShot(0, update_missing)
             return
@@ -805,6 +806,7 @@ class DisplayWindow(QMainWindow):
 
                 def update_label():
                     self.weather_label.show()
+                    self.weather_label.raise_()
                     self.weather_label.setWordWrap(True)
                     self.weather_label.setText(final_str)
                     self.setup_layout()
@@ -812,12 +814,14 @@ class DisplayWindow(QMainWindow):
             else:
                 def update_error():
                     self.weather_label.show()
+                    self.weather_label.raise_()
                     self.weather_label.setText("Weather: error")
                     self.setup_layout()
                 QTimer.singleShot(0, update_error)
         except Exception as exc:
             def update_exc():
                 self.weather_label.show()
+                self.weather_label.raise_()
                 self.weather_label.setText("Weather: error")
                 self.setup_layout()
             QTimer.singleShot(0, update_exc)
