@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-weathericonmap.py
-
-Contains:
-1) ALL_WEATHER_ICONS: A comprehensive dictionary mapping every Weather Icons
-   CSS class (wi-* style) to its corresponding \ufXXXX glyph.
-   This includes day/night variants, moon phases, wind directions, etc.
-
-2) OWM_ICON_MAP: A numeric-code mapping for OpenWeatherMap condition IDs -> glyphs.
-   (You can expand or adapt it for night logic, or handle 'icon' strings like '01d'.)
-
-3) FALLBACK_ICON: A single fallback glyph (the "na" icon) for unknown conditions.
-"""
+# weathericonmap.py
+#
+# Contains:
+# 1) ALL_WEATHER_ICONS: A comprehensive dictionary mapping every Weather Icons
+#    CSS class (wi-* style) to its corresponding \ufXXXX glyph.
+#    This includes day/night variants, moon phases, wind directions, etc.
+#
+# 2) OWM_ICON_MAP: A numeric-code mapping for OpenWeatherMap condition IDs -> glyphs.
+#    (You can expand or adapt it for night logic, or handle 'icon' strings like '01d'.)
+#
+# 3) FALLBACK_ICON: A single fallback glyph (the "na" icon) for unknown conditions.
 
 FALLBACK_ICON = "\uf07b"  # "na" icon from Weather Icons (unknown)
 
-# A more complete ID -> icon mapping.  If you want “night” versions on 800 etc. at nighttime,
-# you can adapt or detect "day" vs. "night" from OWM. For now, we just map everything to day icons
-# or use fallback for anything not explicitly listed.
+# A more complete ID -> icon mapping. If you want “night” versions on 800 etc. at nighttime,
+# adapt or detect "day" vs. "night" from OWM. We just map everything to day icons
+# or fallback for anything not explicitly listed.
 OWM_ICON_MAP = {
     # Thunderstorm
     200: "\uf010",  # day-thunderstorm
@@ -88,19 +86,13 @@ OWM_ICON_MAP = {
     803: "\uf013",  # day-cloudy
     804: "\uf013",  # day-cloudy
 
-    # For codes beyond 804, or any not above, we fallback:
+    # For codes beyond 804, or anything else, fallback:
 }
-
 
 ################################################################################
 # ALL_WEATHER_ICONS: Every single Weather Icons CSS class => its \ufXXXX glyph.
-#
-# These are drawn from the official weather-icons.css, covering:
-#   - day- / night- variants
-#   - directionals
-#   - moon phases
-#   - windy, storm, etc.
-#   - additional symbols: barometer, sunrise, etc.
+# Drawn from the official weather-icons set, covering day/night, directions,
+# moon phases, wind, storms, barometer, sunrise/sunset, etc.
 ################################################################################
 ALL_WEATHER_ICONS = {
     "wi-day-sunny": "\uf00d",
@@ -221,7 +213,7 @@ ALL_WEATHER_ICONS = {
     "wi-moonrise": "\uf0c9",
     "wi-moonset": "\uf0ca",
 
-    # Moon phases (wi-moon-*):
+    # Moon phases (wi-moon-*)
     "wi-moon-new": "\uf095",
     "wi-moon-waxing-crescent-1": "\uf096",
     "wi-moon-waxing-crescent-2": "\uf097",
@@ -294,13 +286,12 @@ ALL_WEATHER_ICONS = {
     "wi-hot": "\uf072",
     "wi-sunny": "\uf00d",  # same as day-sunny
 
-    # Wind directions & degrees
+    # Wind & directions
     "wi-wind-default": "\uf0b7",
     "wi-wind-towards-0-deg": "\uf0b7",
     "wi-wind-towards-90-deg": "\uf0b8",
     "wi-wind-towards-180-deg": "\uf0b9",
     "wi-wind-towards-270-deg": "\uf0ba",
-    # Alternatively: "wi-direction-down", "wi-direction-down-left", etc.
     "wi-wind-beaufort-0": "\uf0b7",
     "wi-wind-beaufort-1": "\uf0b8",
     "wi-wind-beaufort-2": "\uf0b9",
@@ -315,7 +306,7 @@ ALL_WEATHER_ICONS = {
     "wi-wind-beaufort-11": "\uf0c2",
     "wi-wind-beaufort-12": "\uf0c3",
 
-    # Misc
+    # Misc directions & icons
     "wi-direction-up": "\uf058",
     "wi-direction-down": "\uf044",
     "wi-direction-left": "\uf048",
@@ -329,5 +320,5 @@ ALL_WEATHER_ICONS = {
     "wi-rainbow": "\uf0c0",
     "wi-earth": "\uf057",
     "wi-lightsolar": "\uf0cf"
-    # ... certain custom or alternate icons from older versions
+    # Additional/older icons could be added similarly
 }
