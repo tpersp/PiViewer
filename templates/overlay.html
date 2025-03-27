@@ -59,7 +59,7 @@
               Icon Only
             </option>
             <option value="icon_and_text"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_display_mode == "icon_and_text" %}selected{% endif %}>
+              {% if not monitor_cfg.overlay or not monitor_cfg.overlay.weather_display_mode or monitor_cfg.overlay.weather_display_mode == "icon_and_text" %}selected{% endif %}>
               Icon + Text
             </option>
           </select>

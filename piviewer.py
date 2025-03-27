@@ -33,7 +33,6 @@ from utils import load_config, save_config, log_message
 from weathericonmap import OWM_ICON_MAP, FALLBACK_ICON, ALL_WEATHER_ICONS
 
 
-
 class NegativeTextLabel(QLabel):
     """
     Custom label that optionally uses a negative (difference) composition mode
@@ -785,7 +784,11 @@ class DisplayWindow(QMainWindow):
                 else:
                     text_str = " | ".join(text_parts)
 
+                # If user selects icon_only but has enabled additional data, force icon_and_text.
                 display_mode = over.get("weather_display_mode", "text_only")
+                if display_mode == "icon_only" and text_str.strip():
+                    display_mode = "icon_and_text"
+
                 if display_mode == "icon_only":
                     final_str = icon_char
                 elif display_mode == "text_only":
