@@ -655,7 +655,7 @@ def index():
         load1=round(load1, 2),
         temp=temp,
         host=host,
-        ipaddr=ip_address,
+        ipaddr=ipaddr,
         model=model,
         theme=theme,
         version=APP_VERSION,
