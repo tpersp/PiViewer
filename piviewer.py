@@ -240,6 +240,11 @@ class DisplayWindow(QMainWindow):
         if self.current_pixmap and not self.handling_gif_frames:
             self.updateForegroundScaled()
 
+        # -- ADDED lines: ensure overlays are raised last --
+        self.clock_label.raise_()
+        self.weather_label.raise_()
+        self.spotify_info_label.raise_()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.setup_layout()
