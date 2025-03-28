@@ -39,4 +39,4 @@ WEB_BG      = os.path.join(VIEWER_HOME, "web_bg.jpg")
 # ------------------------------------------------------------
 # Git Update Branch
 # ------------------------------------------------------------
-UPDATE_BRANCH = os.environ.get("UPDATE_BRANCH", "dev")
+UPDATE_BRANCH = os.environ.get("UPDATE_BRANCH", "main")
