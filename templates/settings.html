@@ -110,6 +110,12 @@
   </div>
   {% endif %}
 
+  <!-- New: Application Version Card -->
+  <div class="card" style="margin-top:20px;">
+    <h3>Application Version</h3>
+    <p>Current version: {{ version }}</p>
+  </div>
+
   <!-- Update from GitHub, logs, reset config, etc. as a final card -->
   <div class="card" style="margin-top:20px;">
     <form method="POST" action="{{ url_for('main.update_app') }}">
@@ -125,7 +131,7 @@
     <!-- Button to clear config and revert to default -->
     <form method="POST" action="{{ url_for('main.clear_config') }}"
           onsubmit="return confirm('Are you sure you want to completely reset the config to defaults?')">
-      <button type="submit" style="margin-top:10px; background-color:#c33; color:white;">
+      <button type="submit" style="margin-top:10px; background-color:rgb(147, 41, 41); color:white;">
         Reset Entire Config to Default
       </button>
     </form>

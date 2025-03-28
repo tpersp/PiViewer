@@ -315,7 +315,8 @@ def settings():
             theme=theme,
             cfg=cfg,
             update_branch=UPDATE_BRANCH,
-            weather_info=weather_info
+            weather_info=weather_info,
+            version=APP_VERSION
         )
 
 @main_bp.route("/clear_config", methods=["POST"])
