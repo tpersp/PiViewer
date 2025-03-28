@@ -47,6 +47,9 @@ class NegativeTextLabel(QLabel):
             painter = QPainter(self)
             painter.setRenderHint(QPainter.Antialiasing)
             painter.setCompositionMode(QPainter.CompositionMode_Difference)
+            # Force the pen to white, but note that if the background is black,
+            # white in difference mode may appear black. For debugging, you can
+            # change this to another color if needed:
             painter.setPen(Qt.white)
             painter.setFont(self.font())
             flags = self.alignment() | Qt.TextWordWrap
@@ -134,9 +137,15 @@ class DisplayWindow(QMainWindow):
         self.clock_label.setAlignment(Qt.AlignCenter)
         self.clock_label.setStyleSheet("background: transparent;")
 
+        # For debugging the weather label visibility, we give it a contrasting style:
+        # A thin red border and a slight translucent black background. Feel free to adjust or remove later.
         self.weather_label = NegativeTextLabel(self.main_widget)
         self.weather_label.setAlignment(Qt.AlignCenter)
-        self.weather_label.setStyleSheet("background: transparent;")
+        self.weather_label.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 150); "
+            "border: 1px solid red; "
+            "color: #FFFFFF;"
+        )
 
         # Spotify
         self.spotify_info = None
@@ -231,6 +240,7 @@ class DisplayWindow(QMainWindow):
             if self.clock_label.isVisible():
                 offset_after_clock = place_overlay_label(self.clock_label, clock_pos, rect, 0)
             if self.weather_label.isVisible():
+                # If both are placed in the same corner/edge, offset the weather label below/above the clock
                 if weather_pos == clock_pos and self.clock_label.isVisible():
                     place_overlay_label(self.weather_label, weather_pos, rect, offset_after_clock)
                 else:
@@ -240,7 +250,7 @@ class DisplayWindow(QMainWindow):
         if self.current_pixmap and not self.handling_gif_frames:
             self.updateForegroundScaled()
 
-        # -- ADDED lines: ensure overlays are raised last --
+        # Ensure overlays are raised
         self.clock_label.raise_()
         self.weather_label.raise_()
         self.spotify_info_label.raise_()
@@ -272,8 +282,12 @@ class DisplayWindow(QMainWindow):
         if over.get("auto_negative_font", False):
             self.clock_label.useDifference = True
             self.weather_label.useDifference = True
+            # We'll keep the weather_label's red border for visibility debugging, but remove background:
             self.clock_label.setStyleSheet("background: transparent;")
-            self.weather_label.setStyleSheet("background: transparent;")
+            # Keep the red border, so just color changes for text:
+            self.weather_label.setStyleSheet(
+                "background: transparent; border: 1px solid red; color: #FFFFFF;"
+            )
             f1 = QFont(self.clock_label.font())
             f1.setPixelSize(cfsize)
             self.clock_label.setFont(f1)
@@ -284,8 +298,15 @@ class DisplayWindow(QMainWindow):
             self.clock_label.useDifference = False
             self.weather_label.useDifference = False
             fcolor = over.get("font_color", "#FFFFFF")
-            self.clock_label.setStyleSheet(f"color: {fcolor}; font-size: {cfsize}px; background: transparent;")
-            self.weather_label.setStyleSheet(f"color: {fcolor}; font-size: {wfsize}px; background: transparent;")
+            # Clock style
+            self.clock_label.setStyleSheet(
+                f"color: {fcolor}; font-size: {cfsize}px; background: transparent;"
+            )
+            # Keep red border for debugging the weather label region:
+            self.weather_label.setStyleSheet(
+                f"border: 1px solid red; font-size: {wfsize}px;"
+                f"color: {fcolor}; background-color: rgba(0,0,0,150);"
+            )
 
         self.overlay_config = over
 
@@ -781,13 +802,21 @@ class DisplayWindow(QMainWindow):
                 if over.get("show_desc", True):
                     text_parts.append(data["weather"][0]["description"].title())
                 if over.get("show_temp", True):
-                    text_parts.append(f"{ALL_WEATHER_ICONS.get('wi-thermometer', '')} {data['main']['temp']}\u00B0C")
+                    text_parts.append(
+                        f"{ALL_WEATHER_ICONS.get('wi-thermometer', '')} {data['main']['temp']}\u00B0C"
+                    )
                 if over.get("show_feels_like", False):
-                    text_parts.append(f"{ALL_WEATHER_ICONS.get('wi-thermometer-exterior', '')} {data['main']['feels_like']}\u00B0C")
+                    text_parts.append(
+                        f"{ALL_WEATHER_ICONS.get('wi-thermometer-exterior', '')} {data['main']['feels_like']}\u00B0C"
+                    )
                 if over.get("show_humidity", False):
-                    text_parts.append(f"{ALL_WEATHER_ICONS.get('wi-humidity', '')} {data['main']['humidity']}%")
+                    text_parts.append(
+                        f"{ALL_WEATHER_ICONS.get('wi-humidity', '')} {data['main']['humidity']}%"
+                    )
                 if over.get("show_windspeed", False) and "wind" in data and "speed" in data["wind"]:
-                    text_parts.append(f"{ALL_WEATHER_ICONS.get('wi-wind-default', '')} {data['wind']['speed']} m/s")
+                    text_parts.append(
+                        f"{ALL_WEATHER_ICONS.get('wi-wind-default', '')} {data['wind']['speed']} m/s"
+                    )
 
                 layout_mode = over.get("weather_layout", "inline")
                 if layout_mode == "stacked":
@@ -809,11 +838,18 @@ class DisplayWindow(QMainWindow):
                 else:
                     final_str = text_str
 
+                # Log what final_str is, for debugging
+                log_message(f"Weather label text: '{final_str}'")
+
                 def update_label():
                     self.weather_label.show()
                     self.weather_label.raise_()
                     self.weather_label.setWordWrap(True)
-                    self.weather_label.setText(final_str)
+                    # If final_str is empty, we force a placeholder just to confirm visibility
+                    if not final_str.strip():
+                        self.weather_label.setText("(No weather data)")
+                    else:
+                        self.weather_label.setText(final_str)
                     self.setup_layout()
                 QTimer.singleShot(0, update_label)
             else:
@@ -843,9 +879,13 @@ class DisplayWindow(QMainWindow):
             if not (cid and csec and ruri):
                 self.spotify_info = None
                 return None
-            auth = SpotifyOAuth(client_id=cid, client_secret=csec,
-                                redirect_uri=ruri, scope=scope,
-                                cache_path=".spotify_cache")
+            auth = SpotifyOAuth(
+                client_id=cid,
+                client_secret=csec,
+                redirect_uri=ruri,
+                scope=scope,
+                cache_path=".spotify_cache"
+            )
             token_info = auth.get_cached_token()
             if not token_info:
                 self.spotify_info = None
