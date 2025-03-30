@@ -357,7 +357,7 @@ class DisplayWindow(QMainWindow):
                     )
                 elif theme == "coffee":
                     self.spotify_progress_bar.setStyleSheet(
-                        "QProgressBar { border: 1px solid #8B4513; border-radius: 5px; background-color: #F5F5DC; }"
+                        "QProgressBar { border: 1px solid #8B4513; border-radius: 5px; background-color: #423828; }"
                         "QProgressBar::chunk { background-color: #8B4513; }"
                     )
                 else:
