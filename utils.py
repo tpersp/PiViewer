@@ -37,7 +37,10 @@ def init_config():
                     "mixed_folders": [],
                     "rotate": 0,
                     "spotify_info_position": "bottom-center",
-                    "spotify_show_progress": False
+                    "spotify_show_progress": False,
+                    "spotify_progress_position": "below_info",   # New: progress bar location setting
+                    "spotify_progress_theme": "default",         # New: progress bar theme option
+                    "spotify_progress_update_interval": 200        # New: update interval in ms
                 }
             },
             "overlay": {

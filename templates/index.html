@@ -71,7 +71,7 @@
           <label>Spotify Font Size:</label>
           <input type="number" name="{{ dname }}_spotify_font_size" value="{{ dcfg.spotify_font_size|default(18) }}" style="width:60px;">
           <br><br>
-          <!-- New: Spotify Info Position Dropdown -->
+          <!-- Spotify Info Position Dropdown -->
           <label>Spotify Info Position:</label><br>
           <select name="{{ dname }}_spotify_info_position">
             <option value="top-left" {% if dcfg.spotify_info_position=="top-left" %}selected{% endif %}>Top Left</option>
@@ -81,6 +81,26 @@
             <option value="bottom-center" {% if dcfg.spotify_info_position=="bottom-center" or dcfg.spotify_info_position is not defined %}selected{% endif %}>Bottom Center</option>
             <option value="bottom-right" {% if dcfg.spotify_info_position=="bottom-right" %}selected{% endif %}>Bottom Right</option>
           </select>
+          <br><br>
+          <!-- New: Progress Bar settings -->
+          <label>Progress Bar Position:</label><br>
+          <select name="{{ dname }}_spotify_progress_position">
+            <option value="above_info" {% if dcfg.spotify_progress_position=="above_info" %}selected{% endif %}>Above Info</option>
+            <option value="below_info" {% if dcfg.spotify_progress_position=="below_info" or dcfg.spotify_progress_position is not defined %}selected{% endif %}>Below Info</option>
+            <option value="top-center" {% if dcfg.spotify_progress_position=="top-center" %}selected{% endif %}>Top Center</option>
+            <option value="bottom-center" {% if dcfg.spotify_progress_position=="bottom-center" %}selected{% endif %}>Bottom Center</option>
+          </select>
+          <br><br>
+          <label>Progress Bar Theme:</label><br>
+          <select name="{{ dname }}_spotify_progress_theme">
+            <option value="default" {% if dcfg.spotify_progress_theme=="default" or dcfg.spotify_progress_theme is not defined %}selected{% endif %}>Default</option>
+            <option value="light" {% if dcfg.spotify_progress_theme=="light" %}selected{% endif %}>Light</option>
+            <option value="dark" {% if dcfg.spotify_progress_theme=="dark" %}selected{% endif %}>Dark</option>
+            <option value="accent" {% if dcfg.spotify_progress_theme=="accent" %}selected{% endif %}>Accent</option>
+          </select>
+          <br><br>
+          <label>Progress Bar Update Interval (ms):</label><br>
+          <input type="number" name="{{ dname }}_spotify_progress_update_interval" value="{{ dcfg.spotify_progress_update_interval|default(200) }}" style="width:80px;">
           <br><br>
           {% endif %}
           <!-- Interval (only for random/mixed) -->
