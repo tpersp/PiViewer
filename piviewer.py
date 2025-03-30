@@ -196,7 +196,6 @@ class DisplayWindow(QMainWindow):
             self.spotify_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         else:
             self.spotify_info_label.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-        # For info label, default to margin if top, bottom if bottom, or center.
         if "top" in pos:
             y = margin
         elif "bottom" in pos:
@@ -208,15 +207,13 @@ class DisplayWindow(QMainWindow):
 
         # Position Spotify progress bar using its own position setting.
         if self.spotify_progress_bar.isVisible():
-            ppos = self.disp_cfg.get("spotify_progress_position", "below_info")
-            pb_height = 20
+            ppos = self.disp_cfg.get("spotify_progress_position", "bottom-center")
+            pb_height = 10  # Bar thinner now
             if ppos == "above_info":
-                # Place above the info label with 5px gap.
                 x = self.spotify_info_label.x()
                 y = self.spotify_info_label.y() - pb_height - 5
                 width = self.spotify_info_label.width()
             elif ppos == "below_info":
-                # Place below the info label with 5px gap.
                 x = self.spotify_info_label.x()
                 y = self.spotify_info_label.y() + self.spotify_info_label.height() + 5
                 width = self.spotify_info_label.width()
@@ -229,7 +226,6 @@ class DisplayWindow(QMainWindow):
                 x = margin
                 y = rect.height() - pb_height - margin
             else:
-                # Fallback to below info.
                 x = self.spotify_info_label.x()
                 y = self.spotify_info_label.y() + self.spotify_info_label.height() + 5
                 width = self.spotify_info_label.width()
@@ -340,12 +336,10 @@ class DisplayWindow(QMainWindow):
             interval_s = 5
             if self.disp_cfg.get("spotify_show_progress", False):
                 self.spotify_progress_bar.show()
-                # Use the configured update interval (ms)
                 upd_int = self.disp_cfg.get("spotify_progress_update_interval", 200)
                 self.spotify_progress_timer.setInterval(upd_int)
                 self.spotify_progress_timer.start()
-                # Apply style based on theme setting
-                theme = self.disp_cfg.get("spotify_progress_theme", "default")
+                theme = self.disp_cfg.get("spotify_progress_theme", "dark")
                 if theme == "light":
                     self.spotify_progress_bar.setStyleSheet(
                         "QProgressBar { border: 1px solid #ccc; border-radius: 5px; background-color: #f0f0f0; }"
@@ -356,10 +350,15 @@ class DisplayWindow(QMainWindow):
                         "QProgressBar { border: 1px solid #444; border-radius: 5px; background-color: #333; }"
                         "QProgressBar::chunk { background-color: #888; }"
                     )
-                elif theme == "accent":
+                elif theme == "spotify":
                     self.spotify_progress_bar.setStyleSheet(
-                        "QProgressBar { border: 1px solid #0a84ff; border-radius: 5px; background-color: #0a84ff; }"
-                        "QProgressBar::chunk { background-color: #66b3ff; }"
+                        "QProgressBar { border: 1px solid #1DB954; border-radius: 5px; background-color: #121212; }"
+                        "QProgressBar::chunk { background-color: #1DB954; }"
+                    )
+                elif theme == "coffee":
+                    self.spotify_progress_bar.setStyleSheet(
+                        "QProgressBar { border: 1px solid #8B4513; border-radius: 5px; background-color: #F5F5DC; }"
+                        "QProgressBar::chunk { background-color: #8B4513; }"
                     )
                 else:
                     self.spotify_progress_bar.setStyleSheet("")
@@ -455,10 +454,8 @@ class DisplayWindow(QMainWindow):
             if path:
                 self.show_foreground_image(path, is_spotify=True)
                 self.spotify_info_label.show()
-                # Ensure progress bar is shown and timer is active
                 if self.disp_cfg.get("spotify_show_progress", False):
                     self.spotify_progress_bar.show()
-                    # Restart timer if needed
                     upd_int = self.disp_cfg.get("spotify_progress_update_interval", 200)
                     self.spotify_progress_timer.setInterval(upd_int)
                     if not self.spotify_progress_timer.isActive():
@@ -490,7 +487,6 @@ class DisplayWindow(QMainWindow):
                 self.spotify_info_label.raise_()
                 self.setup_layout()
             else:
-                # If fallback triggers or Spotify not playing, hide progress bar to avoid residual bar.
                 self.spotify_progress_bar.hide()
                 self.spotify_progress_timer.stop()
                 fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
@@ -545,7 +541,6 @@ class DisplayWindow(QMainWindow):
         self.foreground_label.setText(message)
         self.foreground_label.setAlignment(Qt.AlignCenter)
         self.foreground_label.setStyleSheet("color: white; background-color: transparent;")
-        # Also hide progress bar when clearing
         self.spotify_progress_bar.hide()
         self.spotify_progress_timer.stop()
 

@@ -93,15 +93,13 @@
           <br><br>
           <label>Progress Bar Theme:</label><br>
           <select name="{{ dname }}_spotify_progress_theme">
-            <option value="default" {% if dcfg.spotify_progress_theme=="default" or dcfg.spotify_progress_theme is not defined %}selected{% endif %}>Default</option>
+            <option value="dark" {% if dcfg.spotify_progress_theme=="dark" or dcfg.spotify_progress_theme is not defined %}selected{% endif %}>Dark</option>
+            <option value="spotify" {% if dcfg.spotify_progress_theme=="spotify" %}selected{% endif %}>Spotify</option>
+            <option value="coffee" {% if dcfg.spotify_progress_theme=="coffee" %}selected{% endif %}>Coffee</option>
             <option value="light" {% if dcfg.spotify_progress_theme=="light" %}selected{% endif %}>Light</option>
-            <option value="dark" {% if dcfg.spotify_progress_theme=="dark" %}selected{% endif %}>Dark</option>
-            <option value="accent" {% if dcfg.spotify_progress_theme=="accent" %}selected{% endif %}>Accent</option>
           </select>
           <br><br>
-          <label>Progress Bar Update Interval (ms):</label><br>
-          <input type="number" name="{{ dname }}_spotify_progress_update_interval" value="{{ dcfg.spotify_progress_update_interval|default(200) }}" style="width:80px;">
-          <br><br>
+          <!-- Note: The progress bar update interval has been removed from the web page -->
           {% endif %}
           <!-- Interval (only for random/mixed) -->
           {% if dcfg.mode in ["random_image","mixed"] %}
