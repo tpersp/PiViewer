@@ -21,7 +21,7 @@ from collections import OrderedDict
 from PySide6.QtCore import Qt, QTimer, Slot, QSize, QRect, QRectF
 from PySide6.QtGui import QPixmap, QMovie, QPainter, QImage, QImageReader, QTransform, QFont
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QLabel,
+    QApplication, QMainWindow, QWidget, QLabel, QProgressBar,
     QGraphicsScene, QGraphicsPixmapItem, QGraphicsBlurEffect, QSizePolicy
 )
 
@@ -143,6 +143,15 @@ class DisplayWindow(QMainWindow):
         self.spotify_info_label.setStyleSheet("background: transparent;")
         self.spotify_info_label.hide()  # Hidden unless in spotify mode
 
+        # New: Spotify progress bar and timer
+        self.spotify_progress_bar = QProgressBar(self.main_widget)
+        self.spotify_progress_bar.hide()
+        self.spotify_progress_bar.setTextVisible(False)
+        self.spotify_progress_bar.setMinimum(0)
+        self.spotify_progress_bar.setMaximum(100)
+        self.spotify_progress_timer = QTimer(self)
+        self.spotify_progress_timer.timeout.connect(self.update_spotify_progress)
+
         # Timers
         self.slideshow_timer = QTimer(self)
         self.slideshow_timer.timeout.connect(self.next_image)
@@ -195,6 +204,12 @@ class DisplayWindow(QMainWindow):
             y = (rect.height() - self.spotify_info_label.height()) // 2
         self.spotify_info_label.move(margin, y)
         self.spotify_info_label.raise_()
+
+        # Position Spotify progress bar if visible
+        if self.spotify_progress_bar.isVisible():
+            progress_y = self.spotify_info_label.y() + self.spotify_info_label.height() + 5
+            self.spotify_progress_bar.setGeometry(self.spotify_info_label.x(), progress_y, self.spotify_info_label.width(), 20)
+            self.spotify_progress_bar.raise_()
 
         # Helper function for dynamic overlay labels (clock and weather)
         def place_overlay_label(lbl, position, container_rect, y_offset=0):
@@ -298,6 +313,13 @@ class DisplayWindow(QMainWindow):
         self.current_mode = self.disp_cfg.get("mode", "random_image")
         if self.current_mode == "spotify":
             interval_s = 5
+            # Handle Spotify progress bar enable/disable based on config
+            if self.disp_cfg.get("spotify_show_progress", False):
+                self.spotify_progress_bar.show()
+                self.spotify_progress_timer.start(1000)
+            else:
+                self.spotify_progress_bar.hide()
+                self.spotify_progress_timer.stop()
         self.slideshow_timer.setInterval(interval_s * 1000)
         self.slideshow_timer.start()
 
@@ -774,6 +796,12 @@ class DisplayWindow(QMainWindow):
                 "artist": artists,
                 "album": album_name
             }
+            # Capture playback progress info for progress bar updates
+            progress_ms = current.get("progress_ms", 0)
+            duration_ms = item.get("duration_ms", 0)
+            self.spotify_info["progress_ms"] = progress_ms
+            self.spotify_info["duration_ms"] = duration_ms
+            self.spotify_info["fetched_time"] = time.time()
             album_imgs = item["album"]["images"]
             if not album_imgs:
                 return None
@@ -791,6 +819,23 @@ class DisplayWindow(QMainWindow):
             return None
         return None
 
+    def update_spotify_progress(self):
+        if not self.spotify_info or "progress_ms" not in self.spotify_info or "duration_ms" not in self.spotify_info or "fetched_time" not in self.spotify_info:
+            self.spotify_progress_bar.setValue(0)
+            return
+        progress_ms = self.spotify_info["progress_ms"]
+        duration_ms = self.spotify_info["duration_ms"]
+        fetched_time = self.spotify_info["fetched_time"]
+        elapsed = (time.time() - fetched_time) * 1000  # in ms
+        current_progress = progress_ms + elapsed
+        if duration_ms > 0:
+            percent = min(100, (current_progress / duration_ms) * 100)
+        else:
+            percent = 0
+        self.spotify_progress_bar.setValue(int(percent))
+
+    def pull_displays_from_remote(self, ip):
+        pass  # Placeholder if needed
 
 class PiViewerGUI:
     def __init__(self):

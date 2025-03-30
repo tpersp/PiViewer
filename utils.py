@@ -36,7 +36,8 @@ def init_config():
                     "shuffle_mode": False,
                     "mixed_folders": [],
                     "rotate": 0,
-                    "spotify_info_position": "bottom-center"
+                    "spotify_info_position": "bottom-center",
+                    "spotify_show_progress": False
                 }
             },
             "overlay": {

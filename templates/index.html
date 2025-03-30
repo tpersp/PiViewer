@@ -59,6 +59,10 @@
               Album
             </label>
             <label style="display:inline-block;">
+              <input type="checkbox" name="{{ dname }}_spotify_show_progress" value="1" {% if dcfg.spotify_show_progress is defined and dcfg.spotify_show_progress %}checked{% endif %}>
+              Live Playback Progress
+            </label>
+            <label style="display:inline-block;">
               <input type="checkbox" name="{{ dname }}_spotify_negative_font" value="1" {% if dcfg.spotify_negative_font is not defined or dcfg.spotify_negative_font %}checked{% endif %}>
               Auto Negative Font
             </label>
