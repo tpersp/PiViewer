@@ -228,11 +228,59 @@ def restart_device():
 
 @main_bp.route("/power_off", methods=["POST"])
 def power_off():
+    cfg = load_config()
+    theme = cfg.get("theme", "dark")
+    if theme == "dark":
+        page_bg = "#121212"
+        text_color = "#ECECEC"
+        button_bg = "#444"
+        button_color = "#FFF"
+        link_hover_bg = "#666"
+    else:
+        page_bg = "#FFFFFF"
+        text_color = "#222"
+        button_bg = "#ddd"
+        button_color = "#111"
+        link_hover_bg = "#bbb"
     try:
         subprocess.check_output(["sudo", "poweroff"])
-        return "Device is powering off...", 200
     except subprocess.CalledProcessError as e:
         return f"Failed to power off: {e}", 500
+    return f"""
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Device Power Off</title>
+        <style>
+          body {{
+            background-color: {page_bg};
+            color: {text_color};
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+          }}
+          a.button {{
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: {button_bg};
+            color: {button_color};
+            border: none;
+            border-radius: 6px;
+            text-decoration: none;
+            cursor: pointer;
+          }}
+          a.button:hover {{
+            background-color: {link_hover_bg};
+          }}
+        </style>
+      </head>
+      <body>
+        <h2>Device is powering off...</h2>
+        <p>Please wait for the device to shut down.</p>
+      </body>
+    </html>
+    """
 
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
