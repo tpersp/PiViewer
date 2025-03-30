@@ -937,67 +937,6 @@ class PiViewerGUI:
         sys.exit(self.app.exec())
 
 
-# --- New: Screen Control Background Thread using DPMS ---
-def screen_control_loop():
-    import time
-    from datetime import datetime, time as dtime
-    last_state = None  # "off" or "on"
-    while True:
-        cfg = load_config()
-        sc = cfg.get("screen_control", {})
-        if not sc.get("enabled", False):
-            if last_state != "on":
-                try:
-                    subprocess.call(["xset", "dpms", "force", "on"])
-                    last_state = "on"
-                except Exception as e:
-                    log_message(f"Screen control error forcing DPMS on: {e}")
-            time.sleep(60)
-            continue
-
-        off_start_str = sc.get("hdmi_off_start", "20:00")
-        on_time_str = sc.get("hdmi_on_time", "06:00")
-        # 'monitor' is ignored in DPMS mode.
-        try:
-            off_start_parts = [int(x) for x in off_start_str.split(":")]
-            on_time_parts = [int(x) for x in on_time_str.split(":")]
-            off_start_time = dtime(off_start_parts[0], off_start_parts[1])
-            on_time_time = dtime(on_time_parts[0], on_time_parts[1])
-        except Exception as e:
-            log_message(f"Screen control: invalid time format: {e}")
-            time.sleep(60)
-            continue
-
-        now = datetime.now().time()
-        should_off = False
-        if off_start_time < on_time_time:
-            if off_start_time <= now < on_time_time:
-                should_off = True
-        else:
-            if now >= off_start_time or now < on_time_time:
-                should_off = True
-
-        if should_off and last_state != "off":
-            try:
-                subprocess.call(["xset", "dpms", "force", "off"])
-                log_message("Screen control: DPMS forced off")
-                last_state = "off"
-            except Exception as e:
-                log_message(f"Screen control error forcing DPMS off: {e}")
-        elif not should_off and last_state != "on":
-            try:
-                subprocess.call(["xset", "dpms", "force", "on"])
-                log_message("Screen control: DPMS forced on")
-                last_state = "on"
-            except Exception as e:
-                log_message(f"Screen control error forcing DPMS on: {e}")
-        time.sleep(60)
-
-# Start the screen control thread (daemonized)
-screen_thread = threading.Thread(target=screen_control_loop, daemon=True)
-screen_thread.start()
-
-
 def main():
     try:
         log_message(f"Starting PiViewer GUI (v{APP_VERSION}).")

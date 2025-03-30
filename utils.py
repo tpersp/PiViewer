@@ -85,12 +85,6 @@ def init_config():
                 "client_secret": "",
                 "redirect_uri": "",
                 "scope": "user-read-currently-playing user-read-playback-state"
-            },
-            "screen_control": {
-                "enabled": True,
-                "hdmi_off_start": "20:00",
-                "hdmi_on_time": "06:00",
-                "monitor": "HDMI-1"
             }
         }
         save_config(default_cfg)
@@ -208,4 +202,3 @@ def pull_displays_from_remote(ip):
     if not remote_cfg:
         return None
     return remote_cfg.get("displays", {})
-

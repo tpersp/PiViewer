@@ -287,18 +287,6 @@ def settings():
         except:
             cfg["gui"]["foreground_scale_percent"] = 100
 
-        # --- New: Screen Control Settings ---
-        screen_enabled = request.form.get("screen_control_enabled") == "on"
-        hdmi_off_start = request.form.get("hdmi_off_start", "20:00")
-        hdmi_on_time = request.form.get("hdmi_on_time", "06:00")
-        monitor = request.form.get("screen_control_monitor", "HDMI-1")
-        cfg["screen_control"] = {
-            "enabled": screen_enabled,
-            "hdmi_off_start": hdmi_off_start,
-            "hdmi_on_time": hdmi_on_time,
-            "monitor": monitor
-        }
-
         save_config(cfg)
         return redirect(url_for("main.settings"))
 
