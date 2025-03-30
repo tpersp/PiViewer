@@ -27,7 +27,7 @@ load_env()
 # Application Version & Paths
 # ------------------------------------------------------------
 
-APP_VERSION = "2.4.5" #removed weather icons, fixed overlay not showing and reduced lag.
+APP_VERSION = "2.4.6" # Added Spotify progress bar.
 
 VIEWER_HOME = os.environ.get("VIEWER_HOME", "/home/pi/PiViewer")
 IMAGE_DIR   = os.environ.get("IMAGE_DIR", "/mnt/PiViewers")
