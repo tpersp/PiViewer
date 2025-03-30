@@ -905,7 +905,7 @@ class DisplayWindow(QMainWindow):
             # No schedule set; ensure HDMI is on if it was turned off
             if self.hdmi_off:
                 try:
-                    subprocess.call(["vcgencmd", "display_power", "1"])
+                    subprocess.call(["sudo", "vcgencmd", "display_power", "1"])
                     self.hdmi_off = False
                 except Exception as e:
                     log_message(f"Failed to turn on HDMI for {self.disp_name}: {e}")
@@ -913,13 +913,13 @@ class DisplayWindow(QMainWindow):
         desired_off = is_within_hdmi_off_schedule(schedule)
         if desired_off and not self.hdmi_off:
             try:
-                subprocess.call(["vcgencmd", "display_power", "0"])
+                subprocess.call(["sudo", "vcgencmd", "display_power", "0"])
                 self.hdmi_off = True
             except Exception as e:
                 log_message(f"Failed to turn off HDMI for {self.disp_name}: {e}")
         elif not desired_off and self.hdmi_off:
             try:
-                subprocess.call(["vcgencmd", "display_power", "1"])
+                subprocess.call(["sudo", "vcgencmd", "display_power", "1"])
                 self.hdmi_off = False
             except Exception as e:
                 log_message(f"Failed to turn on HDMI for {self.disp_name}: {e}")
