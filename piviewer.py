@@ -29,7 +29,6 @@ from spotipy.oauth2 import SpotifyOAuth
 from config import APP_VERSION, IMAGE_DIR, LOG_PATH, VIEWER_HOME
 from utils import load_config, save_config, log_message
 
-
 # --- Custom label for negative (difference) text drawing ---
 class NegativeTextLabel(QLabel):
     def __init__(self, parent=None):
@@ -162,6 +161,12 @@ class DisplayWindow(QMainWindow):
         self.weather_timer.timeout.connect(self.update_weather)
         self.weather_timer.start(60000)
         self.update_weather()
+
+        # NEW: HDMI schedule timer (check every 60 seconds)
+        self.hdmi_off = False
+        self.hdmi_timer = QTimer(self)
+        self.hdmi_timer.timeout.connect(self.check_hdmi_schedule)
+        self.hdmi_timer.start(60000)
 
         # Load config and start
         self.cfg = load_config()
@@ -888,6 +893,37 @@ class DisplayWindow(QMainWindow):
             percent = 0
         self.spotify_progress_bar.setValue(int(percent))
 
+    def check_hdmi_schedule(self):
+        """
+        Checks if the current time is within the HDMI off schedule (if set)
+        and turns the HDMI connection off or on accordingly.
+        """
+        import subprocess
+        from utils import is_within_hdmi_off_schedule
+        schedule = self.disp_cfg.get("hdmi_schedule", "").strip()
+        if not schedule:
+            # No schedule set; ensure HDMI is on if it was turned off
+            if self.hdmi_off:
+                try:
+                    subprocess.call(["vcgencmd", "display_power", "1"])
+                    self.hdmi_off = False
+                except Exception as e:
+                    log_message(f"Failed to turn on HDMI for {self.disp_name}: {e}")
+            return
+        desired_off = is_within_hdmi_off_schedule(schedule)
+        if desired_off and not self.hdmi_off:
+            try:
+                subprocess.call(["vcgencmd", "display_power", "0"])
+                self.hdmi_off = True
+            except Exception as e:
+                log_message(f"Failed to turn off HDMI for {self.disp_name}: {e}")
+        elif not desired_off and self.hdmi_off:
+            try:
+                subprocess.call(["vcgencmd", "display_power", "1"])
+                self.hdmi_off = False
+            except Exception as e:
+                log_message(f"Failed to turn on HDMI for {self.disp_name}: {e}")
+
     def pull_displays_from_remote(self, ip):
         pass  # Placeholder if needed
 
@@ -936,7 +972,6 @@ class PiViewerGUI:
     def run(self):
         sys.exit(self.app.exec())
 
-
 def main():
     try:
         log_message(f"Starting PiViewer GUI (v{APP_VERSION}).")
@@ -945,7 +980,6 @@ def main():
     except Exception as e:
         log_message(f"Exception in main: {e}")
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
