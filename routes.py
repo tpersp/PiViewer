@@ -287,6 +287,18 @@ def settings():
         except:
             cfg["gui"]["foreground_scale_percent"] = 100
 
+        # --- New: Screen Control Settings ---
+        screen_enabled = request.form.get("screen_control_enabled") == "on"
+        hdmi_off_start = request.form.get("hdmi_off_start", "20:00")
+        hdmi_on_time = request.form.get("hdmi_on_time", "06:00")
+        monitor = request.form.get("screen_control_monitor", "HDMI-1")
+        cfg["screen_control"] = {
+            "enabled": screen_enabled,
+            "hdmi_off_start": hdmi_off_start,
+            "hdmi_on_time": hdmi_on_time,
+            "monitor": monitor
+        }
+
         save_config(cfg)
         return redirect(url_for("main.settings"))
 
@@ -530,8 +542,7 @@ def index():
                 rotate_str = request.form.get(pre + "rotate", "0")
                 mixed_str = request.form.get(pre + "mixed_order", "")
                 mixed_list = [x for x in mixed_str.split(",") if x]
-                # New HDMI schedule update
-                new_hdmi_schedule = request.form.get(pre + "hdmi_schedule", "").strip()
+
                 try:
                     new_interval = int(new_interval_s)
                 except:
@@ -547,7 +558,6 @@ def index():
                 dcfg["shuffle_mode"] = (shuffle_val == "yes")
                 dcfg["specific_image"] = new_spec
                 dcfg["rotate"] = new_rotate
-                dcfg["hdmi_schedule"] = new_hdmi_schedule
 
                 # If Spotify, store extras
                 if new_mode == "spotify":

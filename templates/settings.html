@@ -100,6 +100,31 @@
     </div>
   </div>
 
+  <!-- New: Screen Control Settings Card -->
+  <div class="card" style="margin-top:20px;">
+    <h3>Screen Control Settings</h3>
+    <form method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="role" value="{{ cfg.role }}">
+      <input type="hidden" name="main_ip" value="{{ cfg.main_ip }}">
+      <input type="hidden" name="theme" value="{{ cfg.theme }}">
+      <label>
+        <input type="checkbox" name="screen_control_enabled" {% if cfg.screen_control.enabled %}checked{% endif %}>
+        Enable Screen On/Off Scheduling
+      </label>
+      <br><br>
+      <label>HDMI Off Start Time (HH:MM, 24-hour):</label><br>
+      <input type="text" name="hdmi_off_start" value="{{ cfg.screen_control.hdmi_off_start }}">
+      <br><br>
+      <label>HDMI On Time (HH:MM, 24-hour):</label><br>
+      <input type="text" name="hdmi_on_time" value="{{ cfg.screen_control.hdmi_on_time }}">
+      <br><br>
+      <label>Monitor Identifier (e.g., HDMI-1):</label><br>
+      <input type="text" name="screen_control_monitor" value="{{ cfg.screen_control.monitor }}">
+      <br><br>
+      <button type="submit">Save Screen Control Settings</button>
+    </form>
+  </div>
+
   <!-- New Weather Info Confirmation Card -->
   {% if weather_info %}
   <div class="card" style="margin-top:20px;">

@@ -111,10 +111,6 @@
           <label>Rotate (degrees):</label><br>
           <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
           <br><br>
-          <!-- HDMI Off Schedule -->
-          <label>HDMI Off Schedule (HH:MM-HH:MM):</label><br>
-          <input type="text" name="{{ dname }}_hdmi_schedule" value="{{ dcfg.hdmi_schedule|default('') }}">
-          <br><br>
           <!-- Shuffle (only for random/mixed) -->
           {% if dcfg.mode in ["random_image","mixed"] %}
           <label>Shuffle?</label><br>

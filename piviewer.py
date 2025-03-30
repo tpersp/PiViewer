@@ -29,6 +29,7 @@ from spotipy.oauth2 import SpotifyOAuth
 from config import APP_VERSION, IMAGE_DIR, LOG_PATH, VIEWER_HOME
 from utils import load_config, save_config, log_message
 
+
 # --- Custom label for negative (difference) text drawing ---
 class NegativeTextLabel(QLabel):
     def __init__(self, parent=None):
@@ -161,12 +162,6 @@ class DisplayWindow(QMainWindow):
         self.weather_timer.timeout.connect(self.update_weather)
         self.weather_timer.start(60000)
         self.update_weather()
-
-        # NEW: HDMI schedule timer (check every 60 seconds)
-        self.hdmi_off = False
-        self.hdmi_timer = QTimer(self)
-        self.hdmi_timer.timeout.connect(self.check_hdmi_schedule)
-        self.hdmi_timer.start(60000)
 
         # Load config and start
         self.cfg = load_config()
@@ -893,37 +888,6 @@ class DisplayWindow(QMainWindow):
             percent = 0
         self.spotify_progress_bar.setValue(int(percent))
 
-    def check_hdmi_schedule(self):
-        """
-        Checks if the current time is within the HDMI off schedule (if set)
-        and turns the HDMI connection off or on accordingly.
-        """
-        import subprocess
-        from utils import is_within_hdmi_off_schedule
-        schedule = self.disp_cfg.get("hdmi_schedule", "").strip()
-        if not schedule:
-            # No schedule set; ensure HDMI is on if it was turned off
-            if self.hdmi_off:
-                try:
-                    subprocess.call(["sudo", "vcgencmd", "display_power", "1"])
-                    self.hdmi_off = False
-                except Exception as e:
-                    log_message(f"Failed to turn on HDMI for {self.disp_name}: {e}")
-            return
-        desired_off = is_within_hdmi_off_schedule(schedule)
-        if desired_off and not self.hdmi_off:
-            try:
-                subprocess.call(["sudo", "vcgencmd", "display_power", "0"])
-                self.hdmi_off = True
-            except Exception as e:
-                log_message(f"Failed to turn off HDMI for {self.disp_name}: {e}")
-        elif not desired_off and self.hdmi_off:
-            try:
-                subprocess.call(["sudo", "vcgencmd", "display_power", "1"])
-                self.hdmi_off = False
-            except Exception as e:
-                log_message(f"Failed to turn on HDMI for {self.disp_name}: {e}")
-
     def pull_displays_from_remote(self, ip):
         pass  # Placeholder if needed
 
@@ -972,6 +936,69 @@ class PiViewerGUI:
     def run(self):
         sys.exit(self.app.exec())
 
+
+# --- New: Screen Control Background Thread ---
+def screen_control_loop():
+    import time
+    from datetime import datetime, time as dtime
+    last_state = None  # "off" or "on"
+    while True:
+        cfg = load_config()
+        sc = cfg.get("screen_control", {})
+        if not sc.get("enabled", False):
+            if last_state != "on":
+                monitor = sc.get("monitor", "HDMI-1")
+                try:
+                    subprocess.call(["xrandr", "--output", monitor, "--auto"])
+                    last_state = "on"
+                except Exception as e:
+                    log_message(f"Screen control error turning HDMI on: {e}")
+            time.sleep(60)
+            continue
+
+        off_start_str = sc.get("hdmi_off_start", "20:00")
+        on_time_str = sc.get("hdmi_on_time", "06:00")
+        monitor = sc.get("monitor", "HDMI-1")
+        try:
+            off_start_parts = [int(x) for x in off_start_str.split(":")]
+            on_time_parts = [int(x) for x in on_time_str.split(":")]
+            off_start_time = dtime(off_start_parts[0], off_start_parts[1])
+            on_time_time = dtime(on_time_parts[0], on_time_parts[1])
+        except Exception as e:
+            log_message(f"Screen control: invalid time format: {e}")
+            time.sleep(60)
+            continue
+
+        now = datetime.now().time()
+        should_off = False
+        if off_start_time < on_time_time:
+            if off_start_time <= now < on_time_time:
+                should_off = True
+        else:
+            if now >= off_start_time or now < on_time_time:
+                should_off = True
+
+        if should_off and last_state != "off":
+            try:
+                subprocess.call(["xrandr", "--output", monitor, "--off"])
+                log_message(f"Screen control: turned off HDMI output on {monitor}")
+                last_state = "off"
+            except Exception as e:
+                log_message(f"Screen control error turning HDMI off: {e}")
+        elif not should_off and last_state != "on":
+            try:
+                subprocess.call(["xrandr", "--output", monitor, "--auto"])
+                log_message(f"Screen control: turned on HDMI output on {monitor}")
+                last_state = "on"
+            except Exception as e:
+                log_message(f"Screen control error turning HDMI on: {e}")
+        time.sleep(60)
+
+# Start the screen control thread (daemonized)
+screen_thread = threading.Thread(target=screen_control_loop, daemon=True)
+screen_thread.start()
+
+
 def main():
     try:
         log_message(f"Starting PiViewer GUI (v{APP_VERSION}).")
@@ -980,6 +1007,7 @@ def main():
     except Exception as e:
         log_message(f"Exception in main: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

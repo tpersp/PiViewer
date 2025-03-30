@@ -85,6 +85,12 @@ def init_config():
                 "client_secret": "",
                 "redirect_uri": "",
                 "scope": "user-read-currently-playing user-read-playback-state"
+            },
+            "screen_control": {
+                "enabled": True,
+                "hdmi_off_start": "20:00",
+                "hdmi_on_time": "06:00",
+                "monitor": "HDMI-1"
             }
         }
         save_config(default_cfg)
@@ -161,28 +167,6 @@ def count_files_in_folder(folder_path):
             cnt += 1
     return cnt
 
-def is_within_hdmi_off_schedule(schedule_str):
-    """
-    Given a schedule string in the format "HH:MM-HH:MM", returns True if the current time
-    is within the off period, otherwise False.
-    """
-    from datetime import datetime
-    try:
-        parts = schedule_str.split("-")
-        if len(parts) != 2:
-            return False
-        start_str, end_str = parts[0].strip(), parts[1].strip()
-        start_time = datetime.strptime(start_str, "%H:%M").time()
-        end_time = datetime.strptime(end_str, "%H:%M").time()
-        now = datetime.now().time()
-        if start_time < end_time:
-            return start_time <= now < end_time
-        else:
-            # Spanning midnight: off if now >= start_time or now < end_time
-            return now >= start_time or now < end_time
-    except Exception as e:
-        return False
-
 ################################
 # Remote device push/pull logic
 ################################
@@ -224,3 +208,4 @@ def pull_displays_from_remote(ip):
     if not remote_cfg:
         return None
     return remote_cfg.get("displays", {})
+
