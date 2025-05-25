@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-'''
+"""
 piviewer.py
 Shows images in random/mixed/specific/spotify mode on each connected monitor,
 and can display an overlay with clock, weather, and Spotify track info.
-'''
+"""
 
 import sys
 import os
@@ -66,12 +66,12 @@ def detect_monitors():
                             w, h = res.split("x")
                             w = int(w)
                             h = int(h)
-                        except:
+                        except Exception:
                             w, h = 0, 0
                         monitors[name] = {
                             "screen_name": f"{name}: {w}x{h}",
                             "width": w,
-                            "height": h
+                            "height": h,
                         }
                         break
     except Exception as e:
@@ -100,6 +100,10 @@ class DisplayWindow(QMainWindow):
         # Variables for auto-negative sampling (no longer used for difference mode)
         self.current_drawn_image = None
         self.foreground_drawn_rect = None
+
+        ### NEW – track consecutive Spotify failures
+        self.spotify_fail_count = 0
+        self.spotify_fail_limit = 12  # 12 * 5 s timer ≈ 1 minute
 
         # Set window geometry
         if self.assigned_screen:
@@ -169,6 +173,7 @@ class DisplayWindow(QMainWindow):
         self.next_image(force=True)
         QTimer.singleShot(1000, self.setup_layout)
 
+    # ------------------------------------------------------------------ GUI layout helpers (unchanged) ---
     def setup_layout(self):
         if not self.isVisible():
             return
@@ -245,7 +250,6 @@ class DisplayWindow(QMainWindow):
             else:
                 lbl.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
             lbl.adjustSize()
-            # Force re-wrap by using sizeHint() for height.
             required_height = lbl.sizeHint().height()
             lbl.setFixedHeight(required_height)
             h = required_height
@@ -256,7 +260,7 @@ class DisplayWindow(QMainWindow):
             else:
                 y = (container_rect.height() - h) // 2
             lbl.move(margin, y)
-            return (y + h + margin)
+            return y + h + margin
 
         if self.clock_label.isVisible() or self.weather_label.isVisible():
             clock_pos = self.overlay_config.get("clock_position", "bottom-center")
@@ -277,6 +281,7 @@ class DisplayWindow(QMainWindow):
         super().resizeEvent(event)
         self.setup_layout()
 
+    # ------------------------------------------------------------------ Settings reload (unchanged logic) ---
     @Slot()
     def reload_settings(self):
         self.cfg = load_config()
@@ -319,17 +324,18 @@ class DisplayWindow(QMainWindow):
         gui_cfg = self.cfg.get("gui", {})
         try:
             self.bg_blur_radius = int(gui_cfg.get("background_blur_radius", 0))
-        except:
+        except Exception:
             self.bg_blur_radius = 0
         try:
             self.bg_scale_percent = int(gui_cfg.get("background_scale_percent", 100))
-        except:
+        except Exception:
             self.bg_scale_percent = 100
         try:
             self.fg_scale_percent = int(gui_cfg.get("foreground_scale_percent", 100))
-        except:
+        except Exception:
             self.fg_scale_percent = 100
 
+        # timer interval logic
         interval_s = self.disp_cfg.get("image_interval", 60)
         self.current_mode = self.disp_cfg.get("mode", "random_image")
         if self.current_mode == "spotify":
@@ -368,6 +374,7 @@ class DisplayWindow(QMainWindow):
         self.slideshow_timer.setInterval(interval_s * 1000)
         self.slideshow_timer.start()
 
+        # build initial list for non-spotify modes
         self.image_list = []
         self.index = 0
         if self.current_mode in ("random_image", "mixed", "specific_image"):
@@ -376,6 +383,7 @@ class DisplayWindow(QMainWindow):
         if self.current_mode == "spotify":
             self.next_image(force=True)
 
+    # ------------------------------------------------------------------ Helpers for local image lists (unchanged) ---
     def build_local_image_list(self):
         mode = self.current_mode
         if mode == "random_image":
@@ -414,6 +422,7 @@ class DisplayWindow(QMainWindow):
         results.sort()
         return results
 
+    # ------------------------------------------------------------------ Image / GIF caching helpers (unchanged) ---
     def load_and_cache_image(self, fullpath):
         ext = os.path.splitext(fullpath)[1].lower()
         if ext == ".gif":
@@ -445,13 +454,20 @@ class DisplayWindow(QMainWindow):
             if path not in self.image_cache:
                 self.get_cached_image(path)
 
+    # ------------------------------------------------------------------ MAIN image-advance routine -------------
     def next_image(self, force=False):
         if not self.running:
             return
 
+        # ───────────────────────── Spotify mode ─────────────────────────
         if self.current_mode == "spotify":
             path = self.fetch_spotify_album_art()
+
             if path:
+                ### NEW – reset error counter on success
+                self.spotify_fail_count = 0
+
+                # display album art + info
                 self.show_foreground_image(path, is_spotify=True)
                 self.spotify_info_label.show()
                 if self.disp_cfg.get("spotify_show_progress", False):
@@ -469,10 +485,7 @@ class DisplayWindow(QMainWindow):
                     info_parts.append(self.spotify_info["album"])
 
                 pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
-                if "left" in pos or "right" in pos:
-                    text = "\n".join(info_parts)
-                else:
-                    text = " | ".join(info_parts)
+                text = "\n".join(info_parts) if ("left" in pos or "right" in pos) else " | ".join(info_parts)
                 self.spotify_info_label.setText(text)
                 font_size = self.disp_cfg.get("spotify_font_size", 18)
                 if self.disp_cfg.get("spotify_negative_font", True):
@@ -483,35 +496,65 @@ class DisplayWindow(QMainWindow):
                     self.spotify_info_label.setFont(font)
                 else:
                     self.spotify_info_label.useDifference = False
-                    self.spotify_info_label.setStyleSheet(f"color: #FFFFFF; font-size: {font_size}px; background: transparent;")
+                    self.spotify_info_label.setStyleSheet(
+                        f"color: #FFFFFF; font-size: {font_size}px; background: transparent;"
+                    )
                 self.spotify_info_label.raise_()
                 self.setup_layout()
-            else:
-                self.spotify_progress_bar.hide()
-                self.spotify_progress_timer.stop()
+                return  # successful spotify update handled
+
+            # ---------------- Spotify fetch failed ----------------
+            self.spotify_fail_count += 1
+            self.spotify_progress_bar.hide()
+            self.spotify_progress_timer.stop()
+
+            ### NEW – after N consecutive failures: switch permanently
+            if self.spotify_fail_count >= self.spotify_fail_limit:
                 fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
+                log_message(
+                    f"{self.disp_name}: exceeded Spotify failure threshold – switching permanently to fallback "
+                    f"mode '{fallback_mode}'."
+                )
+                self.current_mode = fallback_mode
+                self.spotify_info_label.hide()
+
                 if fallback_mode in ("random_image", "mixed", "specific_image"):
-                    image_list_backup = self.image_list
-                    mode_backup = self.current_mode
-                    self.current_mode = fallback_mode
                     self.build_local_image_list()
-                    if not self.image_list:
-                        self.clear_foreground_label("No fallback images found")
-                    else:
-                        self.index = (self.index + 1) % len(self.image_list)
-                        new_path = self.image_list[self.index]
-                        self.last_displayed_path = new_path
-                        self.show_foreground_image(new_path)
-                    self.current_mode = mode_backup
-                    self.image_list = image_list_backup
-                    self.spotify_info_label.setText("")
-                    self.spotify_info_label.hide()
+                    # use the normal interval for fallback slides
+                    interval_s = self.disp_cfg.get("image_interval", 60)
+                    self.slideshow_timer.setInterval(interval_s * 1000)
+                    # show immediately
+                    self.next_image(force=True)
                 else:
+                    # 'none' → just clear screen
                     self.clear_foreground_label("No Spotify track info")
-                    self.spotify_info_label.setText("")
-                    self.spotify_info_label.hide()
+                return  # finished handling
+
+            # ---- Temporary fallback for *this* tick only ----
+            fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
+            if fallback_mode in ("random_image", "mixed", "specific_image"):
+                image_list_backup = self.image_list
+                mode_backup = self.current_mode
+                self.current_mode = fallback_mode
+                self.build_local_image_list()
+                if not self.image_list:
+                    self.clear_foreground_label("No fallback images found")
+                else:
+                    self.index = (self.index + 1) % len(self.image_list)
+                    new_path = self.image_list[self.index]
+                    self.last_displayed_path = new_path
+                    self.show_foreground_image(new_path)
+                self.current_mode = mode_backup
+                self.image_list = image_list_backup
+                self.spotify_info_label.setText("")
+                self.spotify_info_label.hide()
+            else:
+                self.clear_foreground_label("No Spotify track info")
+                self.spotify_info_label.setText("")
+                self.spotify_info_label.hide()
             return
 
+        # ───────────────────────── Non-Spotify modes ─────────────────────────
         if not self.image_list:
             self.clear_foreground_label("No images found")
             return
@@ -531,6 +574,7 @@ class DisplayWindow(QMainWindow):
             self.clock_label.update()
             self.weather_label.update()
 
+    # ------------------------------------------------------------------ Helpers for clearing / showing images (unchanged) ---
     def clear_foreground_label(self, message):
         if self.current_movie:
             self.current_movie.stop()
@@ -621,6 +665,7 @@ class DisplayWindow(QMainWindow):
             self.weather_label.update()
         self.spotify_info_label.raise_()
 
+    # ------------------------------------------------------------------ Scaling / rotation helpers (unchanged) ---
     def calc_bounding_for_window(self, first_frame):
         fw = self.foreground_label.width()
         fh = self.foreground_label.height()
@@ -638,8 +683,10 @@ class DisplayWindow(QMainWindow):
         else:
             bounding_h = fh
             bounding_w = int(bounding_h * image_aspect)
-        if bounding_w < 1: bounding_w = 1
-        if bounding_h < 1: bounding_h = 1
+        if bounding_w < 1:
+            bounding_w = 1
+        if bounding_h < 1:
+            bounding_h = 1
         return (bounding_w, bounding_h)
 
     def updateForegroundScaled(self):
@@ -684,8 +731,10 @@ class DisplayWindow(QMainWindow):
         else:
             new_h = fh
             new_w = int(new_h * image_aspect)
-        if new_w < 1: new_w = 1
-        if new_h < 1: new_h = 1
+        if new_w < 1:
+            new_w = 1
+        if new_h < 1:
+            new_h = 1
         return (new_w, new_h)
 
     def degrade_foreground(self, src_pm, bounding):
@@ -761,11 +810,15 @@ class DisplayWindow(QMainWindow):
         result = QImage(pm.width(), pm.height(), QImage.Format_ARGB32)
         result.fill(Qt.transparent)
         painter = QPainter(result)
-        scene.render(painter, QRectF(0, 0, pm.width(), pm.height()),
-                     QRectF(0, 0, pm.width(), pm.height()))
+        scene.render(
+            painter,
+            QRectF(0, 0, pm.width(), pm.height()),
+            QRectF(0, 0, pm.width(), pm.height()),
+        )
         painter.end()
         return QPixmap.fromImage(result)
 
+    # ------------------------------------------------------------------ Clock / weather helpers (unchanged) ---
     def update_clock(self):
         now_str = datetime.now().strftime("%H:%M:%S")
         self.clock_label.setText(now_str)
@@ -788,7 +841,10 @@ class DisplayWindow(QMainWindow):
                 self.setup_layout()
             return
         try:
-            url = f"https://api.openweathermap.org/data/2.5/weather?zip={zip_code},{country_code}&units=metric&appid={api_key}"
+            url = (
+                f"https://api.openweathermap.org/data/2.5/weather?zip={zip_code},"
+                f"{country_code}&units=metric&appid={api_key}"
+            )
             r = requests.get(url, timeout=5)
             if r.status_code == 200:
                 data = r.json()
@@ -802,10 +858,7 @@ class DisplayWindow(QMainWindow):
                 if over.get("show_humidity", False):
                     parts.append(f"Humidity: {data['main']['humidity']}%")
                 layout_mode = over.get("weather_layout", "inline")
-                if layout_mode == "stacked":
-                    weather_text = "\n".join(parts)
-                else:
-                    weather_text = " | ".join(parts)
+                weather_text = "\n".join(parts) if layout_mode == "stacked" else " | ".join(parts)
                 self.weather_label.setWordWrap(True)
                 self.weather_label.setText(weather_text)
             else:
@@ -816,6 +869,7 @@ class DisplayWindow(QMainWindow):
         if self.weather_label.isVisible():
             self.setup_layout()
 
+    # ------------------------------------------------------------------ Spotify helpers (unchanged except shorter) ---
     def fetch_spotify_album_art(self):
         try:
             cfg = load_config()
@@ -827,9 +881,13 @@ class DisplayWindow(QMainWindow):
             if not (cid and csec and ruri):
                 self.spotify_info = None
                 return None
-            auth = SpotifyOAuth(client_id=cid, client_secret=csec,
-                                redirect_uri=ruri, scope=scope,
-                                cache_path=".spotify_cache")
+            auth = SpotifyOAuth(
+                client_id=cid,
+                client_secret=csec,
+                redirect_uri=ruri,
+                scope=scope,
+                cache_path=".spotify_cache",
+            )
             token_info = auth.get_cached_token()
             if not token_info:
                 self.spotify_info = None
@@ -843,19 +901,16 @@ class DisplayWindow(QMainWindow):
                 return None
             item = current["item"]
             track_name = item.get("name", "")
-            artists = ", ".join([a.get("name", "") for a in item.get("artists", [])])
+            artists = ", ".join(a.get("name", "") for a in item.get("artists", []))
             album_name = item.get("album", {}).get("name", "")
-            self.spotify_info = {
-                "song": track_name,
-                "artist": artists,
-                "album": album_name
-            }
-            # Capture playback progress info for progress bar updates
-            progress_ms = current.get("progress_ms", 0)
-            duration_ms = item.get("duration_ms", 0)
-            self.spotify_info["progress_ms"] = progress_ms
-            self.spotify_info["duration_ms"] = duration_ms
-            self.spotify_info["fetched_time"] = time.time()
+            self.spotify_info = {"song": track_name, "artist": artists, "album": album_name}
+            self.spotify_info.update(
+                {
+                    "progress_ms": current.get("progress_ms", 0),
+                    "duration_ms": item.get("duration_ms", 0),
+                    "fetched_time": time.time(),
+                }
+            )
             album_imgs = item["album"]["images"]
             if not album_imgs:
                 return None
@@ -870,27 +925,29 @@ class DisplayWindow(QMainWindow):
         except Exception as e:
             log_message(f"Spotify error: {e}")
             self.spotify_info = None
-            return None
         return None
 
     def update_spotify_progress(self):
-        if not self.spotify_info or "progress_ms" not in self.spotify_info or "duration_ms" not in self.spotify_info or "fetched_time" not in self.spotify_info:
+        if (
+            not self.spotify_info
+            or "progress_ms" not in self.spotify_info
+            or "duration_ms" not in self.spotify_info
+            or "fetched_time" not in self.spotify_info
+        ):
             self.spotify_progress_bar.setValue(0)
             return
         progress_ms = self.spotify_info["progress_ms"]
         duration_ms = self.spotify_info["duration_ms"]
-        fetched_time = self.spotify_info["fetched_time"]
-        elapsed = (time.time() - fetched_time) * 1000  # in ms
+        elapsed = (time.time() - self.spotify_info["fetched_time"]) * 1000
         current_progress = progress_ms + elapsed
-        if duration_ms > 0:
-            percent = min(100, (current_progress / duration_ms) * 100)
-        else:
-            percent = 0
+        percent = min(100, (current_progress / duration_ms) * 100) if duration_ms > 0 else 0
         self.spotify_progress_bar.setValue(int(percent))
 
     def pull_displays_from_remote(self, ip):
         pass  # Placeholder if needed
 
+
+# ---------------------------------------------------------------------- App launcher ------------------------------------------------
 class PiViewerGUI:
     def __init__(self):
         self.cfg = load_config()
@@ -913,25 +970,20 @@ class PiViewerGUI:
                         "shuffle_mode": False,
                         "mixed_folders": [],
                         "rotate": 0,
-                        "screen_name": mon_info["screen_name"]
+                        "screen_name": mon_info["screen_name"],
                     }
                     log_message(f"Added fallback monitor to config: {mon_info['screen_name']}")
             save_config(self.cfg)
 
         self.windows = []
         screens = self.app.screens()
-        i = 0
-        for dname, dcfg in self.cfg.get("displays", {}).items():
+        for i, (dname, dcfg) in enumerate(self.cfg.get("displays", {}).items()):
             assigned_screen = screens[i] if i < len(screens) else None
             w = DisplayWindow(dname, dcfg, assigned_screen)
-            if "monitor_model" in dcfg and dcfg["monitor_model"]:
-                t = f"{dname} ({dcfg['monitor_model']})"
-            else:
-                t = dcfg.get("screen_name", dname)
-            w.setWindowTitle(t)
+            title = f"{dname} ({dcfg.get('monitor_model')})" if dcfg.get("monitor_model") else dcfg.get("screen_name", dname)
+            w.setWindowTitle(title)
             w.show()
             self.windows.append(w)
-            i += 1
 
     def run(self):
         sys.exit(self.app.exec())
