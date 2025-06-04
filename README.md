@@ -150,6 +150,10 @@ sudo journalctl -u controller.service
 - **Overlay not transparent?** You need a compositor (like **picom**) running for real transparency.
 - **Check logs**: Look at `viewer.log` (in your `VIEWER_HOME`) or `journalctl -u piviewer.service`.
 
+## Running Tests
+
+Run `pytest` from the project root to run the unit tests.
+
 ## Contributing
 
 Feel free to open pull requests or issues. Any improvements to multi-monitor detection, new overlay features, or theming are welcome.
