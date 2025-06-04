@@ -421,6 +421,9 @@ class DisplayWindow(QMainWindow):
                 self.get_cached_image(path)
 
     def start_spotify_fetch(self):
+        if self.spotify_fetch_thread and self.spotify_fetch_thread.is_alive():
+            return
+
         self.spotify_fetch_id += 1
         current_id = self.spotify_fetch_id
 
