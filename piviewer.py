@@ -149,6 +149,7 @@ class DisplayWindow(QMainWindow):
         self.spotify_progress_timer = QTimer(self)
         self.spotify_progress_timer.timeout.connect(self.update_spotify_progress)
         self.spotify_fetch_thread = None
+        self.spotify_fetch_id = 0
 
         # Timers
         self.slideshow_timer = QTimer(self)
@@ -420,15 +421,19 @@ class DisplayWindow(QMainWindow):
                 self.get_cached_image(path)
 
     def start_spotify_fetch(self):
-        if self.spotify_fetch_thread and self.spotify_fetch_thread.is_alive():
-            return
-        def worker():
+        self.spotify_fetch_id += 1
+        current_id = self.spotify_fetch_id
+
+        def worker(my_id=current_id):
             result = self.fetch_spotify_album_art()
-            QTimer.singleShot(0, self, lambda r=result: self.handle_spotify_result(r))
+            QTimer.singleShot(0, lambda r=result, fid=my_id: self.handle_spotify_result(fid, r))
+
         self.spotify_fetch_thread = threading.Thread(target=worker, daemon=True)
         self.spotify_fetch_thread.start()
 
-    def handle_spotify_result(self, path):
+    def handle_spotify_result(self, fetch_id, path):
+        if fetch_id != self.spotify_fetch_id:
+            return
         self.spotify_fetch_thread = None
         if path:
             self.show_foreground_image(path, is_spotify=True)
@@ -494,8 +499,6 @@ class DisplayWindow(QMainWindow):
             return
 
         if self.current_mode == "spotify":
-            if self.spotify_fetch_thread and self.spotify_fetch_thread.is_alive():
-                return
             self.start_spotify_fetch()
             return
 

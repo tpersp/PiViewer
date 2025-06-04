@@ -8,18 +8,6 @@
   <!-- Role + Theme in a top card -->
   <div class="card" style="margin-bottom:20px;">
     <form method="POST" enctype="multipart/form-data">
-      <label>Role:</label><br>
-      <select name="role" id="roleSelect" onchange="toggleMainIP()">
-        <option value="main" {% if cfg.role=="main" %}selected{% endif %}>main</option>
-        <option value="sub"  {% if cfg.role=="sub"  %}selected{% endif %}>sub</option>
-      </select>
-      <br><br>
-
-      <div id="mainIPField" style="{% if cfg.role!="sub" %}display:none;{% endif %}">
-        <label>Main Device IP:</label><br>
-        <input type="text" name="main_ip" value="{{ cfg.main_ip }}">
-        <br><br>
-      </div>
 
       <label>Theme:</label><br>
       <select name="theme">
@@ -47,8 +35,6 @@
       <h3>GUI Settings</h3>
       <form method="POST" enctype="multipart/form-data">
         <fieldset style="border:none;">
-          <input type="hidden" name="role" value="{{ cfg.role }}">
-          <input type="hidden" name="main_ip" value="{{ cfg.main_ip }}">
           <input type="hidden" name="theme" value="{{ cfg.theme }}">
           <label>Background Blur Radius:</label><br>
           <input type="number" name="background_blur_radius"
@@ -102,15 +88,4 @@
   </div>
 </div>
 
-<script>
-  function toggleMainIP(){
-    const roleSelect = document.getElementById("roleSelect");
-    const mainIPField = document.getElementById("mainIPField");
-    if (roleSelect.value === "sub") {
-      mainIPField.style.display = "";
-    } else {
-      mainIPField.style.display = "none";
-    }
-  }
-</script>
 {% endblock %}

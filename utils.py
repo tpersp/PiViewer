@@ -22,8 +22,6 @@ def init_config():
     if not os.path.exists(CONFIG_PATH):
         default_cfg = {
             "theme": "dark",
-            "role": "main",
-            "main_ip": "",
             # displays dictionary for multi-display logic
             "displays": {
                 "Display0": {

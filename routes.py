@@ -238,14 +238,7 @@ def settings():
     cfg = load_config()
     if request.method == "POST":
         new_theme = request.form.get("theme", "dark")
-        new_role = request.form.get("role", "main")
         cfg["theme"] = new_theme
-        cfg["role"] = new_role
-
-        if new_role == "sub":
-            cfg["main_ip"] = request.form.get("main_ip", "").strip()
-        else:
-            cfg["main_ip"] = ""
 
         if new_theme == "custom":
             if "bg_image" in request.files:
@@ -591,26 +584,16 @@ def index():
     model = get_pi_model()
     theme = cfg.get("theme", "dark")
 
-    sub_info_line = ""
-    if cfg.get("role") == "sub":
-        sub_info_line = "This device is SUB"
-        if cfg["main_ip"]:
-            sub_info_line += f" - Main IP: {cfg['main_ip']}"
-
-    # Status logic
-    if cfg.get("role") == "main":
-        sp_cfg = cfg.get("spotify", {})
-        if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
-            spotify_cache_path = os.path.join(VIEWER_HOME, ".spotify_cache")
-            if os.path.exists(spotify_cache_path):
-                spotify_status = "✅"
-            else:
-                spotify_status = "⚠️"
+    # Determine Spotify auth status
+    sp_cfg = cfg.get("spotify", {})
+    if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
+        spotify_cache_path = os.path.join(VIEWER_HOME, ".spotify_cache")
+        if os.path.exists(spotify_cache_path):
+            spotify_status = "✅"
         else:
-            spotify_status = "❌"
-
+            spotify_status = "⚠️"
     else:
-        spotify_status = ""
+        spotify_status = "❌"
 
     final_monitors = {}
     for mon_name, minfo in ext_mons.items():
@@ -637,7 +620,6 @@ def index():
         model=model,
         theme=theme,
         version=APP_VERSION,
-        sub_info_line=sub_info_line,
         monitors=final_monitors,
         flash_msg=flash_msg,
         spotify_status=spotify_status
