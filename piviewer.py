@@ -486,6 +486,7 @@ class DisplayWindow(QMainWindow):
             except Exception:
                 pass
         if not success:
+            log_message("Spotify album art unavailable, using fallback mode")
             self.spotify_progress_bar.hide()
             self.spotify_progress_timer.stop()
             fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
@@ -763,20 +764,27 @@ class DisplayWindow(QMainWindow):
     def blur_pixmap_once(self, pm, radius):
         if radius <= 0:
             return pm
-        scene = QGraphicsScene()
-        item = QGraphicsPixmapItem(pm)
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(radius)
-        blur.setBlurHints(QGraphicsBlurEffect.PerformanceHint)
-        item.setGraphicsEffect(blur)
-        scene.addItem(item)
-        result = QImage(pm.width(), pm.height(), QImage.Format_ARGB32)
-        result.fill(Qt.transparent)
-        painter = QPainter(result)
-        scene.render(painter, QRectF(0, 0, pm.width(), pm.height()),
-                     QRectF(0, 0, pm.width(), pm.height()))
-        painter.end()
-        return QPixmap.fromImage(result)
+        try:
+            scene = QGraphicsScene()
+            item = QGraphicsPixmapItem(pm)
+            blur = QGraphicsBlurEffect()
+            blur.setBlurRadius(radius)
+            blur.setBlurHints(QGraphicsBlurEffect.PerformanceHint)
+            item.setGraphicsEffect(blur)
+            scene.addItem(item)
+            result = QImage(pm.width(), pm.height(), QImage.Format_ARGB32)
+            result.fill(Qt.transparent)
+            painter = QPainter(result)
+            scene.render(
+                painter,
+                QRectF(0, 0, pm.width(), pm.height()),
+                QRectF(0, 0, pm.width(), pm.height()),
+            )
+            painter.end()
+            return QPixmap.fromImage(result)
+        except Exception as e:
+            log_message(f"Blur failed: {e}")
+            return pm
 
     def update_clock(self):
         now_str = datetime.now().strftime("%H:%M:%S")
