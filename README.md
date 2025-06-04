@@ -149,6 +149,9 @@ sudo journalctl -u controller.service
 - **Spotify issues**? Check `.spotify_cache` for the saved token. Re-authorize if needed.
 - **Overlay not transparent?** You need a compositor (like **picom**) running for real transparency.
 - **Check logs**: Look at `piviewer.log` (in your `VIEWER_HOME`) or `journalctl -u piviewer.service`.
+## Running Tests
+
+Run `pytest` from the project root to run the unit tests.
 
 ## Contributing
 
