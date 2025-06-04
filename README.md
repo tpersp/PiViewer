@@ -62,6 +62,7 @@ Browse to `http://<PI-IP>:8080` to access the interface. You’ll see:
   - For Specific mode, choose exactly one image. For Mixed, drag-drop multiple folders.
   - **Manage** how often images rotate, shuffle, etc.
 
+
 - **Settings** Page
   - Set the web theme (Dark, Light, or Custom) and optionally upload a background image
 
