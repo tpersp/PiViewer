@@ -436,6 +436,16 @@ class DisplayWindow(QMainWindow):
             return
         self.spotify_fetch_thread = None
         if path:
+            if os.path.exists(path):
+                test_pm = QPixmap(path)
+                if test_pm.isNull():
+                    log_message(f"Spotify image load failed: {path}")
+                    os.remove(path)
+                    path = None
+            else:
+                path = None
+
+        if path:
             self.show_foreground_image(path, is_spotify=True)
             self.spotify_info_label.show()
             if self.disp_cfg.get("spotify_show_progress", False):
