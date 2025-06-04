@@ -59,7 +59,7 @@ def init_config():
                 "weather_font_size": 22,
                 "clock_position": "top-center",
                 "weather_position": "bottom-center",
-                "layout_style": "stacked",
+                "weather_layout": "stacked",
                 "padding_x": 8,
                 "padding_y": 6,
                 "show_desc": False,            # Off by default
@@ -93,7 +93,30 @@ def load_config():
     if not os.path.exists(CONFIG_PATH):
         init_config()
     with open(CONFIG_PATH, "r") as f:
-        return json.load(f)
+        cfg = json.load(f)
+
+    # ------------------------------------------------------------
+    # Migration: layout_style -> weather_layout
+    # ------------------------------------------------------------
+    updated = False
+
+    # Global overlay
+    overlay = cfg.get("overlay", {})
+    if isinstance(overlay, dict) and "layout_style" in overlay:
+        overlay.setdefault("weather_layout", overlay.pop("layout_style"))
+        updated = True
+
+    # Per-display overlays
+    for disp in cfg.get("displays", {}).values():
+        ovr = disp.get("overlay")
+        if isinstance(ovr, dict) and "layout_style" in ovr:
+            ovr.setdefault("weather_layout", ovr.pop("layout_style"))
+            updated = True
+
+    if updated:
+        save_config(cfg)
+
+    return cfg
 
 def save_config(cfg):
     with open(CONFIG_PATH, "w") as f:
