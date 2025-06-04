@@ -445,8 +445,10 @@ class DisplayWindow(QMainWindow):
             else:
                 path = None
 
+        success = False
         if path:
-            self.show_foreground_image(path, is_spotify=True)
+            success = self.show_foreground_image(path, is_spotify=True)
+        if success:
             self.spotify_info_label.show()
             if self.disp_cfg.get("spotify_show_progress", False):
                 self.spotify_progress_bar.show()
@@ -479,7 +481,11 @@ class DisplayWindow(QMainWindow):
                 self.spotify_info_label.setStyleSheet(f"color: #FFFFFF; font-size: {font_size}px; background: transparent;")
             self.spotify_info_label.raise_()
             self.setup_layout()
-        else:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        if not success:
             self.spotify_progress_bar.hide()
             self.spotify_progress_timer.stop()
             fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
@@ -544,9 +550,15 @@ class DisplayWindow(QMainWindow):
         self.spotify_progress_timer.stop()
 
     def show_foreground_image(self, fullpath, is_spotify=False):
+        """Display an image or GIF in the foreground.
+
+        Returns ``True`` if an image was shown successfully,
+        otherwise ``False``.  This allows callers to fall back to
+        another image when loading fails.
+        """
         if not os.path.exists(fullpath):
             self.clear_foreground_label("Missing file")
-            return
+            return False
 
         if self.current_movie:
             self.current_movie.stop()
@@ -575,7 +587,7 @@ class DisplayWindow(QMainWindow):
                 ff = data["first_frame"]
                 if ff.isNull():
                     self.clear_foreground_label("GIF error")
-                    return
+                    return False
                 pm = QPixmap.fromImage(ff)
                 blurred = self.make_background_cover(pm)
                 self.bg_label.setPixmap(blurred if blurred else QPixmap())
@@ -588,12 +600,15 @@ class DisplayWindow(QMainWindow):
                 self.current_pixmap = data["pixmap"]
             else:
                 self.current_pixmap = QPixmap(fullpath)
+            if self.current_pixmap.isNull():
+                self.clear_foreground_label("Image error")
+                return False
             self.handling_gif_frames = False
             self.updateForegroundScaled()
             blurred = self.make_background_cover(self.current_pixmap)
             self.bg_label.setPixmap(blurred if blurred else QPixmap())
         self.spotify_info_label.raise_()
-
+        return True
     def on_gif_frame_changed(self, frame_index):
         if not self.current_movie or not self.handling_gif_frames:
             return
