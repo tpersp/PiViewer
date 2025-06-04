@@ -451,7 +451,7 @@ class DisplayWindow(QMainWindow):
             return
         def worker():
             result = self.fetch_spotify_album_art()
-            QTimer.singleShot(0, lambda r=result: self.handle_spotify_result(r))
+            QTimer.singleShot(0, self, lambda r=result: self.handle_spotify_result(r))
         self.spotify_fetch_thread = threading.Thread(target=worker, daemon=True)
         self.spotify_fetch_thread.start()
 
