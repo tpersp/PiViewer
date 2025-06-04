@@ -152,6 +152,7 @@ class DisplayWindow(QMainWindow):
         self.spotify_progress_timer = QTimer(self)
         self.spotify_progress_timer.timeout.connect(self.update_spotify_progress)
         self.spotify_fetch_thread = None
+        self.weather_fetch_thread = None
 
         # Timers
         self.slideshow_timer = QTimer(self)
@@ -785,48 +786,59 @@ class DisplayWindow(QMainWindow):
         self.clock_label.setText(now_str)
 
     def update_weather(self):
+        if self.weather_fetch_thread and self.weather_fetch_thread.is_alive():
+            return
+
         cfg = load_config()
-        if "overlay" in self.disp_cfg:
-            over = self.disp_cfg["overlay"]
-        else:
-            over = cfg.get("overlay", {})
+        over = self.disp_cfg.get("overlay", cfg.get("overlay", {}))
         if not over.get("weather_enabled", False):
             return
+
         wcfg = cfg.get("weather", {})
         api_key = wcfg.get("api_key", "")
         zip_code = wcfg.get("zip_code", "")
         country_code = wcfg.get("country_code", "")
-        if not (api_key and zip_code and country_code):
-            self.weather_label.setText("Weather: config missing")
-            if self.weather_label.isVisible():
-                self.setup_layout()
-            return
-        try:
-            url = f"https://api.openweathermap.org/data/2.5/weather?zip={zip_code},{country_code}&units=metric&appid={api_key}"
-            r = requests.get(url, timeout=5)
-            if r.status_code == 200:
-                data = r.json()
-                parts = []
-                if over.get("show_desc", True):
-                    parts.append(data["weather"][0]["description"].title())
-                if over.get("show_temp", True):
-                    parts.append(f"{data['main']['temp']}\u00B0C")
-                if over.get("show_feels_like", False):
-                    parts.append(f"Feels: {data['main']['feels_like']}\u00B0C")
-                if over.get("show_humidity", False):
-                    parts.append(f"Humidity: {data['main']['humidity']}%")
-                layout_mode = over.get("weather_layout", "inline")
-                if layout_mode == "stacked":
-                    weather_text = "\n".join(parts)
-                else:
-                    weather_text = " | ".join(parts)
-                self.weather_label.setWordWrap(True)
-                self.weather_label.setText(weather_text)
+
+        def worker():
+            if not (api_key and zip_code and country_code):
+                result_text = "Weather: config missing"
             else:
-                self.weather_label.setText("Weather: error")
-        except Exception as e:
-            self.weather_label.setText("Weather: error")
-            log_message(f"Error updating weather: {e}")
+                try:
+                    url = (
+                        f"https://api.openweathermap.org/data/2.5/weather?zip={zip_code},{country_code}&units=metric&appid={api_key}"
+                    )
+                    r = requests.get(url, timeout=5)
+                    if r.status_code == 200:
+                        data = r.json()
+                        parts = []
+                        if over.get("show_desc", True):
+                            parts.append(data["weather"][0]["description"].title())
+                        if over.get("show_temp", True):
+                            parts.append(f"{data['main']['temp']}\u00B0C")
+                        if over.get("show_feels_like", False):
+                            parts.append(f"Feels: {data['main']['feels_like']}\u00B0C")
+                        if over.get("show_humidity", False):
+                            parts.append(f"Humidity: {data['main']['humidity']}%")
+                        layout_mode = over.get("weather_layout", "inline")
+                        if layout_mode == "stacked":
+                            result_text = "\n".join(parts)
+                        else:
+                            result_text = " | ".join(parts)
+                    else:
+                        result_text = "Weather: error"
+                except Exception as e:
+                    log_message(f"Error updating weather: {e}")
+                    result_text = "Weather: error"
+
+            QTimer.singleShot(0, lambda t=result_text: self.handle_weather_result(t))
+
+        self.weather_fetch_thread = threading.Thread(target=worker, daemon=True)
+        self.weather_fetch_thread.start()
+
+    def handle_weather_result(self, text):
+        self.weather_fetch_thread = None
+        self.weather_label.setWordWrap(True)
+        self.weather_label.setText(text)
         if self.weather_label.isVisible():
             self.setup_layout()
 
