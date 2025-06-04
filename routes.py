@@ -154,7 +154,8 @@ def stats_json():
 
 @main_bp.route("/list_monitors")
 def list_monitors():
-    return jsonify({"Display0": {"resolution": "1920x1080", "offset_x": 0, "offset_y": 0}})
+    monitors = detect_monitors_extended()
+    return jsonify(monitors)
 
 @main_bp.route("/list_folders")
 def list_folders():
