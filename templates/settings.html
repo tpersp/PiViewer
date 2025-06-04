@@ -39,7 +39,7 @@
     </form>
   </div>
 
-  <!-- Two side-by-side cards: GUI Settings and Weather Settings -->
+  <!-- GUI Settings -->
   <div class="cards-container">
 
     <!-- GUI card -->
@@ -71,44 +71,8 @@
       </form>
     </div>
 
-    <!-- Weather card -->
-    <div class="card">
-      <h3>Weather Settings</h3>
-      <form method="POST" enctype="multipart/form-data">
-        <fieldset style="border:none;">
-          <input type="hidden" name="role" value="{{ cfg.role }}">
-          <input type="hidden" name="main_ip" value="{{ cfg.main_ip }}">
-          <input type="hidden" name="theme" value="{{ cfg.theme }}">
-          <label>OpenWeatherMap API Key:</label><br>
-          <input type="text" name="weather_api_key"
-                 value="{{ cfg.weather.api_key|default('') }}"
-                 style="width:300px;">
-          <br><br>
-
-          <label>Zip Code:</label><br>
-          <input type="text" name="weather_zip_code"
-                 value="{{ cfg.weather.zip_code|default('') }}">
-          <br><br>
-
-          <label>Country Code (2-letter):</label><br>
-          <input type="text" name="weather_country_code"
-                 value="{{ cfg.weather.country_code|default('') }}">
-          <br><br>
-        </fieldset>
-        <button type="submit">Save Weather Settings</button>
-      </form>
-    </div>
   </div>
 
-  <!-- New Weather Info Confirmation Card -->
-  {% if weather_info %}
-  <div class="card" style="margin-top:20px;">
-    <h3>Weather Location Confirmation</h3>
-    <p><strong>Location Name:</strong> {{ weather_info.name }}</p>
-    <p><strong>Timezone:</strong> {{ weather_info.timezone }}</p>
-    <p><strong>Country:</strong> {{ weather_info.country }}</p>
-  </div>
-  {% endif %}
 
   <!-- New: Application Version Card -->
   <div class="card" style="margin-top:20px;">

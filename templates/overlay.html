@@ -20,29 +20,6 @@
                  value="{{ monitor_cfg.overlay.clock_font_size if monitor_cfg.overlay and monitor_cfg.overlay.clock_font_size is defined else 26 }}">
         </div>
 
-        <!-- Weather enable/size/color -->
-        <div style="margin-bottom:10px;">
-          <label>
-            <input type="checkbox" name="{{ monitor_name }}_weather_enabled" {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_enabled %}checked{% endif %}>
-            Show Weather
-          </label>
-          <br><br>
-          <label>Weather Font Size:</label>
-          <input type="number" name="{{ monitor_name }}_weather_font_size"
-                 value="{{ monitor_cfg.overlay.weather_font_size if monitor_cfg.overlay and monitor_cfg.overlay.weather_font_size is defined else 22 }}">
-          <br><br>
-          <label>Weather Layout:</label>
-          <select name="{{ monitor_name }}_weather_layout">
-            <option value="inline"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == "inline" %}selected{% endif %}>
-              Inline
-            </option>
-            <option value="stacked"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_layout == "stacked" %}selected{% endif %}>
-              Stacked
-            </option>
-          </select>
-        </div>
 
         <!-- Color / auto negative font -->
         <div style="margin-bottom:10px;">
@@ -57,7 +34,7 @@
           </label>
         </div>
 
-        <!-- Independent positions for clock & weather -->
+        <!-- Clock position -->
         <div style="margin-bottom:10px;">
           <label>Clock Position:</label>
           <select name="{{ monitor_name }}_clock_position">
@@ -86,62 +63,8 @@
               Bottom Right
             </option>
           </select>
-          <br><br>
-          <label>Weather Position:</label>
-          <select name="{{ monitor_name }}_weather_position">
-            <option value="top-left"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-left" %}selected{% endif %}>
-              Top Left
-            </option>
-            <option value="top-center"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-center" %}selected{% endif %}>
-              Top Center
-            </option>
-            <option value="top-right"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "top-right" %}selected{% endif %}>
-              Top Right
-            </option>
-            <option value="bottom-left"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-left" %}selected{% endif %}>
-              Bottom Left
-            </option>
-            <option value="bottom-center"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-center" or not monitor_cfg.overlay or monitor_cfg.overlay.weather_position is undefined %}selected{% endif %}>
-              Bottom Center
-            </option>
-            <option value="bottom-right"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.weather_position == "bottom-right" %}selected{% endif %}>
-              Bottom Right
-            </option>
-          </select>
         </div>
 
-        <!-- Weather toggles -->
-        <div style="margin-bottom:10px;">
-          <label>
-            <input type="checkbox" name="{{ monitor_name }}_show_desc"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.show_desc %}checked{% endif %}>
-            Show Weather Description
-          </label>
-          <br>
-          <label>
-            <input type="checkbox" name="{{ monitor_name }}_show_temp"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.show_temp %}checked{% endif %}>
-            Show Temperature
-          </label>
-          <br>
-          <label>
-            <input type="checkbox" name="{{ monitor_name }}_show_feels_like"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.show_feels_like %}checked{% endif %}>
-            Show Feels Like Temp
-          </label>
-          <br>
-          <label>
-            <input type="checkbox" name="{{ monitor_name }}_show_humidity"
-              {% if monitor_cfg.overlay and monitor_cfg.overlay.show_humidity %}checked{% endif %}>
-            Show Humidity
-          </label>
-        </div>
       </div>
       {% endfor %}
     </div>
