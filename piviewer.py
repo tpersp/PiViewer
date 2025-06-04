@@ -151,6 +151,7 @@ class DisplayWindow(QMainWindow):
         self.spotify_progress_bar.setMaximum(100)
         self.spotify_progress_timer = QTimer(self)
         self.spotify_progress_timer.timeout.connect(self.update_spotify_progress)
+        self.spotify_fetch_thread = None
 
         # Timers
         self.slideshow_timer = QTimer(self)
@@ -445,71 +446,84 @@ class DisplayWindow(QMainWindow):
             if path not in self.image_cache:
                 self.get_cached_image(path)
 
+    def start_spotify_fetch(self):
+        if self.spotify_fetch_thread and self.spotify_fetch_thread.is_alive():
+            return
+        def worker():
+            result = self.fetch_spotify_album_art()
+            QTimer.singleShot(0, self, lambda r=result: self.handle_spotify_result(r))
+        self.spotify_fetch_thread = threading.Thread(target=worker, daemon=True)
+        self.spotify_fetch_thread.start()
+
+    def handle_spotify_result(self, path):
+        self.spotify_fetch_thread = None
+        if path:
+            self.show_foreground_image(path, is_spotify=True)
+            self.spotify_info_label.show()
+            if self.disp_cfg.get("spotify_show_progress", False):
+                self.spotify_progress_bar.show()
+                upd_int = self.disp_cfg.get("spotify_progress_update_interval", 200)
+                self.spotify_progress_timer.setInterval(upd_int)
+                if not self.spotify_progress_timer.isActive():
+                    self.spotify_progress_timer.start()
+            info_parts = []
+            if self.disp_cfg.get("spotify_show_song", True) and self.spotify_info and self.spotify_info.get("song"):
+                info_parts.append(self.spotify_info["song"])
+            if self.disp_cfg.get("spotify_show_artist", True) and self.spotify_info and self.spotify_info.get("artist"):
+                info_parts.append(self.spotify_info["artist"])
+            if self.disp_cfg.get("spotify_show_album", True) and self.spotify_info and self.spotify_info.get("album"):
+                info_parts.append(self.spotify_info["album"])
+            pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
+            if "left" in pos or "right" in pos:
+                text = "\n".join(info_parts)
+            else:
+                text = " | ".join(info_parts)
+            self.spotify_info_label.setText(text)
+            font_size = self.disp_cfg.get("spotify_font_size", 18)
+            if self.disp_cfg.get("spotify_negative_font", True):
+                self.spotify_info_label.useDifference = True
+                self.spotify_info_label.setStyleSheet("background: transparent;")
+                font = QFont(self.spotify_info_label.font())
+                font.setPixelSize(font_size)
+                self.spotify_info_label.setFont(font)
+            else:
+                self.spotify_info_label.useDifference = False
+                self.spotify_info_label.setStyleSheet(f"color: #FFFFFF; font-size: {font_size}px; background: transparent;")
+            self.spotify_info_label.raise_()
+            self.setup_layout()
+        else:
+            self.spotify_progress_bar.hide()
+            self.spotify_progress_timer.stop()
+            fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
+            if fallback_mode in ("random_image", "mixed", "specific_image"):
+                image_list_backup = self.image_list
+                mode_backup = self.current_mode
+                self.current_mode = fallback_mode
+                self.build_local_image_list()
+                if not self.image_list:
+                    self.clear_foreground_label("No fallback images found")
+                else:
+                    self.index = (self.index + 1) % len(self.image_list)
+                    new_path = self.image_list[self.index]
+                    self.last_displayed_path = new_path
+                    self.show_foreground_image(new_path)
+                self.current_mode = mode_backup
+                self.image_list = image_list_backup
+                self.spotify_info_label.setText("")
+                self.spotify_info_label.hide()
+            else:
+                self.clear_foreground_label("No Spotify track info")
+                self.spotify_info_label.setText("")
+                self.spotify_info_label.hide()
+
     def next_image(self, force=False):
         if not self.running:
             return
 
         if self.current_mode == "spotify":
-            path = self.fetch_spotify_album_art()
-            if path:
-                self.show_foreground_image(path, is_spotify=True)
-                self.spotify_info_label.show()
-                if self.disp_cfg.get("spotify_show_progress", False):
-                    self.spotify_progress_bar.show()
-                    upd_int = self.disp_cfg.get("spotify_progress_update_interval", 200)
-                    self.spotify_progress_timer.setInterval(upd_int)
-                    if not self.spotify_progress_timer.isActive():
-                        self.spotify_progress_timer.start()
-                info_parts = []
-                if self.disp_cfg.get("spotify_show_song", True) and self.spotify_info and self.spotify_info.get("song"):
-                    info_parts.append(self.spotify_info["song"])
-                if self.disp_cfg.get("spotify_show_artist", True) and self.spotify_info and self.spotify_info.get("artist"):
-                    info_parts.append(self.spotify_info["artist"])
-                if self.disp_cfg.get("spotify_show_album", True) and self.spotify_info and self.spotify_info.get("album"):
-                    info_parts.append(self.spotify_info["album"])
-
-                pos = self.disp_cfg.get("spotify_info_position", "bottom-center")
-                if "left" in pos or "right" in pos:
-                    text = "\n".join(info_parts)
-                else:
-                    text = " | ".join(info_parts)
-                self.spotify_info_label.setText(text)
-                font_size = self.disp_cfg.get("spotify_font_size", 18)
-                if self.disp_cfg.get("spotify_negative_font", True):
-                    self.spotify_info_label.useDifference = True
-                    self.spotify_info_label.setStyleSheet("background: transparent;")
-                    font = QFont(self.spotify_info_label.font())
-                    font.setPixelSize(font_size)
-                    self.spotify_info_label.setFont(font)
-                else:
-                    self.spotify_info_label.useDifference = False
-                    self.spotify_info_label.setStyleSheet(f"color: #FFFFFF; font-size: {font_size}px; background: transparent;")
-                self.spotify_info_label.raise_()
-                self.setup_layout()
-            else:
-                self.spotify_progress_bar.hide()
-                self.spotify_progress_timer.stop()
-                fallback_mode = self.disp_cfg.get("fallback_mode", "random_image")
-                if fallback_mode in ("random_image", "mixed", "specific_image"):
-                    image_list_backup = self.image_list
-                    mode_backup = self.current_mode
-                    self.current_mode = fallback_mode
-                    self.build_local_image_list()
-                    if not self.image_list:
-                        self.clear_foreground_label("No fallback images found")
-                    else:
-                        self.index = (self.index + 1) % len(self.image_list)
-                        new_path = self.image_list[self.index]
-                        self.last_displayed_path = new_path
-                        self.show_foreground_image(new_path)
-                    self.current_mode = mode_backup
-                    self.image_list = image_list_backup
-                    self.spotify_info_label.setText("")
-                    self.spotify_info_label.hide()
-                else:
-                    self.clear_foreground_label("No Spotify track info")
-                    self.spotify_info_label.setText("")
-                    self.spotify_info_label.hide()
+            if self.spotify_fetch_thread and self.spotify_fetch_thread.is_alive():
+                return
+            self.start_spotify_fetch()
             return
 
         if not self.image_list:
