@@ -526,7 +526,7 @@ def index():
                 new_mode = request.form.get(pre + "mode", dcfg["mode"])
                 new_interval_s = request.form.get(pre + "image_interval", str(dcfg["image_interval"]))
                 new_cat = request.form.get(pre + "image_category", dcfg["image_category"])
-                shuffle_val = request.form.get(pre + "shuffle_mode", "no")
+                shuffle_val = request.form.get(pre + "shuffle_mode")
                 new_spec = request.form.get(pre + "specific_image", dcfg["specific_image"])
                 rotate_str = request.form.get(pre + "rotate", "0")
                 mixed_str = request.form.get(pre + "mixed_order", "")
@@ -544,30 +544,56 @@ def index():
                 dcfg["mode"] = new_mode
                 dcfg["image_interval"] = new_interval
                 dcfg["image_category"] = new_cat
-                dcfg["shuffle_mode"] = (shuffle_val == "yes")
+                if shuffle_val is not None:
+                    dcfg["shuffle_mode"] = (shuffle_val == "yes")
                 dcfg["specific_image"] = new_spec
                 dcfg["rotate"] = new_rotate
 
                 # If Spotify, store extras
                 if new_mode == "spotify":
                     dcfg["fallback_mode"] = request.form.get(pre + "fallback_mode", dcfg.get("fallback_mode", "random_image"))
-                    dcfg["spotify_show_song"] = True if request.form.get(pre + "spotify_show_song") else False
-                    dcfg["spotify_show_artist"] = True if request.form.get(pre + "spotify_show_artist") else False
-                    dcfg["spotify_show_album"] = True if request.form.get(pre + "spotify_show_album") else False
+                    if pre + "spotify_show_song" in request.form:
+                        dcfg["spotify_show_song"] = True
+                    elif dcfg["mode"] == "spotify":
+                        dcfg["spotify_show_song"] = False
+                    if pre + "spotify_show_artist" in request.form:
+                        dcfg["spotify_show_artist"] = True
+                    elif dcfg["mode"] == "spotify":
+                        dcfg["spotify_show_artist"] = False
+                    if pre + "spotify_show_album" in request.form:
+                        dcfg["spotify_show_album"] = True
+                    elif dcfg["mode"] == "spotify":
+                        dcfg["spotify_show_album"] = False
                     try:
-                        dcfg["spotify_font_size"] = int(request.form.get(pre + "spotify_font_size", "18"))
+                        val = request.form.get(pre + "spotify_font_size")
+                        if val is not None:
+                            dcfg["spotify_font_size"] = int(val)
                     except:
-                        dcfg["spotify_font_size"] = 18
-                    dcfg["spotify_negative_font"] = True if request.form.get(pre + "spotify_negative_font") else False
-                    dcfg["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dcfg.get("spotify_info_position", "bottom-center"))
+                        pass
+                    if pre + "spotify_negative_font" in request.form:
+                        dcfg["spotify_negative_font"] = True
+                    elif dcfg["mode"] == "spotify":
+                        dcfg["spotify_negative_font"] = False
+                    val = request.form.get(pre + "spotify_info_position")
+                    if val is not None:
+                        dcfg["spotify_info_position"] = val
                     # New: store the live progress bar option and its settings
-                    dcfg["spotify_show_progress"] = True if request.form.get(pre + "spotify_show_progress") else False
-                    dcfg["spotify_progress_position"] = request.form.get(pre + "spotify_progress_position", dcfg.get("spotify_progress_position", "below_info"))
-                    dcfg["spotify_progress_theme"] = request.form.get(pre + "spotify_progress_theme", dcfg.get("spotify_progress_theme", "default"))
-                    try:
-                        dcfg["spotify_progress_update_interval"] = int(request.form.get(pre + "spotify_progress_update_interval", dcfg.get("spotify_progress_update_interval", 200)))
-                    except:
-                        dcfg["spotify_progress_update_interval"] = 200
+                    if pre + "spotify_show_progress" in request.form:
+                        dcfg["spotify_show_progress"] = True
+                    elif dcfg["mode"] == "spotify":
+                        dcfg["spotify_show_progress"] = False
+                    val = request.form.get(pre + "spotify_progress_position")
+                    if val is not None:
+                        dcfg["spotify_progress_position"] = val
+                    val = request.form.get(pre + "spotify_progress_theme")
+                    if val is not None:
+                        dcfg["spotify_progress_theme"] = val
+                    val = request.form.get(pre + "spotify_progress_update_interval")
+                    if val is not None:
+                        try:
+                            dcfg["spotify_progress_update_interval"] = int(val)
+                        except:
+                            pass
 
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list
@@ -706,7 +732,7 @@ def remote_configure(dev_index):
                 new_mode = request.form.get(pre + "mode", dc.get("mode", "random_image"))
                 new_int_s = request.form.get(pre + "image_interval", str(dc.get("image_interval", 60)))
                 new_cat = request.form.get(pre + "image_category", dc.get("image_category", ""))
-                new_shuffle = request.form.get(pre + "shuffle_mode", "no")
+                new_shuffle = request.form.get(pre + "shuffle_mode")
                 new_spec = request.form.get(pre + "specific_image", dc.get("specific_image", ""))
                 new_rot_s = request.form.get(pre + "rotate", str(dc.get("rotate", 0)))
                 mixed_str = request.form.get(pre + "mixed_order", "")
@@ -726,7 +752,7 @@ def remote_configure(dev_index):
                     "image_interval": ni,
                     "image_category": new_cat,
                     "specific_image": new_spec,
-                    "shuffle_mode": (new_shuffle == "yes"),
+                    "shuffle_mode": (new_shuffle == "yes") if new_shuffle is not None else dc.get("shuffle_mode", False),
                     "mixed_folders": mixed_list if new_mode == "mixed" else [],
                     "rotate": nr
                 }
