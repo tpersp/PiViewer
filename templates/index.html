@@ -11,6 +11,9 @@
     <div>CPU: <span id="stat_cpu">{{ cpu }}%</span></div>
     <div>Mem: <span id="stat_mem">{{ mem_mb }}MB</span></div>
     <div>Temp: <span id="stat_temp">{{ temp }}</span></div>
+    {% if sub_info_line %}
+      <div>{{ sub_info_line }}</div>
+    {% endif %}
   </div>
 
   <!-- Multi-monitor: one card per display -->
@@ -98,13 +101,8 @@
           <br><br>
           <!-- Note: The progress bar update interval has been removed from the web page -->
           {% endif %}
-          {% if dcfg.mode == "spotify" %}
-            {% set active_mode = dcfg.fallback_mode %}
-          {% else %}
-            {% set active_mode = dcfg.mode %}
-          {% endif %}
           <!-- Interval (only for random/mixed) -->
-          {% if active_mode in ["random_image","mixed"] %}
+          {% if dcfg.mode in ["random_image","mixed"] %}
           <label>Interval (sec):</label><br>
           <input type="number" name="{{ dname }}_image_interval" value="{{ dcfg.image_interval }}">
           <br><br>
@@ -114,7 +112,7 @@
           <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
           <br><br>
           <!-- Shuffle (only for random/mixed) -->
-          {% if active_mode in ["random_image","mixed"] %}
+          {% if dcfg.mode in ["random_image","mixed"] %}
           <label>Shuffle?</label><br>
           <select name="{{ dname }}_shuffle_mode">
             <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
@@ -123,7 +121,7 @@
           <br><br>
           {% endif %}
           <!-- Category (for random/specific) -->
-          {% if active_mode in ["random_image","specific_image"] %}
+          {% if dcfg.mode in ["random_image","specific_image"] %}
           <label>Category (subfolder):</label><br>
           <select name="{{ dname }}_image_category">
             <option value="" {% if not dcfg.image_category %}selected{% endif %}>All</option>
@@ -137,7 +135,7 @@
           <br><br>
           {% endif %}
           <!-- Mixed Folders UI -->
-          {% if active_mode == "mixed" %}
+          {% if dcfg.mode == "mixed" %}
           <label>Multiple Folders (drag to reorder):</label><br>
           <input type="text" placeholder="Search..." id="{{ dname }}_search" style="width:90%;"><br>
           <div style="display:flex; gap:10px; margin-top:10px;">
@@ -167,7 +165,7 @@
           <br>
           {% endif %}
           <!-- Specific Image selection -->
-          {% if active_mode == "specific_image" %}
+          {% if dcfg.mode == "specific_image" %}
           <label>Select Image/GIF:</label><br>
           {% set fileList = display_images[dname] %}
           {% if fileList and fileList|length > 100 %}
@@ -207,7 +205,7 @@
   <!-- Bottom status row as its own card -->
   <div class="card" style="margin-top:20px; text-align:center;">
     <strong>Status:</strong>
-    Spotify: {{ spotify_status }}
+    Spotify: {{ spotify_status }} | Weather: {{ weather_status }} | Subdevices: {{ subdevices_status }}
   </div>
 </div>
 

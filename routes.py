@@ -12,6 +12,8 @@ from config import APP_VERSION, WEB_BG, IMAGE_DIR, LOG_PATH, UPDATE_BRANCH, VIEW
 from utils import (
     load_config, save_config, init_config, log_message,
     get_system_stats, get_subfolders, count_files_in_folder,
+    get_remote_config, get_remote_monitors,
+    pull_displays_from_remote, push_displays_to_remote,
     get_hostname, get_ip_address, get_pi_model,
     CONFIG_PATH
 )
@@ -152,8 +154,7 @@ def stats_json():
 
 @main_bp.route("/list_monitors")
 def list_monitors():
-    monitors = detect_monitors_extended()
-    return jsonify(monitors)
+    return jsonify({"Display0": {"resolution": "1920x1080", "offset_x": 0, "offset_y": 0}})
 
 @main_bp.route("/list_folders")
 def list_folders():
@@ -236,9 +237,18 @@ def power_off():
 @main_bp.route("/settings", methods=["GET", "POST"])
 def settings():
     cfg = load_config()
+    if "weather" not in cfg:
+        cfg["weather"] = {}
     if request.method == "POST":
         new_theme = request.form.get("theme", "dark")
+        new_role = request.form.get("role", "main")
         cfg["theme"] = new_theme
+        cfg["role"] = new_role
+
+        if new_role == "sub":
+            cfg["main_ip"] = request.form.get("main_ip", "").strip()
+        else:
+            cfg["main_ip"] = ""
 
         if new_theme == "custom":
             if "bg_image" in request.files:
@@ -246,6 +256,19 @@ def settings():
                 if f and f.filename:
                     f.save(WEB_BG)
 
+        # Updated weather settings
+        w_api = request.form.get("weather_api_key", "").strip()
+        w_zip = request.form.get("weather_zip_code", "").strip()
+        w_cc = request.form.get("weather_country_code", "").strip()
+        if w_api and w_zip and w_cc:
+            try:
+                weather_url = f"http://api.openweathermap.org/data/2.5/weather?zip={w_zip},{w_cc}&appid={w_api}&units=metric"
+                requests.get(weather_url, timeout=5)
+            except:
+                pass
+        cfg["weather"]["api_key"] = w_api
+        cfg["weather"]["zip_code"] = w_zip
+        cfg["weather"]["country_code"] = w_cc
 
         if "gui" not in cfg:
             cfg["gui"] = {}
@@ -270,11 +293,29 @@ def settings():
     else:
         cfg = load_config()
         theme = cfg.get("theme", "dark")
+        weather_info = None
+        w_api = cfg.get("weather", {}).get("api_key", "").strip()
+        w_zip = cfg.get("weather", {}).get("zip_code", "").strip()
+        w_cc = cfg.get("weather", {}).get("country_code", "").strip()
+        if w_api and w_zip and w_cc:
+            try:
+                weather_url = f"http://api.openweathermap.org/data/2.5/weather?zip={w_zip},{w_cc}&appid={w_api}&units=metric"
+                r = requests.get(weather_url, timeout=5)
+                if r.status_code == 200:
+                    data = r.json()
+                    weather_info = {
+                        "name": data.get("name", "Unknown"),
+                        "timezone": data.get("timezone", "Unknown"),
+                        "country": data.get("sys", {}).get("country", "Unknown")
+                    }
+            except:
+                weather_info = None
         return render_template(
             "settings.html",
             theme=theme,
             cfg=cfg,
             update_branch=UPDATE_BRANCH,
+            weather_info=weather_info,
             version=APP_VERSION
         )
 
@@ -335,8 +376,7 @@ def spotify_auth():
         client_secret=csec,
         redirect_uri=ruri,
         scope=scope,
-        cache_path=".spotify_cache",
-        requests_timeout=5,
+        cache_path=".spotify_cache"
     )
     auth_url = sp_oauth.get_authorize_url()
     return redirect(auth_url)
@@ -355,8 +395,7 @@ def callback():
         client_secret=csec,
         redirect_uri=ruri,
         scope=scope,
-        cache_path=".spotify_cache",
-        requests_timeout=5,
+        cache_path=".spotify_cache"
     )
     code = request.args.get("code")
     if not code:
@@ -395,13 +434,22 @@ def callback():
 def overlay_config():
     cfg = load_config()
     if request.method == "POST":
+        # Now storing weather_layout along with everything else
         for monitor in cfg.get("displays", {}):
             new_overlay = {
                 "clock_enabled": (f"{monitor}_clock_enabled" in request.form),
+                "weather_enabled": (f"{monitor}_weather_enabled" in request.form),
                 "clock_font_size": int(request.form.get(f"{monitor}_clock_font_size", "26")),
+                "weather_font_size": int(request.form.get(f"{monitor}_weather_font_size", "22")),
                 "font_color": request.form.get(f"{monitor}_font_color", "#FFFFFF"),
                 "auto_negative_font": (f"{monitor}_auto_negative_font" in request.form),
-                "clock_position": request.form.get(f"{monitor}_clock_position", "bottom-center")
+                "clock_position": request.form.get(f"{monitor}_clock_position", "bottom-center"),
+                "weather_position": request.form.get(f"{monitor}_weather_position", "bottom-center"),
+                "weather_layout": request.form.get(f"{monitor}_weather_layout", "inline"),
+                "show_desc": (f"{monitor}_show_desc" in request.form),
+                "show_temp": (f"{monitor}_show_temp" in request.form),
+                "show_feels_like": (f"{monitor}_show_feels_like" in request.form),
+                "show_humidity": (f"{monitor}_show_humidity" in request.form)
             }
             if "displays" in cfg and monitor in cfg["displays"]:
                 cfg["displays"][monitor]["overlay"] = new_overlay
@@ -477,7 +525,7 @@ def index():
                 new_mode = request.form.get(pre + "mode", dcfg["mode"])
                 new_interval_s = request.form.get(pre + "image_interval", str(dcfg["image_interval"]))
                 new_cat = request.form.get(pre + "image_category", dcfg["image_category"])
-                shuffle_val = request.form.get(pre + "shuffle_mode")
+                shuffle_val = request.form.get(pre + "shuffle_mode", "no")
                 new_spec = request.form.get(pre + "specific_image", dcfg["specific_image"])
                 rotate_str = request.form.get(pre + "rotate", "0")
                 mixed_str = request.form.get(pre + "mixed_order", "")
@@ -495,56 +543,30 @@ def index():
                 dcfg["mode"] = new_mode
                 dcfg["image_interval"] = new_interval
                 dcfg["image_category"] = new_cat
-                if shuffle_val is not None:
-                    dcfg["shuffle_mode"] = (shuffle_val == "yes")
+                dcfg["shuffle_mode"] = (shuffle_val == "yes")
                 dcfg["specific_image"] = new_spec
                 dcfg["rotate"] = new_rotate
 
                 # If Spotify, store extras
                 if new_mode == "spotify":
                     dcfg["fallback_mode"] = request.form.get(pre + "fallback_mode", dcfg.get("fallback_mode", "random_image"))
-                    if pre + "spotify_show_song" in request.form:
-                        dcfg["spotify_show_song"] = True
-                    elif dcfg["mode"] == "spotify":
-                        dcfg["spotify_show_song"] = False
-                    if pre + "spotify_show_artist" in request.form:
-                        dcfg["spotify_show_artist"] = True
-                    elif dcfg["mode"] == "spotify":
-                        dcfg["spotify_show_artist"] = False
-                    if pre + "spotify_show_album" in request.form:
-                        dcfg["spotify_show_album"] = True
-                    elif dcfg["mode"] == "spotify":
-                        dcfg["spotify_show_album"] = False
+                    dcfg["spotify_show_song"] = True if request.form.get(pre + "spotify_show_song") else False
+                    dcfg["spotify_show_artist"] = True if request.form.get(pre + "spotify_show_artist") else False
+                    dcfg["spotify_show_album"] = True if request.form.get(pre + "spotify_show_album") else False
                     try:
-                        val = request.form.get(pre + "spotify_font_size")
-                        if val is not None:
-                            dcfg["spotify_font_size"] = int(val)
+                        dcfg["spotify_font_size"] = int(request.form.get(pre + "spotify_font_size", "18"))
                     except:
-                        pass
-                    if pre + "spotify_negative_font" in request.form:
-                        dcfg["spotify_negative_font"] = True
-                    elif dcfg["mode"] == "spotify":
-                        dcfg["spotify_negative_font"] = False
-                    val = request.form.get(pre + "spotify_info_position")
-                    if val is not None:
-                        dcfg["spotify_info_position"] = val
+                        dcfg["spotify_font_size"] = 18
+                    dcfg["spotify_negative_font"] = True if request.form.get(pre + "spotify_negative_font") else False
+                    dcfg["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dcfg.get("spotify_info_position", "bottom-center"))
                     # New: store the live progress bar option and its settings
-                    if pre + "spotify_show_progress" in request.form:
-                        dcfg["spotify_show_progress"] = True
-                    elif dcfg["mode"] == "spotify":
-                        dcfg["spotify_show_progress"] = False
-                    val = request.form.get(pre + "spotify_progress_position")
-                    if val is not None:
-                        dcfg["spotify_progress_position"] = val
-                    val = request.form.get(pre + "spotify_progress_theme")
-                    if val is not None:
-                        dcfg["spotify_progress_theme"] = val
-                    val = request.form.get(pre + "spotify_progress_update_interval")
-                    if val is not None:
-                        try:
-                            dcfg["spotify_progress_update_interval"] = int(val)
-                        except:
-                            pass
+                    dcfg["spotify_show_progress"] = True if request.form.get(pre + "spotify_show_progress") else False
+                    dcfg["spotify_progress_position"] = request.form.get(pre + "spotify_progress_position", dcfg.get("spotify_progress_position", "below_info"))
+                    dcfg["spotify_progress_theme"] = request.form.get(pre + "spotify_progress_theme", dcfg.get("spotify_progress_theme", "default"))
+                    try:
+                        dcfg["spotify_progress_update_interval"] = int(request.form.get(pre + "spotify_progress_update_interval", dcfg.get("spotify_progress_update_interval", 200)))
+                    except:
+                        dcfg["spotify_progress_update_interval"] = 200
 
                 if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list
@@ -584,16 +606,39 @@ def index():
     model = get_pi_model()
     theme = cfg.get("theme", "dark")
 
-    # Determine Spotify auth status
-    sp_cfg = cfg.get("spotify", {})
-    if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
-        spotify_cache_path = os.path.join(VIEWER_HOME, ".spotify_cache")
-        if os.path.exists(spotify_cache_path):
-            spotify_status = "✅"
+    sub_info_line = ""
+    if cfg.get("role") == "sub":
+        sub_info_line = "This device is SUB"
+        if cfg["main_ip"]:
+            sub_info_line += f" - Main IP: {cfg['main_ip']}"
+
+    # Status logic
+    if cfg.get("role") == "main":
+        sp_cfg = cfg.get("spotify", {})
+        if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
+            spotify_cache_path = os.path.join(VIEWER_HOME, ".spotify_cache")
+            if os.path.exists(spotify_cache_path):
+                spotify_status = "✅"
+            else:
+                spotify_status = "⚠️"
         else:
-            spotify_status = "⚠️"
+            spotify_status = "❌"
+
+        w_cfg = cfg.get("weather", {})
+        if w_cfg.get("api_key") and w_cfg.get("zip_code") and w_cfg.get("country_code"):
+            weather_status = "✅"
+        else:
+            weather_status = "❌"
+
+        devices = cfg.get("devices", [])
+        if devices:
+            subdevices_status = "✅ " + ", ".join([d.get("name", d.get("ip", "Unknown")) for d in devices])
+        else:
+            subdevices_status = "❌"
     else:
-        spotify_status = "❌"
+        spotify_status = ""
+        weather_status = ""
+        subdevices_status = sub_info_line
 
     final_monitors = {}
     for mon_name, minfo in ext_mons.items():
@@ -620,11 +665,172 @@ def index():
         model=model,
         theme=theme,
         version=APP_VERSION,
+        sub_info_line=sub_info_line,
         monitors=final_monitors,
         flash_msg=flash_msg,
-        spotify_status=spotify_status
+        spotify_status=spotify_status,
+        weather_status=weather_status,
+        subdevices_status=subdevices_status
     )
 
+@main_bp.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
+def remote_configure(dev_index):
+    cfg = load_config()
+    if cfg.get("role") != "main":
+        return "This device is not 'main'.", 403
+
+    if dev_index < 0 or dev_index >= len(cfg.get("devices", [])):
+        return "Invalid device index", 404
+
+    dev_info = cfg["devices"][dev_index]
+    dev_ip = dev_info.get("ip")
+    dev_name = dev_info.get("name")
+
+    remote_cfg = get_remote_config(dev_ip) or {"displays": {}}
+    remote_mons = get_remote_monitors(dev_ip)
+    remote_folders = []
+    try:
+        r = requests.get(f"http://{dev_ip}:8080/list_folders", timeout=5)
+        if r.status_code == 200:
+            remote_folders = r.json()
+    except:
+        pass
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "update_remote":
+            new_disp = {}
+            for dname, dc in remote_cfg.get("displays", {}).items():
+                pre = dname + "_"
+                new_mode = request.form.get(pre + "mode", dc.get("mode", "random_image"))
+                new_int_s = request.form.get(pre + "image_interval", str(dc.get("image_interval", 60)))
+                new_cat = request.form.get(pre + "image_category", dc.get("image_category", ""))
+                new_shuffle = request.form.get(pre + "shuffle_mode", "no")
+                new_spec = request.form.get(pre + "specific_image", dc.get("specific_image", ""))
+                new_rot_s = request.form.get(pre + "rotate", str(dc.get("rotate", 0)))
+                mixed_str = request.form.get(pre + "mixed_order", "")
+                mixed_list = [x for x in mixed_str.split(",") if x]
+
+                try:
+                    ni = int(new_int_s)
+                except:
+                    ni = dc.get("image_interval", 60)
+                try:
+                    nr = int(new_rot_s)
+                except:
+                    nr = 0
+
+                subdict = {
+                    "mode": new_mode,
+                    "image_interval": ni,
+                    "image_category": new_cat,
+                    "specific_image": new_spec,
+                    "shuffle_mode": (new_shuffle == "yes"),
+                    "mixed_folders": mixed_list if new_mode == "mixed" else [],
+                    "rotate": nr
+                }
+                new_disp[dname] = subdict
+
+            push_displays_to_remote(dev_ip, new_disp)
+            return redirect(url_for("main.remote_configure", dev_index=dev_index))
+
+    return render_template(
+        "remote_configure.html",
+        dev_name=dev_name,
+        dev_ip=dev_ip,
+        remote_cfg=remote_cfg,
+        remote_mons=remote_mons,
+        remote_folders=remote_folders,
+        theme=cfg.get("theme", "dark")
+    )
+
+@main_bp.route("/sync_config", methods=["GET"])
+def sync_config():
+    return jsonify(load_config())
+
+@main_bp.route("/update_config", methods=["POST"])
+def update_config():
+    incoming = request.get_json()
+    if not incoming:
+        return "No JSON received", 400
+    cfg = load_config()
+    if "displays" in incoming:
+        cfg["displays"] = incoming["displays"]
+    if "theme" in incoming:
+        cfg["theme"] = incoming["theme"]
+    save_config(cfg)
+    log_message("Local config partially updated via /update_config")
+    try:
+        subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
+    except subprocess.CalledProcessError as e:
+        log_message(f"Failed to restart piviewer after config update: {e}")
+    return "Config updated", 200
+
+@main_bp.route("/device_manager", methods=["GET", "POST"])
+def device_manager():
+    cfg = load_config()
+    if cfg.get("role") != "main":
+        return "This device is not 'main'.", 403
+
+    local_ip = get_ip_address()
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        dev_name = request.form.get("dev_name", "").strip()
+        dev_ip = request.form.get("dev_ip", "").strip()
+        if action == "add_device" and dev_name and dev_ip:
+            if dev_ip == local_ip:
+                log_message(f"Skipping adding device {dev_name} - same IP as local.")
+            else:
+                if "devices" not in cfg:
+                    cfg["devices"] = []
+                cfg["devices"].append({
+                    "name": dev_name,
+                    "ip": dev_ip,
+                    "displays": {}
+                })
+                save_config(cfg)
+                log_message(f"Added sub device: {dev_name} ({dev_ip})")
+        elif action.startswith("remove_"):
+            idx_str = action.replace("remove_", "")
+            try:
+                idx = int(idx_str)
+                if 0 <= idx < len(cfg["devices"]):
+                    removed = cfg["devices"].pop(idx)
+                    save_config(cfg)
+                    log_message(f"Removed sub device: {removed}")
+            except:
+                pass
+        elif action.startswith("push_"):
+            idx_str = action.replace("push_", "")
+            try:
+                idx = int(idx_str)
+                dev_info = cfg["devices"][idx]
+                dev_ip = dev_info.get("ip")
+                if dev_ip:
+                    push_displays_to_remote(dev_ip, dev_info.get("displays", {}))
+            except Exception as e:
+                log_message(f"Push error: {e}")
+        elif action.startswith("pull_"):
+            idx_str = action.replace("pull_", "")
+            try:
+                idx = int(idx_str)
+                dev_info = cfg["devices"][idx]
+                dev_ip = dev_info.get("ip")
+                if dev_ip:
+                    rd = pull_displays_from_remote(dev_ip)
+                    if rd is not None:
+                        dev_info["displays"] = rd
+                        save_config(cfg)
+                        log_message(f"Pulled remote displays from {dev_ip} => devices[{idx}]")
+            except Exception as e:
+                log_message(f"Pull error: {e}")
+        return redirect(url_for("main.device_manager"))
+
+    return render_template(
+        "device_manager.html",
+        cfg=cfg,
+        theme=cfg.get("theme", "dark")
+    )
 
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():

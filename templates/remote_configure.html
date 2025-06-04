@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Configure Remote Device{% endblock %}
+{% block content %}
+
+<div class="page-section" style="max-width:1200px;">
+  <h2>Configure Remote Device</h2>
+  <p>
+    Device: <strong>{{ dev_name }}</strong> ({{ dev_ip }})<br>
+    {% if remote_cfg.role == "sub" and remote_cfg.main_ip %}
+      This device is a sub device; main device: {{ remote_cfg.main_ip }}
+    {% elif remote_cfg.role == "main" %}
+      This device is itself a main device.
+    {% endif %}
+  </p>
+
+  <form method="POST">
+    <input type="hidden" name="action" value="update_remote">
+
+    <div class="cards-container">
+      {% for dname, dcfg in remote_cfg.displays.items() %}
+      {% set moninfo = remote_mons[dname] if dname in remote_mons else None %}
+      {% set resolution = moninfo.resolution if moninfo else "unknown" %}
+      <div class="card">
+        <h3>{{ dname }} ({{ resolution }})</h3>
+
+        <label>Mode:</label><br>
+        <select name="{{ dname }}_mode">
+          <option value="random_image"   {% if dcfg.mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
+          <option value="specific_image" {% if dcfg.mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
+          <option value="mixed"          {% if dcfg.mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
+          <option value="spotify"        {% if dcfg.mode=="spotify" %}selected{% endif %}>Spotify Now Playing</option>
+        </select>
+        <br><br>
+
+        <label>Interval (sec):</label><br>
+        <input type="number" name="{{ dname }}_image_interval" value="{{ dcfg.image_interval }}">
+        <br><br>
+
+        <label>Rotate (degrees):</label><br>
+        <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
+        <br><br>
+
+        {% if dcfg.mode not in ["mixed","specific_image","spotify"] %}
+        <label>Category (subfolder):</label><br>
+        <select name="{{ dname }}_image_category">
+          <option value="" {% if not dcfg.image_category %}selected{% endif %}>All</option>
+          {% for sf in remote_folders %}
+            <option value="{{ sf }}" {% if dcfg.image_category==sf %}selected{% endif %}>{{ sf }}</option>
+          {% endfor %}
+        </select>
+        <br><br>
+        {% endif %}
+
+        {% if dcfg.mode == "mixed" %}
+        <label>Multiple Folders (drag to reorder):</label><br>
+        <div style="display:flex; gap: 10px; margin-top:10px;">
+          <div>
+            <h4>Available</h4>
+            <input type="text" placeholder="Search..." id="{{ dname }}_search" style="width:90%;">
+            <ul id="{{ dname }}_availList" style="list-style:none; border:1px solid var(--border-muted); padding:5px; max-height:120px; overflow:auto;">
+              {% for sf in remote_folders if sf not in dcfg.mixed_folders %}
+              <li draggable="true" data-folder="{{ sf }}" style="padding:4px; margin:4px; border:1px solid #666; border-radius:4px; cursor:move;">
+                {{ sf }}
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div>
+            <h4>Selected</h4>
+            <ul id="{{ dname }}_selList" style="list-style:none; border:1px solid var(--border-muted); padding:5px; max-height:120px; overflow:auto;">
+              {% for sf in dcfg.mixed_folders %}
+              <li draggable="true" data-folder="{{ sf }}" style="padding:4px; margin:4px; border:1px solid #666; border-radius:4px; cursor:move;">
+                {{ sf }}
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        <input type="hidden" name="{{ dname }}_mixed_order" id="{{ dname }}_mixed_order" value="{{ ','.join(dcfg.mixed_folders) }}">
+        <script>
+          document.addEventListener("DOMContentLoaded", function(){
+            initMixedUI("{{ dname }}");
+          });
+        </script>
+        <br>
+        {% endif %}
+
+        <label>Shuffle?</label><br>
+        <select name="{{ dname }}_shuffle_mode">
+          <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
+          <option value="no"  {% if not dcfg.shuffle_mode %}selected{% endif %}>No</option>
+        </select>
+        <br><br>
+
+        {% if dcfg.mode == "specific_image" %}
+        <label>Select Image/GIF:</label><br>
+        <p style="font-size:90%;">(Remote images not listed. Type exact filename if needed.)</p>
+        <input type="text" name="{{ dname }}_specific_image" value="{{ dcfg.specific_image }}" placeholder="Exact filename...">
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <br>
+    <div style="text-align:center;">
+      <button type="submit">Save Remote Settings</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

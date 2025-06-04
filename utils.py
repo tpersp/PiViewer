@@ -22,6 +22,9 @@ def init_config():
     if not os.path.exists(CONFIG_PATH):
         default_cfg = {
             "theme": "dark",
+            "role": "main",
+            "main_ip": "",
+            "devices": [],
             # displays dictionary for multi-display logic
             "displays": {
                 "Display0": {
@@ -43,6 +46,7 @@ def init_config():
             "overlay": {
                 "overlay_enabled": True,       # Changed from False so overlay is always on
                 "clock_enabled": False,        # Off by default
+                "weather_enabled": False,      # Off by default
                 "background_enabled": False,   # Off by default
                 "font_color": "#FFFFFF",
                 "bg_color": "#000000",
@@ -52,15 +56,29 @@ def init_config():
                 "overlay_width": 300,
                 "overlay_height": 150,
                 "clock_font_size": 26,
+                "weather_font_size": 22,
                 "clock_position": "top-center",
+                "weather_position": "bottom-center",
+                "layout_style": "stacked",
                 "padding_x": 8,
                 "padding_y": 6,
+                "show_desc": False,            # Off by default
+                "show_temp": False,            # Off by default
+                "show_feels_like": False,
+                "show_humidity": False,
                 "monitor_selection": "All"
             },
             "gui": {
                 "background_blur_radius": 20,
                 "background_scale_percent": 100,
                 "foreground_scale_percent": 100
+            },
+            "weather": {
+                "api_key": "",
+                "zip_code": "",
+                "country_code": "",
+                "lat": None,
+                "lon": None
             },
             "spotify": {
                 "client_id": "",
@@ -75,10 +93,7 @@ def load_config():
     if not os.path.exists(CONFIG_PATH):
         init_config()
     with open(CONFIG_PATH, "r") as f:
-        cfg = json.load(f)
-
-
-    return cfg
+        return json.load(f)
 
 def save_config(cfg):
     with open(CONFIG_PATH, "w") as f:
@@ -146,3 +161,44 @@ def count_files_in_folder(folder_path):
             cnt += 1
     return cnt
 
+################################
+# Remote device push/pull logic
+################################
+
+def get_remote_config(ip):
+    url = f"http://{ip}:8080/sync_config"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        log_message(f"Error fetching remote config from {ip}: {e}")
+    return None
+
+def get_remote_monitors(ip):
+    url = f"http://{ip}:8080/list_monitors"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        log_message(f"Error fetching remote monitors from {ip}: {e}")
+    return {}
+
+def push_displays_to_remote(ip, displays_obj):
+    url = f"http://{ip}:8080/update_config"
+    partial = {"displays": displays_obj}
+    try:
+        r = requests.post(url, json=partial, timeout=5)
+        if r.status_code == 200:
+            log_message(f"Pushed partial displays to {ip} successfully.")
+        else:
+            log_message(f"Push to {ip} failed with code {r.status_code}.")
+    except Exception as e:
+        log_message(f"Error pushing partial displays to {ip}: {e}")
+
+def pull_displays_from_remote(ip):
+    remote_cfg = get_remote_config(ip)
+    if not remote_cfg:
+        return None
+    return remote_cfg.get("displays", {})

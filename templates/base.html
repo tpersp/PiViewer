@@ -48,6 +48,13 @@
     </a>
   </div>
 
+  <!-- Devices -->
+  <div class="nav-item">
+    <a href="{{ url_for('main.device_manager') }}"
+       class="{% if request.endpoint == 'main.device_manager' or request.endpoint == 'main.remote_configure' %}active{% endif %}">
+      📱 Devices
+    </a>
+  </div>
 
   <!-- Settings -->
   <div class="nav-item">

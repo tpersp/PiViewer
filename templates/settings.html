@@ -8,6 +8,18 @@
   <!-- Role + Theme in a top card -->
   <div class="card" style="margin-bottom:20px;">
     <form method="POST" enctype="multipart/form-data">
+      <label>Role:</label><br>
+      <select name="role" id="roleSelect" onchange="toggleMainIP()">
+        <option value="main" {% if cfg.role=="main" %}selected{% endif %}>main</option>
+        <option value="sub"  {% if cfg.role=="sub"  %}selected{% endif %}>sub</option>
+      </select>
+      <br><br>
+
+      <div id="mainIPField" style="{% if cfg.role!="sub" %}display:none;{% endif %}">
+        <label>Main Device IP:</label><br>
+        <input type="text" name="main_ip" value="{{ cfg.main_ip }}">
+        <br><br>
+      </div>
 
       <label>Theme:</label><br>
       <select name="theme">
@@ -27,7 +39,7 @@
     </form>
   </div>
 
-  <!-- GUI Settings -->
+  <!-- Two side-by-side cards: GUI Settings and Weather Settings -->
   <div class="cards-container">
 
     <!-- GUI card -->
@@ -35,6 +47,8 @@
       <h3>GUI Settings</h3>
       <form method="POST" enctype="multipart/form-data">
         <fieldset style="border:none;">
+          <input type="hidden" name="role" value="{{ cfg.role }}">
+          <input type="hidden" name="main_ip" value="{{ cfg.main_ip }}">
           <input type="hidden" name="theme" value="{{ cfg.theme }}">
           <label>Background Blur Radius:</label><br>
           <input type="number" name="background_blur_radius"
@@ -57,8 +71,44 @@
       </form>
     </div>
 
+    <!-- Weather card -->
+    <div class="card">
+      <h3>Weather Settings</h3>
+      <form method="POST" enctype="multipart/form-data">
+        <fieldset style="border:none;">
+          <input type="hidden" name="role" value="{{ cfg.role }}">
+          <input type="hidden" name="main_ip" value="{{ cfg.main_ip }}">
+          <input type="hidden" name="theme" value="{{ cfg.theme }}">
+          <label>OpenWeatherMap API Key:</label><br>
+          <input type="text" name="weather_api_key"
+                 value="{{ cfg.weather.api_key|default('') }}"
+                 style="width:300px;">
+          <br><br>
+
+          <label>Zip Code:</label><br>
+          <input type="text" name="weather_zip_code"
+                 value="{{ cfg.weather.zip_code|default('') }}">
+          <br><br>
+
+          <label>Country Code (2-letter):</label><br>
+          <input type="text" name="weather_country_code"
+                 value="{{ cfg.weather.country_code|default('') }}">
+          <br><br>
+        </fieldset>
+        <button type="submit">Save Weather Settings</button>
+      </form>
+    </div>
   </div>
 
+  <!-- New Weather Info Confirmation Card -->
+  {% if weather_info %}
+  <div class="card" style="margin-top:20px;">
+    <h3>Weather Location Confirmation</h3>
+    <p><strong>Location Name:</strong> {{ weather_info.name }}</p>
+    <p><strong>Timezone:</strong> {{ weather_info.timezone }}</p>
+    <p><strong>Country:</strong> {{ weather_info.country }}</p>
+  </div>
+  {% endif %}
 
   <!-- New: Application Version Card -->
   <div class="card" style="margin-top:20px;">
@@ -88,4 +138,15 @@
   </div>
 </div>
 
+<script>
+  function toggleMainIP(){
+    const roleSelect = document.getElementById("roleSelect");
+    const mainIPField = document.getElementById("mainIPField");
+    if (roleSelect.value === "sub") {
+      mainIPField.style.display = "";
+    } else {
+      mainIPField.style.display = "none";
+    }
+  }
+</script>
 {% endblock %}
