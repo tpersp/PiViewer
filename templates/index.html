@@ -11,9 +11,6 @@
     <div>CPU: <span id="stat_cpu">{{ cpu }}%</span></div>
     <div>Mem: <span id="stat_mem">{{ mem_mb }}MB</span></div>
     <div>Temp: <span id="stat_temp">{{ temp }}</span></div>
-    {% if sub_info_line %}
-      <div>{{ sub_info_line }}</div>
-    {% endif %}
   </div>
 
   <!-- Multi-monitor: one card per display -->
@@ -210,7 +207,7 @@
   <!-- Bottom status row as its own card -->
   <div class="card" style="margin-top:20px; text-align:center;">
     <strong>Status:</strong>
-    Spotify: {{ spotify_status }} | Weather: {{ weather_status }} | Subdevices: {{ subdevices_status }}
+    Spotify: {{ spotify_status }}
   </div>
 </div>
 
