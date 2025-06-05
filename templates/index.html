@@ -102,7 +102,7 @@
           <!-- Note: The progress bar update interval has been removed from the web page -->
           {% endif %}
           <!-- Interval (only for random/mixed) -->
-          {% if dcfg.mode in ["random_image","mixed"] or (dcfg.mode == "spotify" and dcfg.fallback_mode in ["random_image","mixed"]) %}
+          {% if dcfg.mode in ["random_image","mixed"] %}
           <label>Interval (sec):</label><br>
           <input type="number" name="{{ dname }}_image_interval" value="{{ dcfg.image_interval }}">
           <br><br>
@@ -112,7 +112,7 @@
           <input type="number" name="{{ dname }}_rotate" value="{{ dcfg.rotate|default(0) }}">
           <br><br>
           <!-- Shuffle (only for random/mixed) -->
-          {% if dcfg.mode in ["random_image","mixed"] or (dcfg.mode == "spotify" and dcfg.fallback_mode in ["random_image","mixed"]) %}
+          {% if dcfg.mode in ["random_image","mixed"] %}
           <label>Shuffle?</label><br>
           <select name="{{ dname }}_shuffle_mode">
             <option value="yes" {% if dcfg.shuffle_mode %}selected{% endif %}>Yes</option>
@@ -121,7 +121,7 @@
           <br><br>
           {% endif %}
           <!-- Category (for random/specific) -->
-          {% if dcfg.mode in ["random_image","specific_image"] or (dcfg.mode == "spotify" and dcfg.fallback_mode in ["random_image","specific_image"]) %}
+          {% if dcfg.mode in ["random_image","specific_image"] %}
           <label>Category (subfolder):</label><br>
           <select name="{{ dname }}_image_category">
             <option value="" {% if not dcfg.image_category %}selected{% endif %}>All</option>
@@ -135,7 +135,7 @@
           <br><br>
           {% endif %}
           <!-- Mixed Folders UI -->
-          {% if dcfg.mode == "mixed" or (dcfg.mode == "spotify" and dcfg.fallback_mode == "mixed") %}
+          {% if dcfg.mode == "mixed" %}
           <label>Multiple Folders (drag to reorder):</label><br>
           <input type="text" placeholder="Search..." id="{{ dname }}_search" style="width:90%;"><br>
           <div style="display:flex; gap:10px; margin-top:10px;">
@@ -165,7 +165,7 @@
           <br>
           {% endif %}
           <!-- Specific Image selection -->
-          {% if dcfg.mode == "specific_image" or (dcfg.mode == "spotify" and dcfg.fallback_mode == "specific_image") %}
+          {% if dcfg.mode == "specific_image" %}
           <label>Select Image/GIF:</label><br>
           {% set fileList = display_images[dname] %}
           {% if fileList and fileList|length > 100 %}

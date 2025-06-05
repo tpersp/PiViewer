@@ -522,19 +522,14 @@ def index():
             for dname in cfg["displays"]:
                 pre = dname + "_"
                 dcfg = cfg["displays"][dname]
-                new_mode = request.form.get(pre + "mode", dcfg.get("mode"))
-                new_interval_s = request.form.get(pre + "image_interval", str(dcfg.get("image_interval", 60)))
-                new_cat = request.form.get(pre + "image_category", dcfg.get("image_category", ""))
-                shuffle_val = request.form.get(pre + "shuffle_mode")
-                if shuffle_val is None:
-                    shuffle_val = "yes" if dcfg.get("shuffle_mode") else "no"
-                new_spec = request.form.get(pre + "specific_image", dcfg.get("specific_image", ""))
-                rotate_str = request.form.get(pre + "rotate", str(dcfg.get("rotate", 0)))
-                if pre + "mixed_order" in request.form:
-                    mixed_str = request.form.get(pre + "mixed_order", "")
-                    mixed_list = [x for x in mixed_str.split(",") if x]
-                else:
-                    mixed_list = dcfg.get("mixed_folders", [])
+                new_mode = request.form.get(pre + "mode", dcfg["mode"])
+                new_interval_s = request.form.get(pre + "image_interval", str(dcfg["image_interval"]))
+                new_cat = request.form.get(pre + "image_category", dcfg["image_category"])
+                shuffle_val = request.form.get(pre + "shuffle_mode", "no")
+                new_spec = request.form.get(pre + "specific_image", dcfg["specific_image"])
+                rotate_str = request.form.get(pre + "rotate", "0")
+                mixed_str = request.form.get(pre + "mixed_order", "")
+                mixed_list = [x for x in mixed_str.split(",") if x]
 
                 try:
                     new_interval = int(new_interval_s)
@@ -543,7 +538,7 @@ def index():
                 try:
                     new_rotate = int(rotate_str)
                 except:
-                    new_rotate = dcfg.get("rotate", 0)
+                    new_rotate = 0
 
                 dcfg["mode"] = new_mode
                 dcfg["image_interval"] = new_interval
@@ -573,8 +568,10 @@ def index():
                     except:
                         dcfg["spotify_progress_update_interval"] = 200
 
-                if new_mode == "mixed" or pre + "mixed_order" in request.form:
+                if new_mode == "mixed":
                     dcfg["mixed_folders"] = mixed_list
+                else:
+                    dcfg["mixed_folders"] = []
 
             save_config(cfg)
             try:

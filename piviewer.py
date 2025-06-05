@@ -888,23 +888,6 @@ class DisplayWindow(QMainWindow):
             percent = 0
         self.spotify_progress_bar.setValue(int(percent))
 
-    # --- Async Spotify album art fetch helper used in tests ---
-    def start_spotify_fetch(self):
-        """Start a background thread to fetch album art if one isn't running."""
-        if getattr(self, "spotify_fetch_thread", None) and self.spotify_fetch_thread.is_alive():
-            return
-
-        self.spotify_fetch_id = getattr(self, "spotify_fetch_id", 0) + 1
-        fid = self.spotify_fetch_id
-
-        def runner():
-            result = self.fetch_spotify_album_art()
-            if hasattr(self, "handle_spotify_result"):
-                self.handle_spotify_result(fid, result)
-
-        self.spotify_fetch_thread = threading.Thread(target=runner, daemon=True)
-        self.spotify_fetch_thread.start()
-
     def pull_displays_from_remote(self, ip):
         pass  # Placeholder if needed
 
