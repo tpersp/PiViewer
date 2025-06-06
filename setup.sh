@@ -473,6 +473,47 @@ chown -R "$VIEWER_USER:$VIEWER_USER" "$PICOM_CONF_DIR"
 echo "Done configuring Openbox autologin, Picom configuration, and autostart."
 
 # -------------------------------------------------------
+# 8b) Ask to enable network watchdog reboot cronjob
+# -------------------------------------------------------
+if [[ "$AUTO_UPDATE" == "false" ]]; then
+  echo
+  echo "== Optional: Network Watchdog Reboot =="
+  echo "If your Pi loses connection (e.g. drops off Wi-Fi), it can auto-reboot after a failed ping."
+  read -p "Enable automatic reboot if Pi goes offline? (y/n): " setup_watchdog
+
+  if [[ "$setup_watchdog" =~ ^[Yy]$ ]]; then
+    echo
+    read -p "Enter the host/IP to ping (default: 8.8.8.8): " PING_TARGET
+    PING_TARGET=${PING_TARGET:-8.8.8.8}
+
+    LOG_PATH="$VIEWER_HOME/viewer.log"
+    echo "Setting up watchdog to log to: $LOG_PATH"
+
+    # Ensure log file exists and is writable
+    touch "$LOG_PATH"
+    chown "$VIEWER_USER:$VIEWER_USER" "$LOG_PATH"
+
+    # Cron line to add
+    CRON_LINE="*/5 * * * * ping -c 1 -W 1 $PING_TARGET || (echo \"\$(date) - Network fail, rebooting.\" | tee -a $LOG_PATH && /sbin/reboot)"
+
+    # Check if it's already in crontab
+    EXISTING_CRON=$(crontab -l 2>/dev/null | grep -F "$PING_TARGET" | grep -F "$LOG_PATH")
+
+    if [[ -z "$EXISTING_CRON" ]]; then
+      (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
+      echo "Watchdog cron job added."
+    else
+      echo "Cron job already exists for $PING_TARGET — skipping."
+    fi
+  else
+    echo "Skipping watchdog setup."
+  fi
+else
+  echo
+  echo "== Auto-Update Mode: skipping watchdog cron setup =="
+fi
+
+# -------------------------------------------------------
 # 9) Reboot (skip if AUTO_UPDATE)
 # -------------------------------------------------------
 if [[ "$AUTO_UPDATE" == "false" ]]; then
