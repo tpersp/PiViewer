@@ -97,6 +97,69 @@
         <p style="font-size:90%;">(Remote images not listed. Type exact filename if needed.)</p>
         <input type="text" name="{{ dname }}_specific_image" value="{{ dcfg.specific_image }}" placeholder="Exact filename...">
         {% endif %}
+
+        {% if dcfg.mode == "spotify" %}
+        <label>Fallback Mode:</label><br>
+        <select name="{{ dname }}_fallback_mode">
+          <option value="random_image"   {% if dcfg.fallback_mode=="random_image" %}selected{% endif %}>Random Image/GIF</option>
+          <option value="specific_image" {% if dcfg.fallback_mode=="specific_image" %}selected{% endif %}>Specific Image/GIF</option>
+          <option value="mixed"          {% if dcfg.fallback_mode=="mixed" %}selected{% endif %}>Mixed (Multiple Folders)</option>
+          <option value="none"           {% if dcfg.fallback_mode=="none" %}selected{% endif %}>None</option>
+        </select>
+        <br><br>
+        <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center;">
+          <label style="display:inline-block;">
+            <input type="checkbox" name="{{ dname }}_spotify_show_song" value="1" {% if dcfg.spotify_show_song is not defined or dcfg.spotify_show_song %}checked{% endif %}>
+            Song Title
+          </label>
+          <label style="display:inline-block;">
+            <input type="checkbox" name="{{ dname }}_spotify_show_artist" value="1" {% if dcfg.spotify_show_artist is not defined or dcfg.spotify_show_artist %}checked{% endif %}>
+            Artist
+          </label>
+          <label style="display:inline-block;">
+            <input type="checkbox" name="{{ dname }}_spotify_show_album" value="1" {% if dcfg.spotify_show_album is not defined or dcfg.spotify_show_album %}checked{% endif %}>
+            Album
+          </label>
+          <label style="display:inline-block;">
+            <input type="checkbox" name="{{ dname }}_spotify_show_progress" value="1" {% if dcfg.spotify_show_progress is defined and dcfg.spotify_show_progress %}checked{% endif %}>
+            Live Playback Progress
+          </label>
+          <label style="display:inline-block;">
+            <input type="checkbox" name="{{ dname }}_spotify_negative_font" value="1" {% if dcfg.spotify_negative_font is not defined or dcfg.spotify_negative_font %}checked{% endif %}>
+            Auto Negative Font
+          </label>
+        </div>
+        <br>
+        <label>Spotify Font Size:</label>
+        <input type="number" name="{{ dname }}_spotify_font_size" value="{{ dcfg.spotify_font_size|default(18) }}" style="width:60px;">
+        <br><br>
+        <label>Spotify Info Position:</label><br>
+        <select name="{{ dname }}_spotify_info_position">
+          <option value="top-left" {% if dcfg.spotify_info_position=="top-left" %}selected{% endif %}>Top Left</option>
+          <option value="top-center" {% if dcfg.spotify_info_position=="top-center" %}selected{% endif %}>Top Center</option>
+          <option value="top-right" {% if dcfg.spotify_info_position=="top-right" %}selected{% endif %}>Top Right</option>
+          <option value="bottom-left" {% if dcfg.spotify_info_position=="bottom-left" %}selected{% endif %}>Bottom Left</option>
+          <option value="bottom-center" {% if dcfg.spotify_info_position=="bottom-center" or dcfg.spotify_info_position is not defined %}selected{% endif %}>Bottom Center</option>
+          <option value="bottom-right" {% if dcfg.spotify_info_position=="bottom-right" %}selected{% endif %}>Bottom Right</option>
+        </select>
+        <br><br>
+        <label>Progress Bar Position:</label><br>
+        <select name="{{ dname }}_spotify_progress_position">
+          <option value="above_info" {% if dcfg.spotify_progress_position=="above_info" %}selected{% endif %}>Above Info</option>
+          <option value="below_info" {% if dcfg.spotify_progress_position=="below_info" or dcfg.spotify_progress_position is not defined %}selected{% endif %}>Below Info</option>
+          <option value="top-center" {% if dcfg.spotify_progress_position=="top-center" %}selected{% endif %}>Top Center</option>
+          <option value="bottom-center" {% if dcfg.spotify_progress_position=="bottom-center" %}selected{% endif %}>Bottom Center</option>
+        </select>
+        <br><br>
+        <label>Progress Bar Theme:</label><br>
+        <select name="{{ dname }}_spotify_progress_theme">
+          <option value="dark" {% if dcfg.spotify_progress_theme=="dark" or dcfg.spotify_progress_theme is not defined %}selected{% endif %}>Dark</option>
+          <option value="spotify" {% if dcfg.spotify_progress_theme=="spotify" %}selected{% endif %}>Spotify</option>
+          <option value="coffee" {% if dcfg.spotify_progress_theme=="coffee" %}selected{% endif %}>Coffee</option>
+          <option value="light" {% if dcfg.spotify_progress_theme=="light" %}selected{% endif %}>Light</option>
+        </select>
+        <br><br>
+        {% endif %}
       </div>
       {% endfor %}
     </div>

@@ -720,16 +720,35 @@ def remote_configure(dev_index):
                 except:
                     nr = 0
 
-                subdict = {
-                    "mode": new_mode,
-                    "image_interval": ni,
-                    "image_category": new_cat,
-                    "specific_image": new_spec,
-                    "shuffle_mode": (new_shuffle == "yes"),
-                    "mixed_folders": mixed_list if new_mode == "mixed" else [],
-                    "rotate": nr
-                }
-                new_disp[dname] = subdict
+            subdict = {
+                "mode": new_mode,
+                "image_interval": ni,
+                "image_category": new_cat,
+                "specific_image": new_spec,
+                "shuffle_mode": (new_shuffle == "yes"),
+                "mixed_folders": mixed_list if new_mode == "mixed" else [],
+                "rotate": nr
+            }
+            # Add fallback_mode and Spotify settings if present in form
+            if new_mode == "spotify":
+                subdict["fallback_mode"] = request.form.get(pre + "fallback_mode", dc.get("fallback_mode", "random_image"))
+                subdict["spotify_show_song"] = True if request.form.get(pre + "spotify_show_song") else False
+                subdict["spotify_show_artist"] = True if request.form.get(pre + "spotify_show_artist") else False
+                subdict["spotify_show_album"] = True if request.form.get(pre + "spotify_show_album") else False
+                try:
+                    subdict["spotify_font_size"] = int(request.form.get(pre + "spotify_font_size", "18"))
+                except:
+                    subdict["spotify_font_size"] = 18
+                subdict["spotify_negative_font"] = True if request.form.get(pre + "spotify_negative_font") else False
+                subdict["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dc.get("spotify_info_position", "bottom-center"))
+                subdict["spotify_show_progress"] = True if request.form.get(pre + "spotify_show_progress") else False
+                subdict["spotify_progress_position"] = request.form.get(pre + "spotify_progress_position", dc.get("spotify_progress_position", "below_info"))
+                subdict["spotify_progress_theme"] = request.form.get(pre + "spotify_progress_theme", dc.get("spotify_progress_theme", "dark"))
+                try:
+                    subdict["spotify_progress_update_interval"] = int(request.form.get(pre + "spotify_progress_update_interval", dc.get("spotify_progress_update_interval", 200)))
+                except:
+                    subdict["spotify_progress_update_interval"] = 200
+            new_disp[dname] = subdict
 
             push_displays_to_remote(dev_ip, new_disp)
             return redirect(url_for("main.remote_configure", dev_index=dev_index))
