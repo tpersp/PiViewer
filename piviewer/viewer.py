@@ -26,8 +26,8 @@ from PySide6.QtWidgets import (
 )
 
 from spotipy.oauth2 import SpotifyOAuth
-from config import APP_VERSION, IMAGE_DIR, LOG_PATH, VIEWER_HOME
-from utils import load_config, save_config, log_message
+from .config import APP_VERSION, IMAGE_DIR, LOG_PATH, VIEWER_HOME
+from .utils import load_config, save_config, log_message
 
 
 # --- Custom label for negative (difference) text drawing ---
@@ -887,6 +887,25 @@ class DisplayWindow(QMainWindow):
         else:
             percent = 0
         self.spotify_progress_bar.setValue(int(percent))
+
+    def start_spotify_fetch(self):
+        """Launch a background thread to fetch album art."""
+        if getattr(self, "spotify_fetch_thread", None) and self.spotify_fetch_thread.is_alive():
+            return
+        self.spotify_fetch_id = getattr(self, "spotify_fetch_id", 0) + 1
+        fid = self.spotify_fetch_id
+
+        def worker():
+            result = self.fetch_spotify_album_art()
+            self.handle_spotify_result(fid, result)
+
+        self.spotify_fetch_thread = threading.Thread(target=worker, daemon=True)
+        self.spotify_fetch_thread.start()
+
+    def handle_spotify_result(self, fid, path):
+        """Placeholder for handling fetched album art result."""
+        if path:
+            log_message(f"Fetched Spotify art {path}")
 
     def pull_displays_from_remote(self, ip):
         pass  # Placeholder if needed

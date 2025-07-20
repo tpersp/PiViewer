@@ -8,12 +8,10 @@ from flask import (
     Blueprint, request, redirect, url_for, render_template,
     send_from_directory, send_file, jsonify
 )
-from config import APP_VERSION, WEB_BG, IMAGE_DIR, LOG_PATH, UPDATE_BRANCH, VIEWER_HOME
-from utils import (
+from ..config import APP_VERSION, WEB_BG, IMAGE_DIR, LOG_PATH, UPDATE_BRANCH, VIEWER_HOME
+from ..utils import (
     load_config, save_config, init_config, log_message,
     get_system_stats, get_subfolders, count_files_in_folder,
-    get_remote_config, get_remote_monitors,
-    pull_displays_from_remote, push_displays_to_remote,
     get_hostname, get_ip_address, get_pi_model,
     CONFIG_PATH
 )
@@ -241,14 +239,7 @@ def settings():
         cfg["weather"] = {}
     if request.method == "POST":
         new_theme = request.form.get("theme", "dark")
-        new_role = request.form.get("role", "main")
         cfg["theme"] = new_theme
-        cfg["role"] = new_role
-
-        if new_role == "sub":
-            cfg["main_ip"] = request.form.get("main_ip", "").strip()
-        else:
-            cfg["main_ip"] = ""
 
         if new_theme == "custom":
             if "bg_image" in request.files:
@@ -607,38 +598,22 @@ def index():
     theme = cfg.get("theme", "dark")
 
     sub_info_line = ""
-    if cfg.get("role") == "sub":
-        sub_info_line = "This device is SUB"
-        if cfg["main_ip"]:
-            sub_info_line += f" - Main IP: {cfg['main_ip']}"
 
-    # Status logic
-    if cfg.get("role") == "main":
-        sp_cfg = cfg.get("spotify", {})
-        if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
-            spotify_cache_path = os.path.join(VIEWER_HOME, ".spotify_cache")
-            if os.path.exists(spotify_cache_path):
-                spotify_status = "✅"
-            else:
-                spotify_status = "⚠️"
+    sp_cfg = cfg.get("spotify", {})
+    if sp_cfg.get("client_id") and sp_cfg.get("client_secret") and sp_cfg.get("redirect_uri"):
+        spotify_cache_path = os.path.join(VIEWER_HOME, ".spotify_cache")
+        if os.path.exists(spotify_cache_path):
+            spotify_status = "✅"
         else:
-            spotify_status = "❌"
-
-        w_cfg = cfg.get("weather", {})
-        if w_cfg.get("api_key") and w_cfg.get("zip_code") and w_cfg.get("country_code"):
-            weather_status = "✅"
-        else:
-            weather_status = "❌"
-
-        devices = cfg.get("devices", [])
-        if devices:
-            subdevices_status = "✅ " + ", ".join([d.get("name", d.get("ip", "Unknown")) for d in devices])
-        else:
-            subdevices_status = "❌"
+            spotify_status = "⚠️"
     else:
-        spotify_status = ""
-        weather_status = ""
-        subdevices_status = sub_info_line
+        spotify_status = "❌"
+
+    w_cfg = cfg.get("weather", {})
+    if w_cfg.get("api_key") and w_cfg.get("zip_code") and w_cfg.get("country_code"):
+        weather_status = "✅"
+    else:
+        weather_status = "❌"
 
     final_monitors = {}
     for mon_name, minfo in ext_mons.items():
@@ -669,187 +644,9 @@ def index():
         monitors=final_monitors,
         flash_msg=flash_msg,
         spotify_status=spotify_status,
-        weather_status=weather_status,
-        subdevices_status=subdevices_status
+        weather_status=weather_status
     )
 
-@main_bp.route("/remote_configure/<int:dev_index>", methods=["GET", "POST"])
-def remote_configure(dev_index):
-    cfg = load_config()
-    if cfg.get("role") != "main":
-        return "This device is not 'main'.", 403
-
-    if dev_index < 0 or dev_index >= len(cfg.get("devices", [])):
-        return "Invalid device index", 404
-
-    dev_info = cfg["devices"][dev_index]
-    dev_ip = dev_info.get("ip")
-    dev_name = dev_info.get("name")
-
-    remote_cfg = get_remote_config(dev_ip) or {"displays": {}}
-    remote_mons = get_remote_monitors(dev_ip)
-    remote_folders = []
-    try:
-        r = requests.get(f"http://{dev_ip}:8080/list_folders", timeout=5)
-        if r.status_code == 200:
-            remote_folders = r.json()
-    except:
-        pass
-
-    if request.method == "POST":
-        action = request.form.get("action", "")
-        if action == "update_remote":
-            new_disp = {}
-            for dname, dc in remote_cfg.get("displays", {}).items():
-                pre = dname + "_"
-                new_mode = request.form.get(pre + "mode", dc.get("mode", "random_image"))
-                new_int_s = request.form.get(pre + "image_interval", str(dc.get("image_interval", 60)))
-                new_cat = request.form.get(pre + "image_category", dc.get("image_category", ""))
-                new_shuffle = request.form.get(pre + "shuffle_mode", "no")
-                new_spec = request.form.get(pre + "specific_image", dc.get("specific_image", ""))
-                new_rot_s = request.form.get(pre + "rotate", str(dc.get("rotate", 0)))
-                mixed_str = request.form.get(pre + "mixed_order", "")
-                mixed_list = [x for x in mixed_str.split(",") if x]
-
-                try:
-                    ni = int(new_int_s)
-                except:
-                    ni = dc.get("image_interval", 60)
-                try:
-                    nr = int(new_rot_s)
-                except:
-                    nr = 0
-
-            subdict = {
-                "mode": new_mode,
-                "image_interval": ni,
-                "image_category": new_cat,
-                "specific_image": new_spec,
-                "shuffle_mode": (new_shuffle == "yes"),
-                "mixed_folders": mixed_list if new_mode == "mixed" else [],
-                "rotate": nr
-            }
-            # Add fallback_mode and Spotify settings if present in form
-            if new_mode == "spotify":
-                subdict["fallback_mode"] = request.form.get(pre + "fallback_mode", dc.get("fallback_mode", "random_image"))
-                subdict["spotify_show_song"] = True if request.form.get(pre + "spotify_show_song") else False
-                subdict["spotify_show_artist"] = True if request.form.get(pre + "spotify_show_artist") else False
-                subdict["spotify_show_album"] = True if request.form.get(pre + "spotify_show_album") else False
-                try:
-                    subdict["spotify_font_size"] = int(request.form.get(pre + "spotify_font_size", "18"))
-                except:
-                    subdict["spotify_font_size"] = 18
-                subdict["spotify_negative_font"] = True if request.form.get(pre + "spotify_negative_font") else False
-                subdict["spotify_info_position"] = request.form.get(pre + "spotify_info_position", dc.get("spotify_info_position", "bottom-center"))
-                subdict["spotify_show_progress"] = True if request.form.get(pre + "spotify_show_progress") else False
-                subdict["spotify_progress_position"] = request.form.get(pre + "spotify_progress_position", dc.get("spotify_progress_position", "below_info"))
-                subdict["spotify_progress_theme"] = request.form.get(pre + "spotify_progress_theme", dc.get("spotify_progress_theme", "dark"))
-                try:
-                    subdict["spotify_progress_update_interval"] = int(request.form.get(pre + "spotify_progress_update_interval", dc.get("spotify_progress_update_interval", 200)))
-                except:
-                    subdict["spotify_progress_update_interval"] = 200
-            new_disp[dname] = subdict
-
-            push_displays_to_remote(dev_ip, new_disp)
-            return redirect(url_for("main.remote_configure", dev_index=dev_index))
-
-    return render_template(
-        "remote_configure.html",
-        dev_name=dev_name,
-        dev_ip=dev_ip,
-        remote_cfg=remote_cfg,
-        remote_mons=remote_mons,
-        remote_folders=remote_folders,
-        theme=cfg.get("theme", "dark")
-    )
-
-@main_bp.route("/sync_config", methods=["GET"])
-def sync_config():
-    return jsonify(load_config())
-
-@main_bp.route("/update_config", methods=["POST"])
-def update_config():
-    incoming = request.get_json()
-    if not incoming:
-        return "No JSON received", 400
-    cfg = load_config()
-    if "displays" in incoming:
-        cfg["displays"] = incoming["displays"]
-    if "theme" in incoming:
-        cfg["theme"] = incoming["theme"]
-    save_config(cfg)
-    log_message("Local config partially updated via /update_config")
-    try:
-        subprocess.check_call(["sudo", "systemctl", "restart", "piviewer.service"])
-    except subprocess.CalledProcessError as e:
-        log_message(f"Failed to restart piviewer after config update: {e}")
-    return "Config updated", 200
-
-@main_bp.route("/device_manager", methods=["GET", "POST"])
-def device_manager():
-    cfg = load_config()
-    if cfg.get("role") != "main":
-        return "This device is not 'main'.", 403
-
-    local_ip = get_ip_address()
-    if request.method == "POST":
-        action = request.form.get("action", "")
-        dev_name = request.form.get("dev_name", "").strip()
-        dev_ip = request.form.get("dev_ip", "").strip()
-        if action == "add_device" and dev_name and dev_ip:
-            if dev_ip == local_ip:
-                log_message(f"Skipping adding device {dev_name} - same IP as local.")
-            else:
-                if "devices" not in cfg:
-                    cfg["devices"] = []
-                cfg["devices"].append({
-                    "name": dev_name,
-                    "ip": dev_ip,
-                    "displays": {}
-                })
-                save_config(cfg)
-                log_message(f"Added sub device: {dev_name} ({dev_ip})")
-        elif action.startswith("remove_"):
-            idx_str = action.replace("remove_", "")
-            try:
-                idx = int(idx_str)
-                if 0 <= idx < len(cfg["devices"]):
-                    removed = cfg["devices"].pop(idx)
-                    save_config(cfg)
-                    log_message(f"Removed sub device: {removed}")
-            except:
-                pass
-        elif action.startswith("push_"):
-            idx_str = action.replace("push_", "")
-            try:
-                idx = int(idx_str)
-                dev_info = cfg["devices"][idx]
-                dev_ip = dev_info.get("ip")
-                if dev_ip:
-                    push_displays_to_remote(dev_ip, dev_info.get("displays", {}))
-            except Exception as e:
-                log_message(f"Push error: {e}")
-        elif action.startswith("pull_"):
-            idx_str = action.replace("pull_", "")
-            try:
-                idx = int(idx_str)
-                dev_info = cfg["devices"][idx]
-                dev_ip = dev_info.get("ip")
-                if dev_ip:
-                    rd = pull_displays_from_remote(dev_ip)
-                    if rd is not None:
-                        dev_info["displays"] = rd
-                        save_config(cfg)
-                        log_message(f"Pulled remote displays from {dev_ip} => devices[{idx}]")
-            except Exception as e:
-                log_message(f"Pull error: {e}")
-        return redirect(url_for("main.device_manager"))
-
-    return render_template(
-        "device_manager.html",
-        cfg=cfg,
-        theme=cfg.get("theme", "dark")
-    )
 
 @main_bp.route("/update_app", methods=["POST"])
 def update_app():

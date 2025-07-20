@@ -10,7 +10,6 @@ PiViewer is a modern, easy-to-configure slideshow + overlay viewer written in **
   - `piviewer.service` - runs the PySide6 slideshow windows
   - `controller.service` - runs the Flask app
 - **Overlay**: Optionally display time, weather, or custom text overlay in a semi-transparent box.
-- **Remote Device Management**: If you set the Pi’s role to **main**, it can push or pull display configs from sub-devices.
 - **Spotify Integration**: Show currently playing track’s album art on a display.
 
 ## Installation
@@ -64,15 +63,8 @@ Browse to `http://<PI-IP>:8080` to access the interface. You’ll see:
   - **Manage** how often images rotate, shuffle, etc.
 
 - **Settings** Page
-  - Choose your Pi’s role (main or sub)
-  - If sub, specify the IP of your main Pi
   - Set the web theme (Dark, Light, or Custom) and optionally upload a background image
   - Configure weather (API key, location) used by the overlay
-
-- **Device Manager** (only if role=main)
-  - Add sub-devices by name + IP
-  - Push or pull display configs from each sub device
-  - Remotely configure them
 
 - **Overlay Settings**
   - Enable or disable the overlay box
@@ -87,12 +79,6 @@ In `Configure Spotify`, provide your **Client ID**, **Client Secret**, and **Red
 
 Use the **Upload Media** page to add images/GIFs. You can place them in existing subfolders or create a new one. If you have a CIFS share, it will appear under your `IMAGE_DIR`.
 
-## Multi-Device Setup
-
-- **Main Device**: in the Settings page, set Role to `main`. It can manage sub-devices.
-- **Sub Device**: set role to `sub` and specify the main Pi’s IP address.
-
-Then, from the main Pi’s **Device Manager**, add the sub’s IP and name. You can push/pull config or go into remote configure for that sub.
 
 ## Directory Structure
 
@@ -115,8 +101,6 @@ PiViewer/
 │   ├── index.html
 │   ├── settings.html
 │   ├── overlay.html
-│   ├── device_manager.html
-│   ├── remote_configure.html
 │   ├── configure_spotify.html
 │   ├── upload_media.html
 │   ...

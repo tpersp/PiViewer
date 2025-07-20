@@ -20,7 +20,7 @@ sys.modules.setdefault("flask", flask)
 sys.modules.setdefault("requests", types.ModuleType("requests"))
 sys.modules.setdefault("psutil", types.ModuleType("psutil"))
 import pytest
-from routes import compute_overlay_preview
+from piviewer.web.routes import compute_overlay_preview
 
 
 def test_preview_all_uses_max_resolution():

@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 from flask import Flask
-from config import APP_VERSION
-from utils import init_config, log_message
-from routes import main_bp
+from ..config import APP_VERSION
+from ..utils import init_config, log_message
+from .routes import main_bp
 
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
